@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- White arc — 240° counterclockwise -->
+  <path d="M 80.3 65.5 A 35 35 0 1 0 19.7 65.5"
+        stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Gold arc — 120° clockwise, lower gap -->
+  <path d="M 19.7 65.5 A 35 35 0 0 1 80.3 65.5"
+        stroke="#FFA916" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- White italic S -->
+  <text x="50" y="60"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-style="italic"
+        font-weight="600"
+        font-size="40"
+        fill="#FFFFFF"
+        text-anchor="middle"
+        dominant-baseline="middle">S</text>
+</svg>

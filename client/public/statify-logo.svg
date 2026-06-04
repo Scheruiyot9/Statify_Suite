@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 230" fill="none">
+  <!-- ── Circle mark centred at (100, 78) r=52 ── -->
+  <!-- Teal arc: 240° counterclockwise, gap at lower portion -->
+  <!-- 30° point (lower-right): (100+52·cos30°, 78+52·sin30°) = (145.0, 104.0) -->
+  <!-- 150° point (lower-left): (100+52·cos150°, 78+52·sin150°) = (55.0, 104.0) -->
+  <path d="M 145.0 104.0 A 52 52 0 1 0 55.0 104.0"
+        stroke="#024A59" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Gold arc: 120° clockwise, fills the lower gap -->
+  <path d="M 55.0 104.0 A 52 52 0 0 1 145.0 104.0"
+        stroke="#FFA916" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Italic S -->
+  <text x="100" y="82"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-style="italic"
+        font-weight="600"
+        font-size="64"
+        fill="#024A59"
+        text-anchor="middle"
+        dominant-baseline="middle">S</text>
+
+  <!-- ── Wordmark ── -->
+  <text x="100" y="158"
+        font-family="'Arial Black', 'Arial', sans-serif"
+        font-weight="900"
+        font-size="30"
+        fill="#024A59"
+        text-anchor="middle"
+        letter-spacing="3">STATIFY</text>
+  <text x="100" y="178"
+        font-family="'Arial', sans-serif"
+        font-weight="400"
+        font-size="10"
+        fill="#024A59"
+        text-anchor="middle"
+        letter-spacing="3.5">SOLUTIONS LIMITED</text>
+</svg>
