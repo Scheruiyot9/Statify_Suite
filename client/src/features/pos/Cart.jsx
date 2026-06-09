@@ -146,7 +146,7 @@ function QtyInput({ item }) {
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-        className="w-12 rounded border border-primary-400 px-0.5 py-0.5 text-center text-xs font-semibold focus:outline-none"
+        className="w-14 rounded border border-primary-400 px-1 py-1 text-center text-sm font-semibold focus:outline-none"
       />
     );
   }
@@ -154,7 +154,7 @@ function QtyInput({ item }) {
     <button
       onClick={() => { setDraft(String(item.quantity)); setEditing(true); }}
       title="Click to edit quantity"
-      className="w-7 text-center text-xs font-bold text-gray-800 hover:text-primary-600 transition-colors"
+      className="w-10 text-center text-sm font-bold text-gray-800 hover:text-primary-600 transition-colors"
     >
       {displayQty}
     </button>
@@ -495,7 +495,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
                   </div>
 
                   {/* Stepper */}
-                  <div className="flex items-center gap-1 flex-shrink-0 w-24 justify-center">
+                  <div className="flex items-center gap-1 flex-shrink-0 w-28 justify-center">
                     <button
                       onClick={() => item.quantity > 1 && updateQuantity(item.product.product_id, item.quantity - 1)}
                       disabled={item.quantity <= 1}
