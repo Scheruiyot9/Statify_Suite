@@ -1,4 +1,5 @@
 const svc = require('./inventory.service');
+const movSvc = require('./movements.service');
 
 const list = async (req, res) => {
   const { role, branchIds = [] } = req.user;
@@ -24,4 +25,10 @@ const setReorder = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, adjust, adjustBulk, setReorder };
+const listMovements = async (req, res) => {
+  const { role, branchIds = [] } = req.user;
+  const result = await movSvc.listMovements(req.tenantId, role, branchIds, req.query);
+  res.json({ success: true, data: result });
+};
+
+module.exports = { list, adjust, adjustBulk, setReorder, listMovements };

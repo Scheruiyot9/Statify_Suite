@@ -9,7 +9,8 @@ const router = Router();
 router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantContext);
 
 // ── Read — requires view_inventory (sales_staff role lacks this) ──────────────
-router.get('/', requirePermission('view_inventory'), controller.list);
+router.get('/',          requirePermission('view_inventory'), controller.list);
+router.get('/movements', requirePermission('view_inventory'), controller.listMovements);
 
 // ── Writes require adjust_stock permission + branch membership ────────────────
 router.post('/adjust',

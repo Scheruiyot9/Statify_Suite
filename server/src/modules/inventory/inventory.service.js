@@ -3,9 +3,10 @@ const AppError = require('../../shared/AppError');
 const { isCompanyWide } = require('../../shared/roles');
 const { sendMail } = require('../../shared/mailer');
 const QueryBuilder = require('../../shared/qb');
+const { recordMovement } = require('./movements.service');
 
 async function listInventory(companyId, role, branchIds, filters = {}) {
-  const { branchId, search, lowStock, categoryId, page = 1, limit = 50 } = filters;
+  const { branchId, search, lowStock, categoryId, stockStatus, page = 1, limit = 50 } = filters;
   const isWide = isCompanyWide(role);
 
   const qb = new QueryBuilder([companyId]);
@@ -25,7 +26,14 @@ async function listInventory(companyId, role, branchIds, filters = {}) {
   if (categoryId) {
     conditions.push(`p.category_id = $${qb.add(categoryId)}`);
   }
-  if (lowStock === 'true' || lowStock === true) {
+  // stockStatus takes precedence over legacy lowStock param
+  if (stockStatus === 'low') {
+    conditions.push(`pbi.reorder_level > 0 AND pbi.quantity_available <= pbi.reorder_level AND pbi.quantity_available > 0`);
+  } else if (stockStatus === 'out') {
+    conditions.push(`pbi.quantity_available <= 0`);
+  } else if (stockStatus === 'ok') {
+    conditions.push(`(pbi.reorder_level = 0 OR pbi.quantity_available > pbi.reorder_level)`);
+  } else if (lowStock === 'true' || lowStock === true) {
     conditions.push(`pbi.reorder_level > 0 AND pbi.quantity_available <= pbi.reorder_level`);
   }
 
@@ -116,6 +124,18 @@ async function adjustStock(companyId, userId, data) {
       WHERE product_id = $2 AND branch_id = $3
     `, [newQty, product_id, branch_id]);
 
+    await recordMovement(client, {
+      companyId, branchId: branch_id, productId: product_id,
+      movementType:  qty > 0 ? 'adjustment_in' : 'adjustment_out',
+      qtyIn:         qty > 0 ? qty  : 0,
+      qtyOut:        qty < 0 ? -qty : 0,
+      qtyBefore:     current,
+      qtyAfter:      newQty,
+      referenceType: 'ADJUSTMENT',
+      notes:         notes || null,
+      userId,
+    });
+
     // Fire low-stock alert when stock crosses (or stays below) the reorder threshold
     if (reorderLevel > 0 && newQty <= reorderLevel && contact_email) {
       sendMail({
@@ -178,6 +198,18 @@ async function adjustStockBulk(companyId, userId, items) {
         SET quantity_available = $1, last_updated = now()
         WHERE product_id = $2 AND branch_id = $3
       `, [newQty, product_id, branch_id]);
+
+      await recordMovement(client, {
+        companyId, branchId: branch_id, productId: product_id,
+        movementType:  qty > 0 ? 'adjustment_in' : 'adjustment_out',
+        qtyIn:         qty > 0 ? qty  : 0,
+        qtyOut:        qty < 0 ? -qty : 0,
+        qtyBefore:     current,
+        qtyAfter:      newQty,
+        referenceType: 'ADJUSTMENT',
+        notes:         notes || null,
+        userId,
+      });
 
       if (reorderLevel > 0 && newQty <= reorderLevel && contact_email) {
         sendMail({

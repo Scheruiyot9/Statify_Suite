@@ -3,6 +3,7 @@ const AppError = require('../../shared/AppError');
 const { isCompanyWide } = require('../../shared/roles');
 const QueryBuilder = require('../../shared/qb');
 const jrn = require('../journal/journal.service');
+const { recordMovement } = require('../inventory/movements.service');
 
 async function getLoyaltyRates(client, companyId) {
   const { rows } = await client.query(
@@ -111,6 +112,19 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
         SET quantity_available = quantity_available - $1, last_updated = now()
         WHERE product_id = $2 AND branch_id = $3
       `, [parseFloat(item.quantity), item.productId, branchId]);
+
+      await recordMovement(client, {
+        companyId, branchId, productId: item.productId,
+        movementType:  'sale',
+        qtyIn:         0,
+        qtyOut:        parseFloat(item.quantity),
+        qtyBefore:     available,
+        qtyAfter:      available - parseFloat(item.quantity),
+        referenceType: 'SALE',
+        referenceId:   txn.transaction_id,
+        referenceNo:   txnNumber,
+        userId:        cashierUserId,
+      });
     }
 
     for (let i = 0; i < payments.length; i++) {
@@ -338,11 +352,32 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
       [transactionId]
     );
     for (const item of items) {
+      const { rows: invRows } = await client.query(
+        `SELECT quantity_available FROM product_branch_inventory
+         WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
+        [item.product_id, branchId]
+      );
+      const qtyBefore = invRows.length ? parseFloat(invRows[0].quantity_available) : 0;
+      const qtyAfter  = qtyBefore + parseFloat(item.quantity);
       await client.query(`
         UPDATE product_branch_inventory
-        SET quantity_available = quantity_available + $1, last_updated = now()
+        SET quantity_available = $1, last_updated = now()
         WHERE product_id = $2 AND branch_id = $3
-      `, [item.quantity, item.product_id, branchId]);
+      `, [qtyAfter, item.product_id, branchId]);
+
+      await recordMovement(client, {
+        companyId, branchId, productId: item.product_id,
+        movementType:  'return',
+        qtyIn:         parseFloat(item.quantity),
+        qtyOut:        0,
+        qtyBefore,
+        qtyAfter,
+        referenceType: 'VOID',
+        referenceId:   transactionId,
+        referenceNo:   transactionNumber,
+        notes:         reason || null,
+        userId,
+      });
     }
 
     await client.query(`

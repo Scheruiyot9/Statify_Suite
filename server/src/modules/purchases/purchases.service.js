@@ -1,6 +1,7 @@
 const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const jrn = require('../journal/journal.service');
+const { recordMovement } = require('../inventory/movements.service');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -312,13 +313,36 @@ async function postGRN(companyId, grnId) {
   return transaction(async (client) => {
     // Update inventory — upsert into product_branch_inventory
     for (const item of items) {
+      const qtyReceived = parseFloat(item.quantity_received);
+
+      // Lock the row first so qtyBefore is accurate even under concurrent GRNs
+      const { rows: invRows } = await client.query(
+        `SELECT quantity_available FROM product_branch_inventory
+         WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
+        [item.product_id, grn.branch_id]
+      );
+      const qtyBefore = invRows.length ? parseFloat(invRows[0].quantity_available) : 0;
+      const qtyAfter  = qtyBefore + qtyReceived;
+
       await client.query(`
         INSERT INTO product_branch_inventory (product_id, branch_id, quantity_available, reorder_level, last_updated)
         VALUES ($1, $2, $3, 0, now())
         ON CONFLICT (product_id, branch_id) DO UPDATE
-          SET quantity_available = product_branch_inventory.quantity_available + $3,
+          SET quantity_available = $3,
               last_updated = now()
-      `, [item.product_id, grn.branch_id, parseFloat(item.quantity_received)]);
+      `, [item.product_id, grn.branch_id, qtyAfter]);
+
+      await recordMovement(client, {
+        companyId: grn.company_id, branchId: grn.branch_id, productId: item.product_id,
+        movementType:  'grn',
+        qtyIn:         qtyReceived,
+        qtyOut:        0,
+        qtyBefore,
+        qtyAfter,
+        referenceType: 'GRN',
+        referenceId:   grnId,
+        referenceNo:   grn.grn_number,
+      });
 
       // Update PO item received qty
       await client.query(`

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -11,6 +11,7 @@ import ImageUpload from '@/components/ui/ImageUpload';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import { exportToExcel } from '@/utils/exportExcel';
+import StockLedgerModal from '@/features/inventory/StockLedgerModal';
 
 function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -351,6 +352,7 @@ export default function ProductsPage() {
   const [modal, setModal]           = useState(null);
   const [viewProduct, setViewProduct] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [ledgerProduct, setLedgerProduct] = useState(null); // { product_id, product_name }
 
   const { data, isLoading } = useQuery({
     queryKey: ['products-mgmt', search, catFilter, statusFilter, page],
@@ -449,7 +451,7 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Price</th>
                 <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Cost</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                {canManageProducts && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -485,14 +487,20 @@ export default function ProductsPage() {
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  {canManageProducts && (
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => setViewProduct(p)}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button onClick={() => setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
+                        className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
+                        <BookOpen className="h-3 w-3" />Ledger
                       </button>
-                    </td>
-                  )}
+                      {canManageProducts && (
+                        <button onClick={() => setViewProduct(p)}
+                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                          View
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {products.length === 0 && (
@@ -548,6 +556,13 @@ export default function ProductsPage() {
         open={canManageProducts && showImport}
         onClose={() => setShowImport(false)}
         onImported={() => qc.invalidateQueries(['products-mgmt'])}
+      />
+
+      <StockLedgerModal
+        open={!!ledgerProduct}
+        onClose={() => setLedgerProduct(null)}
+        productId={ledgerProduct?.product_id}
+        productName={ledgerProduct?.product_name}
       />
     </div>
   );

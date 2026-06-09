@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus, Layers } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -8,6 +8,7 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
+import StockLedgerModal from './StockLedgerModal';
 
 // ── Single-item adjust form ───────────────────────────────────────────────────
 
@@ -239,18 +240,44 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
 export default function InventoryPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
-  const canAdjustStock = hasCapability('inventory.adjust');
-  const [search, setSearch]         = useState('');
-  const [lowStock, setLowStock]     = useState(false);
-  const [page, setPage]             = useState(1);
-  const [adjustItem, setAdjustItem] = useState(null);
-  const [selected, setSelected]     = useState(new Set()); // keys: product_id:branch_id
-  const [bulkOpen, setBulkOpen]     = useState(false);
+  const canAdjustStock    = hasCapability('inventory.adjust');
+  const [search, setSearch]             = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage]                 = useState(1);
+  const [adjustItem, setAdjustItem]   = useState(null);
+  const [ledgerItem, setLedgerItem]   = useState(null); // { product_id, product_name }
+  const [selected, setSelected]       = useState(new Set()); // keys: product_id:branch_id
+  const [bulkOpen, setBulkOpen]       = useState(false);
+
+  // Filter option lists
+  const { data: branchesData } = useQuery({
+    queryKey: ['branches-list'],
+    queryFn: () => api.get('/branches').then((r) => r.data.data ?? r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories-list'],
+    queryFn: () => api.get('/products/categories').then((r) => r.data.data ?? r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+  const branches   = Array.isArray(branchesData)   ? branchesData   : [];
+  const categories = Array.isArray(categoriesData) ? categoriesData : [];
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inventory', search, lowStock, page],
+    queryKey: ['inventory', search, branchFilter, categoryFilter, statusFilter, page],
     queryFn: () =>
-      api.get('/inventory', { params: { search, lowStock, page, limit: 50 } }).then((r) => r.data.data),
+      api.get('/inventory', {
+        params: {
+          search:      search      || undefined,
+          branchId:    branchFilter || undefined,
+          categoryId:  categoryFilter || undefined,
+          stockStatus: statusFilter || undefined,
+          page,
+          limit: 50,
+        },
+      }).then((r) => r.data.data),
     keepPreviousData: true,
   });
 
@@ -302,23 +329,55 @@ export default function InventoryPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        {/* Search */}
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search by product name or SKU…"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
-        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 select-none">
-          <input type="checkbox" checked={lowStock} onChange={(e) => { setLowStock(e.target.checked); setPage(1); }}
-            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          Low stock only
-        </label>
-        {lowCount > 0 && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm text-red-700">
+
+        {/* Branch filter */}
+        {branches.length > 1 && (
+          <select value={branchFilter} onChange={(e) => { setBranchFilter(e.target.value); setPage(1); }}
+            className="rounded-lg border border-gray-200 py-2 px-3 text-sm bg-white focus:border-primary-500 focus:outline-none min-w-36">
+            <option value="">All Branches</option>
+            {branches.map((b) => (
+              <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
+            ))}
+          </select>
+        )}
+
+        {/* Category filter */}
+        {categories.length > 0 && (
+          <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            className="rounded-lg border border-gray-200 py-2 px-3 text-sm bg-white focus:border-primary-500 focus:outline-none min-w-36">
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.category_id} value={c.category_id}>{c.category_name}</option>
+            ))}
+          </select>
+        )}
+
+        {/* Status filter */}
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 py-2 px-3 text-sm bg-white focus:border-primary-500 focus:outline-none min-w-32">
+          <option value="">All Status</option>
+          <option value="ok">OK</option>
+          <option value="low">Low Stock</option>
+          <option value="out">Out of Stock</option>
+        </select>
+
+        {/* Low stock badge */}
+        {lowCount > 0 && !statusFilter && (
+          <button onClick={() => { setStatusFilter('low'); setPage(1); }}
+            className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-100 transition-colors">
             <AlertTriangle className="h-4 w-4" />
             {lowCount} low stock
-          </div>
+          </button>
         )}
+
+        {/* Bulk adjust */}
         {canAdjustStock && selected.size > 0 && (
           <Button size="sm" onClick={() => setBulkOpen(true)}>
             <Layers className="h-4 w-4 mr-1" />
@@ -349,7 +408,7 @@ export default function InventoryPage() {
                 <th className="px-4 py-3 text-right font-medium text-gray-600 hidden sm:table-cell">Selling Price</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 hidden lg:table-cell">Last Updated</th>
-                {canAdjustStock && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
+                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -389,19 +448,25 @@ export default function InventoryPage() {
                     <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
                       {item.last_updated ? formatDate(item.last_updated) : '—'}
                     </td>
-                    {canAdjustStock && (
-                      <td className="px-4 py-3 text-center">
-                        <button onClick={() => setAdjustItem(item)}
-                          className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors">
-                          Adjust
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button onClick={() => setLedgerItem({ product_id: item.product_id, product_name: item.product_name, branch_id: item.branch_id, branch_name: item.branch_name })}
+                          className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
+                          <BookOpen className="h-3 w-3" />Ledger
                         </button>
-                      </td>
-                    )}
+                        {canAdjustStock && (
+                          <button onClick={() => setAdjustItem(item)}
+                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors">
+                            Adjust
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
               {inventory.length === 0 && (
-                <tr><td colSpan={canAdjustStock ? 10 : 8} className="py-12 text-center text-gray-400">No inventory records found</td></tr>
+                <tr><td colSpan={canAdjustStock ? 10 : 9} className="py-12 text-center text-gray-400">No inventory records found</td></tr>
               )}
             </tbody>
           </table>
@@ -433,6 +498,16 @@ export default function InventoryPage() {
           isSaving={bulkMut.isPending}
         />
       )}
+
+      {/* Stock ledger modal */}
+      <StockLedgerModal
+        open={!!ledgerItem}
+        onClose={() => setLedgerItem(null)}
+        productId={ledgerItem?.product_id}
+        productName={ledgerItem?.product_name}
+        branchId={ledgerItem?.branch_id}
+        branchName={ledgerItem?.branch_name}
+      />
     </div>
   );
 }
