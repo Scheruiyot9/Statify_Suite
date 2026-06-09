@@ -34,6 +34,11 @@ const updatePaymentMethod = async (req, res) => {
   res.json({ success: true, data: method });
 };
 
+const deletePaymentMethod = async (req, res) => {
+  await svc.deletePaymentMethod(req.tenantId, req.params.id);
+  res.json({ success: true, message: 'Payment method deleted' });
+};
+
 // ── Terminals ─────────────────────────────────────────────────────────────────
 
 // POS cashier: auto-seeds a default till when none exist for the branch
@@ -144,7 +149,7 @@ const cashOuts = async (req, res) => {
 
 module.exports = {
   products,
-  paymentMethods, createPaymentMethod, updatePaymentMethod,
+  paymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   terminals, allTerminals, createTerminal, updateTerminal, deleteTerminal,
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession,

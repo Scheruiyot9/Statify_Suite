@@ -18,6 +18,7 @@ router.get('/expense-accounts',          requirePermission('open_pos_session'), 
 router.get('/payment-methods',           controller.paymentMethods);
 router.post('/payment-methods',          requireRole('company_admin'), controller.createPaymentMethod);
 router.patch('/payment-methods/:id',     requireRole('company_admin'), controller.updatePaymentMethod);
+router.delete('/payment-methods/:id',   requireRole('company_admin'), controller.deletePaymentMethod);
 
 // ── Terminals ─────────────────────────────────────────────────────────────────
 router.get('/terminals',                 requirePermission('open_pos_session'), controller.terminals);

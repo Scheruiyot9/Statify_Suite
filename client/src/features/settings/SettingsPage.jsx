@@ -67,8 +67,9 @@ function PayModeForm({ initial, bankAccounts, onSave, onClose, isPending }) {
 
 function PayModesTab() {
   const qc = useQueryClient();
-  const [addOpen,  setAddOpen]  = useState(false);
-  const [editMode, setEditMode] = useState(null);
+  const [addOpen,    setAddOpen]    = useState(false);
+  const [editMode,   setEditMode]   = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null); // method object to delete
 
   const companyId  = useAuthStore((s) => s.user?.companyId);
   const hasFinance = useAuthStore((s) => !!s.user?.planFeatures?.hasFinance);
@@ -104,6 +105,17 @@ function PayModesTab() {
       setEditMode(null);
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/pos/payment-methods/${id}`),
+    onSuccess: () => {
+      toast.success('Payment method deleted');
+      qc.invalidateQueries(['payment-methods-all']);
+      qc.invalidateQueries(['payment-methods']);
+      setConfirmDel(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Cannot delete this payment method'),
   });
 
   const toggleMut = useMutation({
@@ -170,10 +182,16 @@ function PayModesTab() {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => setEditMode(m)}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditMode(m)}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => setConfirmDel(m)}
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -198,6 +216,21 @@ function PayModesTab() {
         <PayModeForm initial={editMode} bankAccounts={bankAccounts}
           onSave={(body) => updateMut.mutate({ id: editMode?.payment_method_id, body })}
           onClose={() => setEditMode(null)} isPending={updateMut.isPending} />
+      </Modal>
+
+      <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Payment Method" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to delete <span className="font-semibold text-gray-900">{confirmDel?.method_name}</span>?
+            This cannot be undone. If the method has been used in transactions, deletion will be blocked — deactivate it instead.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmDel(null)}>Cancel</Button>
+            <Button variant="danger" onClick={() => deleteMut.mutate(confirmDel.payment_method_id)} isLoading={deleteMut.isPending}>
+              Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
@@ -272,8 +305,9 @@ function TerminalForm({ branches, initial, onSave, onClose, isPending }) {
 
 function TerminalsTab() {
   const qc = useQueryClient();
-  const [addOpen,  setAddOpen]  = useState(false);
-  const [editTerm, setEditTerm] = useState(null);
+  const [addOpen,    setAddOpen]    = useState(false);
+  const [editTerm,   setEditTerm]   = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -312,6 +346,16 @@ function TerminalsTab() {
       qc.invalidateQueries(['terminals-all']);
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  const termDeleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/pos/terminals/${id}`),
+    onSuccess: () => {
+      toast.success('Terminal deleted');
+      qc.invalidateQueries(['terminals-all']);
+      setConfirmDel(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Cannot delete this terminal'),
   });
 
   // Group by branch for display
@@ -385,12 +429,20 @@ function TerminalsTab() {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => setEditTerm(t)}
-                            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditTerm(t)}
+                              className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setConfirmDel(t)}
+                              className="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -419,6 +471,21 @@ function TerminalsTab() {
           onClose={() => setEditTerm(null)}
           isPending={updateMut.isPending}
         />
+      </Modal>
+
+      <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Terminal" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to delete terminal <span className="font-semibold text-gray-900">{confirmDel?.terminal_name}</span>?
+            This cannot be undone. If the terminal has an open session, deletion will be blocked — close the session first.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmDel(null)}>Cancel</Button>
+            <Button variant="danger" onClick={() => termDeleteMut.mutate(confirmDel.terminal_id)} isLoading={termDeleteMut.isPending}>
+              Delete
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -58,6 +58,24 @@ async function updatePaymentMethod(companyId, methodId, { methodName, requiresRe
   return rows[0];
 }
 
+async function deletePaymentMethod(companyId, methodId) {
+  // Guard: cannot delete if used in any transaction payment
+  const { rows: used } = await query(
+    `SELECT 1 FROM transaction_payments tp
+     JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
+     WHERE tp.payment_method_id = $1 AND st.company_id = $2 LIMIT 1`,
+    [methodId, companyId]
+  );
+  if (used.length)
+    throw AppError.badRequest('Cannot delete a payment method that has been used in transactions. Deactivate it instead.');
+
+  const { rows } = await query(
+    `DELETE FROM payment_methods WHERE payment_method_id = $1 AND company_id = $2 RETURNING payment_method_id`,
+    [methodId, companyId]
+  );
+  if (!rows.length) throw AppError.notFound('Payment method');
+}
+
 // ── Terminals ─────────────────────────────────────────────────────────────────
 
 // Used by the POS cashier — auto-seeds a default till if none exist
@@ -704,7 +722,7 @@ async function listCashOuts(companyId, sessionId) {
 
 module.exports = {
   listSellableProducts,
-  listPaymentMethods, createPaymentMethod, updatePaymentMethod,
+  listPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   listTerminals, listAllTerminals, createTerminal, updateTerminal, deleteTerminal,
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
