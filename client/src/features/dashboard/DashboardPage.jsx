@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
-import { formatCurrency, formatDateTime } from '@/utils/formatters';
+import { formatCurrency, formatCurrencyCompact, formatDateTime } from '@/utils/formatters';
 import { usePermission } from '@/hooks/usePermission';
 import { PageSpinner } from '@/components/ui/Spinner';
 
@@ -117,7 +117,7 @@ function StatCard({ label, value, Icon, gradient, iconColor, sub, accent }) {
       <div className="relative flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className={`text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</p>
-          <p className="mt-1.5 font-extrabold leading-none text-white truncate text-2xl xl:text-3xl">{value}</p>
+          <p className="mt-1.5 font-extrabold leading-none text-white whitespace-nowrap text-2xl">{value}</p>
           {sub && <p className={`mt-1.5 text-xs ${accent} flex items-center gap-1`}>{sub}</p>}
         </div>
         <div className="ml-3 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/20">
@@ -691,7 +691,7 @@ export default function DashboardPage() {
         }`}>
           <StatCard
             label="Today's Sales"
-            value={formatCurrency(data?.todaySales ?? 0)}
+            value={formatCurrencyCompact(data?.todaySales ?? 0)}
             Icon={TrendingUp}
             gradient="bg-gradient-to-br from-primary-600 to-primary-800"
             iconColor="text-white"
@@ -728,7 +728,7 @@ export default function DashboardPage() {
               gradient="bg-gradient-to-br from-violet-500 to-violet-700"
               iconColor="text-white"
               accent="text-violet-200"
-              sub={`${formatCurrency(data.branchComparison.reduce((s,b) => s + b.todaySales, 0))} total today`}
+              sub={`${formatCurrencyCompact(data.branchComparison.reduce((s,b) => s + b.todaySales, 0))} total today`}
             />
           )}
         </div>

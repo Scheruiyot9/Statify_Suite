@@ -103,14 +103,14 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
           transaction_id, product_id, quantity, unit_price,
           discount, tax_amount, line_total
         ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-      `, [txn.transaction_id, item.productId, item.quantity,
-          item.unitPrice, item.discount || 0, item.taxAmount || 0, parseFloat(item.lineTotal)]);
+      `, [txn.transaction_id, item.productId, parseFloat(item.quantity),
+          parseFloat(item.unitPrice), parseFloat(item.discount || 0), parseFloat(item.taxAmount || 0), parseFloat(item.lineTotal)]);
 
       await client.query(`
         UPDATE product_branch_inventory
         SET quantity_available = quantity_available - $1, last_updated = now()
         WHERE product_id = $2 AND branch_id = $3
-      `, [item.quantity, item.productId, branchId]);
+      `, [parseFloat(item.quantity), item.productId, branchId]);
     }
 
     for (let i = 0; i < payments.length; i++) {

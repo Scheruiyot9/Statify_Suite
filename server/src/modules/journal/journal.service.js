@@ -80,13 +80,20 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments) {
     const costMap = Object.fromEntries(prods.map((p) => [p.product_id, parseFloat(p.cost_price)]));
 
     const pmIds = [...new Set(rawPayments.map((p) => p.paymentMethodId || p.payment_method_id))].filter(Boolean);
+    // pmMap: paymentMethodId → { methodName, glAccountId (from linked bank account's GL account) }
     let pmMap = {};
     if (pmIds.length) {
       const { rows: pms } = await client.query(
-        `SELECT payment_method_id, method_name FROM payment_methods WHERE payment_method_id = ANY($1)`,
+        `SELECT pm.payment_method_id, pm.method_name, ba.account_id AS gl_account_id
+         FROM payment_methods pm
+         LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+         WHERE pm.payment_method_id = ANY($1)`,
         [pmIds]
       );
-      pmMap = Object.fromEntries(pms.map((pm) => [pm.payment_method_id, pm.method_name]));
+      pmMap = Object.fromEntries(pms.map((pm) => [pm.payment_method_id, {
+        methodName:  pm.method_name,
+        glAccountId: pm.gl_account_id,
+      }]));
     }
 
     const customerId   = txn.customer_id || txn.customerId || null;
@@ -104,11 +111,16 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments) {
     const lines = [];
 
     // DR: cash/bank receipts per payment method
+    // Priority: 1) payment method's linked bank account GL  2) name heuristic  3) Cash in Hand (1000)
     for (const pmt of rawPayments) {
-      const pmId       = pmt.paymentMethodId || pmt.payment_method_id;
-      const methodName = (pmMap[pmId] || '').toLowerCase();
-      const isBank     = methodName.includes('bank') || methodName.includes('transfer') || methodName.includes('cheque');
-      const drAccId    = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
+      const pmId      = pmt.paymentMethodId || pmt.payment_method_id;
+      const pm        = pmMap[pmId] || {};
+      let drAccId     = pm.glAccountId || null;
+      if (!drAccId) {
+        const methodName = (pm.methodName || '').toLowerCase();
+        const isBank     = methodName.includes('bank') || methodName.includes('transfer') || methodName.includes('cheque');
+        drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
+      }
       if (!drAccId) continue;
       const amt = parseFloat(pmt.amountApplied || pmt.amount_applied || 0);
       if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
