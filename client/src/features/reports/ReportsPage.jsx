@@ -1145,8 +1145,8 @@ function StockTab() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const ALL_TABS = [
-  { id: 'sales',          label: 'Sales',          icon: TrendingUp,    finance: false, group: 'Reports'         },
-  { id: 'stock',          label: 'Stock Value',    icon: Package,       finance: false, group: 'Reports'         },
+  { id: 'sales',          label: 'Sales',          icon: TrendingUp,    finance: false, group: null              },
+  { id: 'stock',          label: 'Stock Value',    icon: Package,       finance: false, group: null              },
   { id: 'pl',             label: 'P&L',            icon: FileText,      finance: true,  group: 'Finance Reports' },
   { id: 'cash-flow',      label: 'Cash Flow',      icon: Droplets,      finance: true,  group: 'Finance Reports' },
   { id: 'ar-aging',       label: 'AR Aging',       icon: ArrowDownLeft, finance: true,  group: 'Finance Reports' },
@@ -1183,10 +1183,11 @@ export default function ReportsPage() {
     ? { isSuperAdmin: true, filterCompanyId, setFilterCompanyId, companies }
     : {};
 
-  // Group tabs for rendering with section headers
+  // Group tabs — null group = ungrouped (rendered inline), named group = with header
   const groupedTabs = visibleTabs.reduce((acc, t) => {
-    if (!acc[t.group]) acc[t.group] = [];
-    acc[t.group].push(t);
+    const key = t.group ?? '__none__';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(t);
     return acc;
   }, {});
 
@@ -1196,10 +1197,12 @@ export default function ReportsPage() {
       <div className="border-b border-gray-200 -mx-1 px-1">
         <div className="flex flex-wrap items-end gap-x-1">
           {Object.entries(groupedTabs).map(([group, tabs], gi) => (
-            <div key={group} className={`flex items-end gap-0.5 ${gi > 0 ? 'ml-4' : ''}`}>
-              <span className="mb-1 mr-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 self-end pb-3 whitespace-nowrap">
-                {group}
-              </span>
+            <div key={group} className={`flex items-end gap-0.5 ${gi > 0 ? 'ml-3' : ''}`}>
+              {group !== '__none__' && (
+                <span className="mb-1 mr-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 self-end pb-3 whitespace-nowrap">
+                  {group}
+                </span>
+              )}
               {tabs.map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => setTab(id)}
                   className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
