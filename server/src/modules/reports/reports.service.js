@@ -53,7 +53,7 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
   const allBranches = isCompanyWide(role);
 
   // Run all queries in parallel for speed
-  const [summaryRes, lowStockRes, trendRes, recentRes, topProdsRes, branchRes] = await Promise.all([
+  const [summaryRes, lowStockRes, trendRes, recentRes, topProdsRes, categoryRes, branchRes] = await Promise.all([
 
     // 1. Today's summary
     query(`
@@ -124,7 +124,7 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       WHERE st.company_id = $1 AND st.status = 'completed'
       ${bClause}
       ORDER BY st.transaction_date DESC
-      LIMIT 10
+      LIMIT 5
     `, bParams),
 
     // 5. Top 5 products (last 30 days)
@@ -145,7 +145,27 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       LIMIT 5
     `, bParams),
 
-    // 6. Branch comparison (only useful for company-wide roles)
+    // 6. Category breakdown (last 30 days)
+    canViewSales
+      ? query(`
+          SELECT
+            COALESCE(pc.category_name, 'Uncategorised') AS category_name,
+            SUM(sti.quantity)::numeric                   AS qty_sold,
+            SUM(sti.line_total)::numeric                 AS revenue
+          FROM sales_transaction_items sti
+          JOIN products p ON p.product_id = sti.product_id
+          LEFT JOIN product_categories pc ON pc.category_id = p.category_id
+          JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+          WHERE st.company_id = $1 AND st.status = 'completed'
+            AND st.transaction_date >= CURRENT_DATE - INTERVAL '29 days'
+            ${bClause}
+          GROUP BY pc.category_name
+          ORDER BY revenue DESC
+          LIMIT 8
+        `, bParams)
+      : Promise.resolve({ rows: [] }),
+
+    // 7. Branch comparison (only useful for company-wide roles)
     allBranches
       ? query(`
           SELECT
@@ -203,6 +223,12 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       sku:         r.sku,
       qtySold:     parseFloat(r.qty_sold),
       revenue:     parseFloat(r.revenue),
+    })) : [],
+
+    categoryBreakdown: canViewSales ? categoryRes.rows.map((r) => ({
+      categoryName: r.category_name,
+      qtySold:      parseFloat(r.qty_sold),
+      revenue:      parseFloat(r.revenue),
     })) : [],
 
     branchComparison: branchRes.rows.map((r) => ({

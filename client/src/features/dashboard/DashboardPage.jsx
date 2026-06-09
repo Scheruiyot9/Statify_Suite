@@ -115,7 +115,7 @@ function StatCard({ label, value, Icon, iconBg, sub }) {
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900 truncate">{value}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 break-all leading-tight">{value}</p>
           {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
         </div>
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
@@ -234,6 +234,55 @@ function BranchComparisonCard({ branches }) {
             </p>
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Category breakdown card ────────────────────────────────────────────────────
+const CATEGORY_COLORS = [
+  '#024A59','#FFA916','#16a34a','#7c3aed','#0ea5e9','#f43f5e','#f97316','#64748b',
+];
+
+function CategoryBreakdownCard({ categories }) {
+  if (!categories?.length) {
+    return (
+      <Card title="Sales by Category (30 days)" icon={Layers}>
+        <p className="text-sm text-gray-400">No sales data yet.</p>
+      </Card>
+    );
+  }
+  const total = categories.reduce((s, c) => s + c.revenue, 0) || 1;
+
+  return (
+    <Card title="Sales by Category (30 days)" icon={Layers}>
+      <div className="space-y-2.5">
+        {categories.map((c, i) => {
+          const pct = Math.round((c.revenue / total) * 100);
+          const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+          return (
+            <div key={c.categoryName}>
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                  <span className="font-medium text-gray-700 truncate max-w-[120px]" title={c.categoryName}>
+                    {c.categoryName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 text-gray-500">
+                  <span>{pct}%</span>
+                  <span className="font-semibold text-gray-700">{formatCurrency(c.revenue)}</span>
+                </div>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, background: color }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -665,15 +714,6 @@ export default function DashboardPage() {
             />
           </>
         )}
-        {canViewCustomers && canViewSales && (
-          <StatCard
-            label="Customers Served"
-            value={data?.customersServed ?? 0}
-            Icon={Users}
-            iconBg="bg-purple-500"
-            sub="today"
-          />
-        )}
         {canViewInventory && (
           <StatCard
             label="Low Stock Items"
@@ -706,6 +746,7 @@ export default function DashboardPage() {
       {/* Bottom row */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {canViewSales && <RecentTransactionsCard transactions={data?.recentTransactions} />}
+        {canViewSales && <CategoryBreakdownCard categories={data?.categoryBreakdown} />}
         {canCompareBranches
           ? <TopProductsCard products={data?.topProducts} />
           : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
