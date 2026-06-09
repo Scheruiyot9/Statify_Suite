@@ -679,37 +679,16 @@ export default function DashboardPage() {
     );
   }
 
-  const today = new Date().toLocaleDateString('en-KE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-  const greeting = (() => {
-    const h = new Date().getHours();
-    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-  })();
-
   return (
     <div className="space-y-6">
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-gray-400 mb-0.5">{today}</p>
-          <h1 className="text-xl font-bold text-gray-900">{greeting}, {user?.firstName ?? 'there'} 👋</h1>
-        </div>
-        {data && canViewSales && (
-          <div className="hidden sm:flex items-center gap-1.5 rounded-xl border border-green-100 bg-green-50 px-3 py-1.5">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-            </span>
-            <span className="text-xs font-medium text-green-700">Live data</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Hero stat strip ── */}
+      {/* ── Stat strip ── */}
       {canViewSales && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className={`grid grid-cols-2 gap-4 ${
+          canCompareBranches && data?.branchComparison?.length > 0
+            ? 'lg:grid-cols-4'
+            : canViewInventory ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
+        }`}>
           <StatCard
             label="Today's Sales"
             value={formatCurrency(data?.todaySales ?? 0)}
@@ -743,7 +722,7 @@ export default function DashboardPage() {
           )}
           {canCompareBranches && data?.branchComparison?.length > 0 && (
             <StatCard
-              label="Branches"
+              label="Active Branches"
               value={data.branchComparison.length}
               Icon={Building2}
               gradient="bg-gradient-to-br from-violet-500 to-violet-700"
@@ -756,9 +735,9 @@ export default function DashboardPage() {
       )}
 
       {/* ── Charts row ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {canViewSales && (
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <SalesTrendCard
               trend={data?.salesTrend}
               trendDays={data?.trendDays ?? 6}
@@ -767,7 +746,7 @@ export default function DashboardPage() {
             />
           </div>
         )}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
           {canCompareBranches
             ? <BranchComparisonCard branches={data?.branchComparison} />
             : canViewSales
@@ -786,8 +765,10 @@ export default function DashboardPage() {
         )}
         <div className="flex flex-col gap-5">
           {canViewSales && <CategoryBreakdownCard categories={data?.categoryBreakdown} />}
-          {canCompareBranches && <TopProductsCard products={data?.topProducts} />}
-          {!canCompareBranches && canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />}
+          {canCompareBranches
+            ? <TopProductsCard products={data?.topProducts} />
+            : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
+          }
         </div>
       </div>
 

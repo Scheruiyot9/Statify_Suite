@@ -12,5 +12,6 @@ router.get ('/',           requireRole('accountant'),    ctrl.listGRNs);
 router.post('/',           requireRole('accountant'),    ctrl.createGRN);
 router.get ('/:id',        requireRole('accountant'),    ctrl.getGRN);
 router.post('/:id/post',   requireRole('company_admin'), ctrl.postGRN);
+router.delete('/:id',      requireRole('accountant'),    ctrl.deleteGRN);
 
 module.exports = router;

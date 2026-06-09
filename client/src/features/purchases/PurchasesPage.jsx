@@ -4,7 +4,7 @@ import {
   ShoppingCart, Plus, Search, ChevronRight, ChevronDown,
   CheckCircle, XCircle, Clock, Send, Package, FileText,
   TrendingUp, BarChart2, AlertTriangle, Truck, ClipboardList,
-  CheckSquare, Calendar, Printer,
+  CheckSquare, Calendar, Printer, Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -418,10 +418,18 @@ function GRNModal({ po, onClose }) {
 
 function GRNDetail({ grn, onClose }) {
   const qc = useQueryClient();
+  const [confirmDel, setConfirmDel] = useState(false);
+
   const postM = useMutation({
     mutationFn: () => api.post(`/grns/${grn.grn_id}/post`),
     onSuccess: () => { toast.success('GRN posted — inventory updated'); qc.invalidateQueries({ queryKey: ['grns'] }); onClose(); },
     onError: (e) => toast.error(e.response?.data?.message ?? 'Post failed'),
+  });
+
+  const deleteM = useMutation({
+    mutationFn: () => api.delete(`/grns/${grn.grn_id}`),
+    onSuccess: () => { toast.success('GRN deleted'); qc.invalidateQueries({ queryKey: ['grns'] }); onClose(); },
+    onError: (e) => toast.error(e.response?.data?.message ?? 'Delete failed'),
   });
 
   return (
@@ -464,9 +472,18 @@ function GRNDetail({ grn, onClose }) {
         {grn.notes && <p className="text-sm text-gray-500 italic">{grn.notes}</p>}
 
         <div className="flex justify-between gap-3 pt-2">
-          <Button variant="outline" size="sm" onClick={() => printGRN(grn)}>
-            <Printer className="h-4 w-4 mr-1" />Print GRN
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printGRN(grn)}>
+              <Printer className="h-4 w-4 mr-1" />Print GRN
+            </Button>
+            {grn.status === 'draft' && (
+              <Button variant="outline" size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => setConfirmDel(true)}>
+                <Trash2 className="h-4 w-4 mr-1" />Delete
+              </Button>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Close</Button>
             {grn.status === 'draft' && (
@@ -477,6 +494,24 @@ function GRNDetail({ grn, onClose }) {
           </div>
         </div>
       </div>
+
+      {/* Confirm delete */}
+      {confirmDel && (
+        <Modal open onClose={() => setConfirmDel(false)} title="Delete GRN?" size="sm">
+          <p className="text-sm text-gray-600 mb-5">
+            Are you sure you want to delete <strong>{grn.grn_number}</strong>? This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmDel(false)}>Cancel</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deleteM.mutate()}
+              isLoading={deleteM.isPending}>
+              Delete GRN
+            </Button>
+          </div>
+        </Modal>
+      )}
     </Modal>
   );
 }

@@ -15,5 +15,6 @@ const listGRNs  = async (req, res) => ok(res, await svc.listGRNs(req.tenantId, r
 const getGRN    = async (req, res) => ok(res, await svc.getGRN(req.tenantId, req.params.id));
 const createGRN = async (req, res) => created(res, await svc.createGRN(req.tenantId, req.user.userId, req.body));
 const postGRN   = async (req, res) => ok(res, await svc.postGRN(req.tenantId, req.params.id, req.user.userId));
+const deleteGRN = async (req, res) => ok(res, await svc.deleteGRN(req.tenantId, req.params.id));
 
-module.exports = { listPOs, getPO, createPO, updatePO, submitPO, approvePO, cancelPO, listGRNs, getGRN, createGRN, postGRN };
+module.exports = { listPOs, getPO, createPO, updatePO, submitPO, approvePO, cancelPO, listGRNs, getGRN, createGRN, postGRN, deleteGRN };

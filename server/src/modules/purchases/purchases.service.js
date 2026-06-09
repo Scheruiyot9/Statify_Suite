@@ -371,7 +371,19 @@ async function postGRN(companyId, grnId) {
   });
 }
 
+async function deleteGRN(companyId, grnId) {
+  const { rows: [grn] } = await query(
+    `SELECT * FROM grns WHERE grn_id=$1 AND company_id=$2`, [grnId, companyId]
+  );
+  if (!grn) throw AppError.notFound('GRN');
+  if (grn.status === 'posted') throw AppError.conflict('Cannot delete a posted GRN. Only draft GRNs can be deleted.');
+
+  await query(`DELETE FROM grn_items WHERE grn_id=$1`, [grnId]);
+  await query(`DELETE FROM grns WHERE grn_id=$1`, [grnId]);
+  return { deleted: true };
+}
+
 module.exports = {
   listPOs, getPO, createPO, updatePO, submitPO, approvePO, cancelPO,
-  listGRNs, getGRN, createGRN, postGRN,
+  listGRNs, getGRN, createGRN, postGRN, deleteGRN,
 };
