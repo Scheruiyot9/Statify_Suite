@@ -14,7 +14,6 @@ router.post('/',                 requireRole('accountant'),    ctrl.createPO);
 router.get ('/:id',              requireRole('accountant'),    ctrl.getPO);
 router.patch('/:id',             requireRole('accountant'),    ctrl.updatePO);
 router.post('/:id/submit',       requireRole('accountant'),    ctrl.submitPO);
-router.post('/:id/approve',      requireRole('company_admin'), ctrl.approvePO);
 router.post('/:id/cancel',       requireRole('company_admin'), ctrl.cancelPO);
 
 // Goods Received Notes — nested under /purchases but accessed via /grns prefix in app.js

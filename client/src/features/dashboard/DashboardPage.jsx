@@ -117,7 +117,7 @@ function StatCard({ label, value, Icon, gradient, iconColor, sub, accent }) {
       <div className="relative flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className={`text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</p>
-          <p className="mt-1.5 text-3xl font-extrabold leading-none text-white break-all">{value}</p>
+          <p className="mt-1.5 font-extrabold leading-none text-white truncate text-2xl xl:text-3xl">{value}</p>
           {sub && <p className={`mt-1.5 text-xs ${accent} flex items-center gap-1`}>{sub}</p>}
         </div>
         <div className="ml-3 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/20">

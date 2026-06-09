@@ -163,24 +163,14 @@ async function updatePO(companyId, poId, data) {
   });
 }
 
-async function submitPO(companyId, poId) {
-  const { rows } = await query(`
-    UPDATE purchase_orders SET status='pending_approval', updated_at=now()
-    WHERE po_id=$1 AND company_id=$2 AND status='draft'
-    RETURNING po_id, po_number, status
-  `, [poId, companyId]);
-  if (!rows.length) throw AppError.conflict('PO must be in draft status to submit');
-  return rows[0];
-}
-
-async function approvePO(companyId, poId, userId) {
+async function submitPO(companyId, poId, userId) {
   const { rows } = await query(`
     UPDATE purchase_orders
     SET status='approved', approved_by_user_id=$3, approved_at=now(), updated_at=now()
-    WHERE po_id=$1 AND company_id=$2 AND status='pending_approval'
+    WHERE po_id=$1 AND company_id=$2 AND status='draft'
     RETURNING po_id, po_number, status
   `, [poId, companyId, userId]);
-  if (!rows.length) throw AppError.conflict('PO must be pending approval to approve');
+  if (!rows.length) throw AppError.conflict('PO must be in draft status to submit');
   return rows[0];
 }
 
@@ -384,6 +374,6 @@ async function deleteGRN(companyId, grnId) {
 }
 
 module.exports = {
-  listPOs, getPO, createPO, updatePO, submitPO, approvePO, cancelPO,
+  listPOs, getPO, createPO, updatePO, submitPO, cancelPO,
   listGRNs, getGRN, createGRN, postGRN, deleteGRN,
 };

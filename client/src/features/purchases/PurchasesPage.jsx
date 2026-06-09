@@ -27,7 +27,7 @@ const Field = ({ label, children, hint }) => (
 
 const STATUS_META = {
   draft:              { label: 'Draft',            color: 'bg-gray-100 text-gray-600' },
-  pending_approval:   { label: 'Pending Approval', color: 'bg-amber-100 text-amber-700' },
+  pending_approval:   { label: 'Pending Approval', color: 'bg-amber-100 text-amber-700' }, // legacy
   approved:           { label: 'Approved',         color: 'bg-blue-100 text-blue-700' },
   partially_received: { label: 'Partial',          color: 'bg-indigo-100 text-indigo-700' },
   received:           { label: 'Received',         color: 'bg-green-100 text-green-700' },
@@ -215,20 +215,12 @@ function POModal({ po, suppliers, products, branches, onClose }) {
 function PODetail({ po, onClose, onEdit }) {
   const qc = useQueryClient();
 
-  const action = (type) => useMutation({
-    mutationFn: () => api.post(`/purchases/${po.po_id}/${type}`),
-    onSuccess: () => { toast.success(`PO ${type}d`); qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); },
-    onError: (e) => toast.error(e.response?.data?.message ?? 'Action failed'),
-  });
+  const submitM = useMutation({ mutationFn: () => api.post(`/purchases/${po.po_id}/submit`), onSuccess: () => { toast.success('PO approved'); qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); }, onError: (e) => toast.error(e.response?.data?.message ?? 'Failed') });
+  const cancelM = useMutation({ mutationFn: () => api.post(`/purchases/${po.po_id}/cancel`), onSuccess: () => { toast.success('PO cancelled');  qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); }, onError: (e) => toast.error(e.response?.data?.message ?? 'Failed') });
 
-  const submitM  = useMutation({ mutationFn: () => api.post(`/purchases/${po.po_id}/submit`),  onSuccess: () => { toast.success('PO submitted for approval'); qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); }, onError: (e) => toast.error(e.response?.data?.message ?? 'Failed') });
-  const approveM = useMutation({ mutationFn: () => api.post(`/purchases/${po.po_id}/approve`), onSuccess: () => { toast.success('PO approved'); qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); }, onError: (e) => toast.error(e.response?.data?.message ?? 'Failed') });
-  const cancelM  = useMutation({ mutationFn: () => api.post(`/purchases/${po.po_id}/cancel`),  onSuccess: () => { toast.success('PO cancelled'); qc.invalidateQueries({ queryKey: ['purchases'] }); onClose(); }, onError: (e) => toast.error(e.response?.data?.message ?? 'Failed') });
-
-  const canSubmit  = po.status === 'draft';
-  const canApprove = po.status === 'pending_approval';
-  const canCancel  = ['draft', 'pending_approval', 'approved'].includes(po.status);
-  const canEdit    = po.status === 'draft';
+  const canSubmit = po.status === 'draft';
+  const canCancel = ['draft', 'approved'].includes(po.status);
+  const canEdit   = po.status === 'draft';
 
   return (
     <Modal open onClose={onClose} title={`Purchase Order — ${po.po_number}`} size="lg">
@@ -281,9 +273,8 @@ function PODetail({ po, onClose, onEdit }) {
               <Printer className="h-4 w-4 mr-1" />Print LPO
             </Button>
             <Button variant="outline" onClick={onClose}>Close</Button>
-            {canEdit    && <Button variant="outline" size="sm" onClick={onEdit}><FileText className="h-4 w-4 mr-1" />Edit</Button>}
-            {canSubmit  && <Button size="sm" onClick={() => submitM.mutate()}  isLoading={submitM.isPending}><Send className="h-4 w-4 mr-1" />Submit</Button>}
-            {canApprove && <Button size="sm" onClick={() => approveM.mutate()} isLoading={approveM.isPending}><CheckCircle className="h-4 w-4 mr-1" />Approve</Button>}
+            {canEdit   && <Button variant="outline" size="sm" onClick={onEdit}><FileText className="h-4 w-4 mr-1" />Edit</Button>}
+            {canSubmit && <Button size="sm" onClick={() => submitM.mutate()} isLoading={submitM.isPending}><CheckCircle className="h-4 w-4 mr-1" />Approve PO</Button>}
           </div>
         </div>
       </div>
@@ -821,7 +812,7 @@ export default function PurchasesPage() {
 
   // Fetch full PO detail when viewing detail, editing, or creating GRN
   const poIdForFetch = detailPO?.po_id ?? editPO?.po_id ?? grnForPO?.po_id;
-  const { data: fullPO } = useQuery({
+  const { data: fullPO, isLoading: fullPOLoading } = useQuery({
     queryKey: ['purchase', poIdForFetch],
     queryFn:  () => api.get(`/purchases/${poIdForFetch}`).then((r) => r.data?.data),
     enabled:  !!poIdForFetch,
@@ -901,9 +892,10 @@ export default function PurchasesPage() {
                           View
                         </button>
                         {po.status === 'draft' && (
-                          <button className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                          <button className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-60"
+                            disabled={editPO?.po_id === po.po_id && fullPOLoading}
                             onClick={() => setEditPO(po)}>
-                            Edit
+                            {editPO?.po_id === po.po_id && fullPOLoading ? 'Loading…' : 'Edit'}
                           </button>
                         )}
                         {['approved', 'partially_received'].includes(po.status) && (

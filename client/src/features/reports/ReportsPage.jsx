@@ -1177,46 +1177,12 @@ export default function ReportsPage() {
 
   const setTab = (id) => setSearchParams({ tab: id }, { replace: true });
 
-  const visibleTabs = ALL_TABS.filter((t) => !t.finance || hasFinance);
-
   const saProps = isSuperAdmin
     ? { isSuperAdmin: true, filterCompanyId, setFilterCompanyId, companies }
     : {};
 
-  // Group tabs — null group = ungrouped (rendered inline), named group = with header
-  const groupedTabs = visibleTabs.reduce((acc, t) => {
-    const key = t.group ?? '__none__';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(t);
-    return acc;
-  }, {});
-
   return (
     <div className="space-y-5">
-      {/* Tab bar with section headers */}
-      <div className="border-b border-gray-200 -mx-1 px-1">
-        <div className="flex flex-wrap items-end gap-x-1">
-          {Object.entries(groupedTabs).map(([group, tabs], gi) => (
-            <div key={group} className={`flex items-end gap-0.5 ${gi > 0 ? 'ml-3' : ''}`}>
-              {group !== '__none__' && (
-                <span className="mb-1 mr-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 self-end pb-3 whitespace-nowrap">
-                  {group}
-                </span>
-              )}
-              {tabs.map(({ id, label, icon: Icon }) => (
-                <button key={id} onClick={() => setTab(id)}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                    tab === id ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-800'
-                  }`}>
-                  <Icon className="h-4 w-4" />{label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
       {tab === 'sales'         && <SalesTab {...saProps} />}
       {tab === 'pl'            && <PLTab {...saProps} />}
       {tab === 'cash-flow'     && <CashFlowTab {...saProps} />}
