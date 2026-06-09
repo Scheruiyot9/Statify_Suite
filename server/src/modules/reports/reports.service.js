@@ -46,8 +46,8 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
 
   const canViewSales = SALES_DASHBOARD_ROLES.includes(role);
   const canViewInventory = INVENTORY_DASHBOARD_ROLES.includes(role);
-  // Trend date range: 7d=6, 30d=29, 90d=89 days back from today
-  const trendDays = period === '90d' ? 89 : period === '30d' ? 29 : 6;
+  // Trend date range: 7d=6, 30d=29, 90d=89, 1y=364 days back from today
+  const trendDays = period === '1y' ? 364 : period === '90d' ? 89 : period === '30d' ? 29 : 6;
 
   const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
   const allBranches = isCompanyWide(role);

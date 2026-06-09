@@ -21,23 +21,23 @@ function groupTrend(trend, days) {
   if (!trend?.length) return [];
   const toDate = (s) => new Date(String(s).slice(0, 10) + 'T12:00:00');
 
-  if (days <= 31) {
-    // Daily — label: "5 Jan"
+  // 7d → daily (all labels)
+  if (days <= 8) {
     return trend.map((d) => ({
       ...d,
       label: toDate(d.date).toLocaleDateString('en', { day: 'numeric', month: 'short' }),
+      showLabel: true,
     }));
   }
 
-  if (days <= 89) {
-    // Weekly — bucket by Monday
+  // 30d → weekly buckets
+  if (days <= 35) {
     const map = new Map();
     for (const d of trend) {
       const dt = toDate(d.date);
-      const dow = dt.getDay(); // 0=Sun
-      const diff = dow === 0 ? -6 : 1 - dow;
+      const dow = dt.getDay();
       const mon = new Date(dt);
-      mon.setDate(dt.getDate() + diff);
+      mon.setDate(dt.getDate() + (dow === 0 ? -6 : 1 - dow));
       const key = mon.toISOString().slice(0, 10);
       if (!map.has(key)) map.set(key, { date: key, total: 0, txnCount: 0 });
       const b = map.get(key);
@@ -49,14 +49,37 @@ function groupTrend(trend, days) {
       .map(([key, v]) => ({
         ...v,
         label: toDate(key).toLocaleDateString('en', { day: 'numeric', month: 'short' }),
+        showLabel: true,
       }));
   }
 
-  // Monthly — label: "Jan '25"
+  // 90d → monthly buckets
+  if (days <= 95) {
+    const map = new Map();
+    for (const d of trend) {
+      const key = String(d.date).slice(0, 7);
+      if (!map.has(key)) map.set(key, { date: key + '-01', total: 0, txnCount: 0 });
+      const b = map.get(key);
+      b.total    += d.total    || 0;
+      b.txnCount += d.txnCount || 0;
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => ({
+        ...v,
+        label: toDate(key + '-15').toLocaleDateString('en', { month: 'short' }),
+        showLabel: true,
+      }));
+  }
+
+  // 1y → quarterly buckets (Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec)
   const map = new Map();
   for (const d of trend) {
-    const key = String(d.date).slice(0, 7); // "2025-01"
-    if (!map.has(key)) map.set(key, { date: key + '-01', total: 0, txnCount: 0 });
+    const dt = toDate(d.date);
+    const year = dt.getFullYear();
+    const q = Math.floor(dt.getMonth() / 3) + 1;
+    const key = `${year}-Q${q}`;
+    if (!map.has(key)) map.set(key, { date: key, total: 0, txnCount: 0, year, q });
     const b = map.get(key);
     b.total    += d.total    || 0;
     b.txnCount += d.txnCount || 0;
@@ -65,7 +88,8 @@ function groupTrend(trend, days) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, v]) => ({
       ...v,
-      label: toDate(key + '-15').toLocaleDateString('en', { month: 'short', year: '2-digit' }),
+      label: `Q${v.q} '${String(v.year).slice(2)}`,
+      showLabel: true,
     }));
 }
 
@@ -88,8 +112,10 @@ function BarChart({ data, color = '#FFA916' }) {
         const bh = Math.max((val / max) * chartH, val > 0 ? 2 : 0);
         const x = i * (barW + gap);
         const y = chartH - bh;
-        // Only show labels when there's room: skip if too many bars
-        const showLabel = count <= 31 || i % Math.ceil(count / 12) === 0;
+        // Use per-item flag if set, otherwise fall back to spacing heuristic
+        const showLabel = d.showLabel !== undefined
+          ? d.showLabel
+          : count <= 10 || i % Math.ceil(count / 10) === 0 || i === count - 1;
         return (
           <g key={d.date ?? i}>
             <rect x={x} y={y} width={barW} height={bh}
@@ -166,9 +192,10 @@ function Card({ title, icon: Icon, children, className = '', action }) {
 
 // ── Sales trend chart card ─────────────────────────────────────────────────────
 const PERIOD_OPTIONS = [
-  { label: '7d',  days: 6  },
-  { label: '30d', days: 29 },
-  { label: '90d', days: 89 },
+  { label: '7d',  days: 6   },
+  { label: '30d', days: 29  },
+  { label: '90d', days: 89  },
+  { label: '1y',  days: 364 },
 ];
 
 function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
@@ -734,7 +761,24 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Charts row ── */}
+      {/* ── Row 2: Recent Transactions + Branch Performance ── */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {canViewSales && (
+          <div className="lg:col-span-2">
+            <RecentTransactionsCard transactions={data?.recentTransactions} />
+          </div>
+        )}
+        <div className="lg:col-span-1">
+          {canCompareBranches
+            ? <BranchComparisonCard branches={data?.branchComparison} />
+            : canViewInventory
+            ? <LowStockAlertCard count={data?.lowStockCount ?? 0} />
+            : null
+          }
+        </div>
+      </div>
+
+      {/* ── Row 3: Revenue Trend + Top Products ── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {canViewSales && (
           <div className="lg:col-span-2">
@@ -747,30 +791,20 @@ export default function DashboardPage() {
           </div>
         )}
         <div className="lg:col-span-1">
-          {canCompareBranches
-            ? <BranchComparisonCard branches={data?.branchComparison} />
-            : canViewSales
+          {canViewSales
             ? <TopProductsCard products={data?.topProducts} />
             : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
           }
         </div>
       </div>
 
-      {/* ── Bottom grid ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {canViewSales && (
-          <div className="lg:col-span-2">
-            <RecentTransactionsCard transactions={data?.recentTransactions} />
-          </div>
-        )}
-        <div className="flex flex-col gap-5">
-          {canViewSales && <CategoryBreakdownCard categories={data?.categoryBreakdown} />}
-          {canCompareBranches
-            ? <TopProductsCard products={data?.topProducts} />
-            : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-          }
+      {/* ── Row 4: Category Breakdown + Low Stock ── */}
+      {canViewSales && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <CategoryBreakdownCard categories={data?.categoryBreakdown} />
+          {canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />}
         </div>
-      </div>
+      )}
 
     </div>
   );

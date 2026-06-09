@@ -18,7 +18,7 @@ const COLLAPSED_THRESHOLD = 72; // <= this → icon-only mode
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
 
-const navBase = 'flex items-center rounded-lg text-sm font-medium transition-all duration-150';
+const navBase = 'flex items-center rounded-lg text-sm font-medium transition-all duration-150 min-h-[2.5rem]';
 const navActive = 'bg-secondary-500/[.14] text-white font-semibold border-l-2 border-secondary-400';
 const navHover = 'text-white/70 hover:bg-secondary-500/[.09] hover:text-white border-l-2 border-transparent hover:border-secondary-400/30';
 const navLocked = 'text-white/45 cursor-not-allowed border-l-2 border-transparent';
@@ -87,14 +87,18 @@ function NavItem({ to, label, Icon, collapsed, locked, isAdmin, search }) {
 // ── NavGroup ──────────────────────────────────────────────────────────────────
 
 function NavGroup({ id, label, collapsed, defaultOpen = true, children }) {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
   const [open, setOpen] = useState(() => {
-    const stored = localStorage.getItem(`sidebar-group-${id}`);
-    return stored !== null ? stored === 'true' : defaultOpen;
+    const stored = localStorage.getItem(`sidebar-group-${id}-mobile`);
+    if (isMobile) return stored !== null ? stored === 'true' : false;
+    const storedDesktop = localStorage.getItem(`sidebar-group-${id}`);
+    return storedDesktop !== null ? storedDesktop === 'true' : defaultOpen;
   });
 
   const toggle = () => {
     setOpen((v) => {
-      localStorage.setItem(`sidebar-group-${id}`, String(!v));
+      const key = isMobile ? `sidebar-group-${id}-mobile` : `sidebar-group-${id}`;
+      localStorage.setItem(key, String(!v));
       return !v;
     });
   };
@@ -107,7 +111,7 @@ function NavGroup({ id, label, collapsed, defaultOpen = true, children }) {
     <div className="space-y-1">
       <button
         onClick={toggle}
-        className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-secondary-200 hover:text-secondary-100 transition-colors"
+        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-widest text-secondary-200 hover:text-secondary-100 transition-colors"
       >
         <span>{label}</span>
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}

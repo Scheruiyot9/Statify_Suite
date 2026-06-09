@@ -44,10 +44,11 @@ function printReport(title, period, html) {
 }
 
 const PRESETS = [
-  { label: 'Today',     days: 0  },
-  { label: 'Last 7d',   days: 6  },
-  { label: 'Last 30d',  days: 29 },
-  { label: 'Last 90d',  days: 89 },
+  { label: 'Today',    days: 0   },
+  { label: 'Last 7d',  days: 6   },
+  { label: 'Last 30d', days: 29  },
+  { label: 'Last 90d', days: 89  },
+  { label: 'Last 1y',  days: 364 },
 ];
 
 function DateRange({ startDate, endDate, preset, onStart, onEnd, onPreset }) {
@@ -125,8 +126,18 @@ function SectionCard({ title, children }) {
 function groupTrend(trend, days) {
   if (!trend?.length) return [];
   const toDate = (s) => new Date(String(s).slice(0, 10) + 'T12:00:00');
-  if (days <= 31) return trend.map((d) => ({ ...d, label: toDate(d.date).toLocaleDateString('en', { day: 'numeric', month: 'short' }) }));
-  if (days <= 89) {
+
+  // 7d → daily (all labels)
+  if (days <= 8) {
+    return trend.map((d) => ({
+      ...d,
+      label: toDate(d.date).toLocaleDateString('en', { day: 'numeric', month: 'short' }),
+      showLabel: true,
+    }));
+  }
+
+  // 30d → weekly buckets
+  if (days <= 35) {
     const map = new Map();
     for (const d of trend) {
       const dt = toDate(d.date); const dow = dt.getDay();
@@ -136,16 +147,33 @@ function groupTrend(trend, days) {
       const b = map.get(key); b.total += d.total || 0; b.txnCount += d.txnCount || 0;
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, v]) => ({ ...v, label: toDate(key).toLocaleDateString('en', { day: 'numeric', month: 'short' }) }));
+      .map(([key, v]) => ({ ...v, label: toDate(key).toLocaleDateString('en', { day: 'numeric', month: 'short' }), showLabel: true }));
   }
+
+  // 90d → monthly buckets
+  if (days <= 95) {
+    const map = new Map();
+    for (const d of trend) {
+      const key = String(d.date).slice(0, 7);
+      if (!map.has(key)) map.set(key, { date: key + '-01', total: 0, txnCount: 0 });
+      const b = map.get(key); b.total += d.total || 0; b.txnCount += d.txnCount || 0;
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => ({ ...v, label: toDate(key + '-15').toLocaleDateString('en', { month: 'short' }), showLabel: true }));
+  }
+
+  // 1y → quarterly buckets
   const map = new Map();
   for (const d of trend) {
-    const key = String(d.date).slice(0, 7);
-    if (!map.has(key)) map.set(key, { date: key + '-01', total: 0, txnCount: 0 });
+    const dt = toDate(d.date);
+    const year = dt.getFullYear();
+    const q = Math.floor(dt.getMonth() / 3) + 1;
+    const key = `${year}-Q${q}`;
+    if (!map.has(key)) map.set(key, { date: key, total: 0, txnCount: 0, year, q });
     const b = map.get(key); b.total += d.total || 0; b.txnCount += d.txnCount || 0;
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, v]) => ({ ...v, label: new Date(key + '-15T12:00:00').toLocaleDateString('en', { month: 'short', year: '2-digit' }) }));
+    .map(([key, v]) => ({ ...v, label: `Q${v.q} '${String(v.year).slice(2)}`, showLabel: true }));
 }
 
 function BarChart({ data, height = 130 }) {
@@ -160,7 +188,9 @@ function BarChart({ data, height = 130 }) {
       {data.map((d, i) => {
         const bh = Math.max(2, (d.total / max) * chartH);
         const x = i * (barW + gap);
-        const showLabel = count <= 31 || i % Math.ceil(count / 14) === 0;
+        const showLabel = d.showLabel !== undefined
+          ? d.showLabel
+          : count <= 10 || i % Math.ceil(count / 10) === 0 || i === count - 1;
         return (
           <g key={d.date ?? i}>
             <rect x={x} y={chartH - bh} width={barW} height={bh} rx={2} fill="#FFA916" opacity={0.85} />
@@ -197,7 +227,7 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
   const s = data?.summary;
   const days = Math.round((new Date(endDate) - new Date(startDate)) / 86400000);
   const trend = groupTrend(data?.trend ?? [], days);
-  const bucketLabel = days <= 31 ? 'Daily' : days <= 89 ? 'Weekly' : 'Monthly';
+  const bucketLabel = days <= 8 ? 'Daily' : days <= 35 ? 'Weekly' : days <= 95 ? 'Monthly' : 'Quarterly';
 
   function handlePrint() {
     const fc = (v) => formatCurrency(v ?? 0);

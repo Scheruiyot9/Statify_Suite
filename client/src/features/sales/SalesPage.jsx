@@ -236,62 +236,62 @@ export default function SalesPage() {
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">TXN #</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Customer</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Cashier</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden sm:table-cell">Payment</th>
-                <th className="px-4 py-3 text-right font-medium text-blue-600 hidden lg:table-cell" title="DR Cash/Bank — total received">Dr (Cash/Bank)</th>
-                <th className="px-4 py-3 text-right font-medium text-green-600 hidden lg:table-cell" title="CR Revenue — ex-VAT">Cr (Revenue)</th>
-                <th className="px-4 py-3 text-right font-medium text-purple-600 hidden lg:table-cell" title="CR Tax Payable — VAT collected">Cr (VAT)</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Total</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600 hidden sm:table-cell">Status</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">TXN #</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">Date</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">Customer</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600 hidden md:table-cell">Cashier</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600 hidden sm:table-cell">Payment</th>
+                <th className="px-3 py-2.5 text-right font-medium text-blue-600 hidden lg:table-cell" title="DR Cash/Bank — total received">Dr</th>
+                <th className="px-3 py-2.5 text-right font-medium text-green-600 hidden lg:table-cell" title="CR Revenue — ex-VAT">Cr Rev</th>
+                <th className="px-3 py-2.5 text-right font-medium text-purple-600 hidden lg:table-cell" title="CR Tax Payable — VAT collected">Cr VAT</th>
+                <th className="px-3 py-2.5 text-right font-medium text-gray-600">Total</th>
+                <th className="px-3 py-2.5 text-center font-medium text-gray-600 hidden sm:table-cell">Status</th>
+                <th className="px-3 py-2.5 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {transactions.map((t) => (
                 <tr key={t.transaction_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-primary-600 font-semibold whitespace-nowrap">{t.transaction_number}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDateTime(t.transaction_date)}</td>
-                  <td className="px-4 py-3 text-gray-700">{t.customer_name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{t.cashier_name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs hidden sm:table-cell">{t.payment_method}</td>
+                  <td className="px-3 py-2.5 font-mono text-primary-600 font-semibold whitespace-nowrap">{t.transaction_number}</td>
+                  <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{formatDateTime(t.transaction_date)}</td>
+                  <td className="px-3 py-2.5 text-gray-700">{t.customer_name}</td>
+                  <td className="px-3 py-2.5 text-gray-500 hidden md:table-cell">{t.cashier_name}</td>
+                  <td className="px-3 py-2.5 text-gray-500 hidden sm:table-cell">{t.payment_method}</td>
                   {/* Dr: Cash/Bank = total received */}
-                  <td className="px-4 py-3 text-right font-mono text-xs hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
                     <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
                       {formatCurrency(t.total_amount)}
                     </span>
                   </td>
                   {/* Cr: Revenue = total ex-VAT */}
-                  <td className="px-4 py-3 text-right font-mono text-xs hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
                     <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-green-700'}`}>
                       {formatCurrency(parseFloat(t.total_amount) - parseFloat(t.tax_amount || 0))}
                     </span>
                   </td>
                   {/* Cr: VAT Payable */}
-                  <td className="px-4 py-3 text-right font-mono text-xs hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
                     {parseFloat(t.tax_amount) > 0
                       ? <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-purple-600'}`}>{formatCurrency(t.tax_amount)}</span>
                       : <span className="text-gray-300">—</span>}
                   </td>
-                  {/* Total — always visible on mobile */}
-                  <td className="px-4 py-3 text-right font-mono text-xs">
+                  {/* Total — always visible */}
+                  <td className="px-3 py-2.5 text-right font-mono">
                     <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
                       {formatCurrency(t.total_amount)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center hidden sm:table-cell">
+                  <td className="px-3 py-2.5 text-center hidden sm:table-cell">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {t.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 py-2.5 text-center">
                     <button onClick={() => setSelected(t.transaction_id)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                       View
                     </button>
                   </td>
