@@ -72,7 +72,7 @@ const deleteTerminal = async (req, res) => {
 
 const activeSession = async (req, res) => {
   const branchId = resolveBranchId(req);
-  const session = await svc.getActiveSession(req.tenantId, req.user.userId, branchId);
+  const session = await svc.getActiveSession(req.tenantId, req.user.userId, branchId, req.user.role);
   res.json({ success: true, data: session });
 };
 

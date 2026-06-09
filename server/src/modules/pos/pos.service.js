@@ -169,14 +169,24 @@ async function deleteTerminal(companyId, terminalId) {
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
-async function getActiveSession(companyId, userId, branchId) {
-  const params = [companyId, userId];
+const MANAGER_ROLES = ['super_admin', 'company_admin', 'branch_manager'];
+
+async function getActiveSession(companyId, userId, branchId, role) {
+  const isManager = MANAGER_ROLES.includes(role);
+  // Managers see any open session on the branch; cashiers only see their own
+  const params = isManager ? [companyId] : [companyId, userId];
+  const userClause = isManager ? '' : 'AND ps.cashier_user_id = $2';
   let branchClause = '';
-  if (branchId) { params.push(branchId); branchClause = `AND ps.branch_id = $3`; }
+  if (branchId) {
+    params.push(branchId);
+    branchClause = `AND ps.branch_id = $${params.length}`;
+  }
 
   const { rows } = await query(`
     SELECT ps.session_id, ps.terminal_id, ps.branch_id, ps.session_start,
            ps.opening_cash_amount::numeric, ps.status,
+           ps.cashier_user_id,
+           u.first_name || ' ' || u.last_name AS cashier_name,
            pt.terminal_name, pt.terminal_code,
            b.branch_name,
            (SELECT COUNT(*)::int FROM sales_transactions st
@@ -186,8 +196,11 @@ async function getActiveSession(companyId, userId, branchId) {
     FROM pos_sessions ps
     JOIN pos_terminals pt ON pt.terminal_id = ps.terminal_id
     JOIN branches b ON b.branch_id = ps.branch_id
-    WHERE ps.company_id = $1 AND ps.cashier_user_id = $2 AND ps.status = 'open'
+    JOIN users u ON u.user_id = ps.cashier_user_id
+    WHERE ps.company_id = $1 AND ps.status = 'open'
+    ${userClause}
     ${branchClause}
+    ORDER BY ps.session_start DESC
     LIMIT 1
   `, params);
 

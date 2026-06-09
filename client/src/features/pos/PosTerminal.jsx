@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft } from 'lucide-react';
+import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft, UserCog } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
@@ -943,6 +943,8 @@ function CloseSessionModal({ session, onClose, onClosed }) {
 // ── Main POS Terminal ─────────────────────────────────────────────────────────
 export default function PosTerminal() {
   const branchId      = useAuthStore((s) => s.user?.branchIds?.[0]);
+  const userRole      = useAuthStore((s) => s.user?.role);
+  const isManager     = ['super_admin', 'company_admin', 'branch_manager'].includes(userRole);
   const session       = useCartStore((s) => s.session);
   const setSession    = useCartStore((s) => s.setSession);
   const clearCart     = useCartStore((s) => s.clearCart);
@@ -1191,6 +1193,16 @@ export default function PosTerminal() {
             <MonitorDot className="h-3.5 w-3.5 text-primary-300" />
             <span className="font-semibold tracking-wide">{session.terminal_name}</span>
           </div>
+
+          {isManager && session.cashier_name && (
+            <>
+              <span className="h-3 w-px bg-white/20 flex-shrink-0" />
+              <div className="flex items-center gap-1.5 flex-shrink-0 text-white/70 text-[11px]">
+                <UserCog className="h-3 w-3" />
+                <span>{session.cashier_name}</span>
+              </div>
+            </>
+          )}
 
           <span className="h-3 w-px bg-white/20 flex-shrink-0" />
 
