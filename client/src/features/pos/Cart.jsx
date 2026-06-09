@@ -495,17 +495,22 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
                   </div>
 
                   {/* Stepper */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 w-24 justify-center">
                     <button
-                      onClick={() => updateQuantity(item.product.product_id, item.quantity - 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                      onClick={() => item.quantity > 1 && updateQuantity(item.product.product_id, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                        item.quantity <= 1
+                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      }`}
                     >
                       <Minus className="h-3 w-3" />
                     </button>
                     <QtyInput item={item} />
                     <button
                       onClick={() => updateQuantity(item.product.product_id, item.quantity + 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
                     >
                       <Plus className="h-3 w-3" />
                     </button>
