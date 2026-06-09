@@ -154,7 +154,7 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
             SUM(sti.line_total)::numeric                 AS revenue
           FROM sales_transaction_items sti
           JOIN products p ON p.product_id = sti.product_id
-          LEFT JOIN product_categories pc ON pc.category_id = p.category_id
+          LEFT JOIN categories pc ON pc.category_id = p.category_id
           JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
           WHERE st.company_id = $1 AND st.status = 'completed'
             AND st.transaction_date >= CURRENT_DATE - INTERVAL '29 days'
