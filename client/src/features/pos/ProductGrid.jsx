@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, ScanLine, X, WifiOff, LayoutGrid, List, Plus } from 'lucide-react';
+import { Search, ScanLine, X, WifiOff, LayoutGrid, List, Plus, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useCartStore } from '@/app/store';
@@ -108,8 +108,11 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
   const [categoryId, setCategoryId] = useState('');
   const [scanMode,   setScanMode]   = useState(true);   // always start in scan mode
   const [barcodeVal, setBarcodeVal] = useState('');
-  const [viewMode,   setViewMode]   = useState(
+  const [viewMode,        setViewMode]        = useState(
     () => localStorage.getItem('pos-view-mode') || 'grid'
+  );
+  const [hideOutOfStock, setHideOutOfStock] = useState(
+    () => localStorage.getItem('pos-hide-oos') === 'true'
   );
   const barcodeRef = useRef(null);
   const searchRef  = useRef(null);
@@ -123,6 +126,10 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
   useEffect(() => {
     localStorage.setItem('pos-view-mode', viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('pos-hide-oos', hideOutOfStock);
+  }, [hideOutOfStock]);
 
   // Return to scan mode after sale / cancel / clear
   useEffect(() => {
@@ -208,6 +215,10 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
     cartItems.map((i) => [i.product.product_id, i.quantity])
   );
 
+  const visibleProducts = hideOutOfStock
+    ? (products ?? []).filter((p) => !(p.track_inventory !== false && parseFloat(p.quantity_available ?? 0) <= 0))
+    : (products ?? []);
+
   return (
     <div className="flex h-full flex-col bg-gray-50">
 
@@ -261,6 +272,21 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
         >
           <ScanLine className="h-3.5 w-3.5" />
           {scanMode ? 'Search' : 'Scan'}
+        </button>
+
+        {/* Hide out-of-stock toggle */}
+        <button
+          onClick={() => setHideOutOfStock((v) => !v)}
+          title={hideOutOfStock ? 'Show out-of-stock items' : 'Hide out-of-stock items'}
+          className={[
+            'flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all',
+            hideOutOfStock
+              ? 'border-red-400 bg-red-50 text-red-600'
+              : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700',
+          ].join(' ')}
+        >
+          <EyeOff className="h-3.5 w-3.5" />
+          {hideOutOfStock ? 'OOS hidden' : 'OOS'}
         </button>
 
         {/* Grid / List toggle */}
@@ -362,7 +388,10 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
       {!isActuallyLoading && products != null && products.length > 0 && (
         <div className="border-b border-gray-100 bg-white px-3.5 py-1">
           <p className="text-[11px] text-gray-400">
-            {products.length} product{products.length !== 1 ? 's' : ''}
+            {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+            {hideOutOfStock && visibleProducts.length < products.length && (
+              <span className="ml-1 text-red-400">({products.length - visibleProducts.length} out-of-stock hidden)</span>
+            )}
           </p>
         </div>
       )}
@@ -379,7 +408,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
               {Array.from({ length: 10 }).map((_, i) => <ListSkeleton key={i} />)}
             </div>
           )
-        ) : products?.length === 0 ? (
+        ) : visibleProducts?.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
               <Search className="h-6 w-6 text-gray-300" />
@@ -393,7 +422,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
 
           /* ── Grid view ── */
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {products.map((product) => {
+            {visibleProducts.map((product) => {
               const quantity   = parseFloat(product.quantity_available ?? 0);
               const threshold  = parseFloat(product.reorder_level ?? 5);
               const outOfStock = product.track_inventory !== false && quantity <= 0;
@@ -450,7 +479,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
 
           /* ── List view ── */
           <div className="space-y-1">
-            {products.map((product) => {
+            {visibleProducts.map((product) => {
               const quantity   = parseFloat(product.quantity_available ?? 0);
               const threshold  = parseFloat(product.reorder_level ?? 5);
               const outOfStock = product.track_inventory !== false && quantity <= 0;
