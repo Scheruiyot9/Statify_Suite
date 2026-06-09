@@ -112,7 +112,7 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
     () => localStorage.getItem('pos-view-mode') || 'grid'
   );
   const [hideOutOfStock, setHideOutOfStock] = useState(
-    () => localStorage.getItem('pos-hide-oos') === 'true'
+    () => localStorage.getItem('pos-hide-oos') !== 'false'
   );
   const barcodeRef = useRef(null);
   const searchRef  = useRef(null);
