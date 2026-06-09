@@ -344,16 +344,17 @@ export default function ProductsPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
   const canManageProducts = hasCapability('products.manage');
-  const [search, setSearch]       = useState('');
-  const [catFilter, setCatFilter] = useState('');
-  const [page, setPage]           = useState(1);
+  const [search, setSearch]           = useState('');
+  const [catFilter, setCatFilter]     = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage]               = useState(1);
   const [modal, setModal]           = useState(null);
   const [viewProduct, setViewProduct] = useState(null);
   const [showImport, setShowImport] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products-mgmt', search, catFilter, page],
-    queryFn: () => api.get('/products', { params: { search, categoryId: catFilter, page, limit: 25 } }).then((r) => r.data.data),
+    queryKey: ['products-mgmt', search, catFilter, statusFilter, page],
+    queryFn: () => api.get('/products', { params: { search, categoryId: catFilter, isActive: statusFilter, page, limit: 25 } }).then((r) => r.data.data),
     keepPreviousData: true,
   });
 
@@ -407,6 +408,12 @@ export default function ProductsPage() {
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
           <option value="">All Categories</option>
           {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.category_name}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+          <option value="">All Status</option>
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
         </select>
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
           onClick={() => exportToExcel('products', products, [

@@ -46,6 +46,7 @@ export const ROLE_CAPABILITIES = {
     'dashboard.view',
     'pos.open',
     'products.view',
+    'products.manage',
     'inventory.view',
     'inventory.adjust',
     'customers.view',

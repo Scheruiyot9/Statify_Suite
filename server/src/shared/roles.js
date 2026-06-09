@@ -11,7 +11,7 @@ const ROLE_PERMISSIONS = {
   company_admin:  ['view_products','manage_products','view_inventory','adjust_stock',
                    'view_customers','manage_customers','view_sales','process_refund',
                    'view_reports','manage_users','manage_settings','open_pos_session'],
-  branch_manager: ['view_products','view_inventory','adjust_stock',
+  branch_manager: ['view_products','manage_products','view_inventory','adjust_stock',
                    'view_customers','manage_customers','view_sales','process_refund',
                    'open_pos_session'],
   // accountant now includes all inventory_manager permissions

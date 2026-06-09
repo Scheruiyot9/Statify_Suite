@@ -2,9 +2,13 @@ const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const QueryBuilder = require('../../shared/qb');
 
-async function listProducts(companyId, { branchId, search, categoryId, page = 1, limit = 60 } = {}) {
+async function listProducts(companyId, { branchId, search, categoryId, isActive, page = 1, limit = 60 } = {}) {
   const qb = new QueryBuilder([companyId]);
-  const conditions = ['p.company_id = $1', 'p.is_active = TRUE', 'p.deleted_at IS NULL'];
+  // isActive: undefined/'' = all, 'true' = active only, 'false' = inactive only
+  const activeClause = isActive === 'true' ? 'p.is_active = TRUE'
+                     : isActive === 'false' ? 'p.is_active = FALSE'
+                     : 'TRUE';
+  const conditions = ['p.company_id = $1', activeClause, 'p.deleted_at IS NULL'];
   let branchJoins = '';
   let branchSelect = `p.base_price::numeric AS branch_price, 0::numeric AS quantity_available, NULL::integer AS reorder_level`;
 
