@@ -12,10 +12,16 @@ const adjust = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const adjustBulk = async (req, res) => {
+  const { userId } = req.user;
+  const result = await svc.adjustStockBulk(req.tenantId, userId, req.body.items);
+  res.json({ success: true, data: result });
+};
+
 const setReorder = async (req, res) => {
   const { productId, branchId } = req.params;
   const result = await svc.updateReorderLevel(req.tenantId, productId, branchId, req.body);
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, adjust, setReorder };
+module.exports = { list, adjust, adjustBulk, setReorder };

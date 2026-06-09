@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
@@ -498,6 +498,184 @@ function ShiftSummaryModal({ session, onClose }) {
   );
 }
 
+// ── Cash-out modal ────────────────────────────────────────────────────────────
+const OUT_TYPES = [
+  { value: 'withdrawal',   label: 'Cash Withdrawal',  hint: 'Owner / manager takes cash from drawer' },
+  { value: 'expense',      label: 'Expense Payment',  hint: 'Pay an operational expense (cleaning, supplies…)' },
+  { value: 'stock_payment',label: 'Stock Payment',    hint: 'Pay a supplier for goods received' },
+];
+
+function CashOutModal({ session, methods, onClose }) {
+  const qc = useQueryClient();
+  const hasFinance = useAuthStore((s) => s.user?.planFeatures?.hasFinance);
+
+  const [outType,         setOutType]         = useState('expense');
+  const [amount,          setAmount]          = useState('');
+  const [notes,           setNotes]           = useState('');
+  const [accountId,       setAccountId]       = useState('');
+  const [supplierId,      setSupplierId]      = useState('');
+  const [paymentMethodId, setPaymentMethodId] = useState(
+    methods.find((m) => /cash/i.test(m.method_name))?.payment_method_id ?? ''
+  );
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['pos-expense-accounts'],
+    queryFn:  () => api.get('/pos/expense-accounts').then((r) => r.data.data),
+    enabled:  !!hasFinance,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: suppliersRaw } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn:  () => api.get('/suppliers?limit=200').then((r) => r.data.data ?? r.data),
+    enabled:  outType === 'stock_payment',
+    staleTime: 5 * 60 * 1000,
+  });
+  const suppliers = Array.isArray(suppliersRaw) ? suppliersRaw : (suppliersRaw?.suppliers ?? []);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (body) => api.post(`/pos/sessions/${session.session_id}/cash-outs`, body),
+    onSuccess: () => {
+      toast.success('Cash out recorded');
+      qc.invalidateQueries({ queryKey: ['session-summary', session.session_id] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to record cash out'),
+  });
+
+  const amt = parseFloat(amount);
+  const canSubmit = amount !== '' && !isNaN(amt) && amt > 0;
+
+  const handleSubmit = () => {
+    mutate({
+      out_type:          outType,
+      amount:            amt,
+      notes:             notes || undefined,
+      payment_method_id: paymentMethodId || undefined,
+      account_id:        (hasFinance && accountId)  ? accountId  : undefined,
+      supplier_id:       (hasFinance && supplierId) ? supplierId : undefined,
+    });
+  };
+
+  const inpCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Cash Out</h2>
+            <p className="text-xs text-gray-500">{session.terminal_name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="space-y-4 p-6">
+          {/* Type selector */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700">Type *</label>
+            <div className="space-y-1.5">
+              {OUT_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  onClick={() => setOutType(t.value)}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    outType === t.value
+                      ? 'border-primary-400 bg-primary-50'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className={`text-sm font-medium ${outType === t.value ? 'text-primary-800' : 'text-gray-800'}`}>{t.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.hint}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Amount *</label>
+            <input type="number" min="0.01" step="0.01" value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00" className={inpCls} />
+          </div>
+
+          {/* Payment mode */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Paid from *</label>
+            <div className="flex flex-wrap gap-2">
+              {methods.map((m) => (
+                <button
+                  key={m.payment_method_id}
+                  onClick={() => setPaymentMethodId(m.payment_method_id)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    paymentMethodId === m.payment_method_id
+                      ? 'border-primary-400 bg-primary-50 text-primary-800'
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {m.method_name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-gray-400">Select which payment mode the funds are drawn from.</p>
+          </div>
+
+          {/* Finance: account selector */}
+          {hasFinance && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                GL Account {outType === 'withdrawal' ? '(optional)' : '*'}
+              </label>
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={`${inpCls} bg-white`}>
+                <option value="">— Select account —</option>
+                {accounts
+                  .filter((a) => outType === 'withdrawal' ? a.account_type !== 'liability' : true)
+                  .map((a) => (
+                    <option key={a.account_id} value={a.account_id}>
+                      {a.account_code} — {a.account_name}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-400">
+                A journal entry (DR account / CR selected payment mode) will be auto-posted.
+              </p>
+            </div>
+          )}
+
+          {/* Stock payment: supplier */}
+          {outType === 'stock_payment' && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Supplier (optional)</label>
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={`${inpCls} bg-white`}>
+                <option value="">— Select supplier —</option>
+                {suppliers.map((s) => (
+                  <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Notes</label>
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Brief description…"
+              className={inpCls} />
+          </div>
+        </div>
+
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth disabled={!canSubmit} loading={isPending} onClick={handleSubmit}>
+            <ArrowDownLeft className="h-4 w-4 mr-1" />Record Cash Out
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Close Session Modal ───────────────────────────────────────────────────────
 function CloseSessionModal({ session, onClose, onClosed }) {
   const [closingAmount, setClosingAmount] = useState('');
@@ -528,13 +706,19 @@ function CloseSessionModal({ session, onClose, onClosed }) {
     onError: (err) => toast.error(err.response?.data?.message || 'Could not close session'),
   });
 
-  const openingFloat   = parseFloat(session.opening_cash_amount) || 0;
-  const breakdown      = summary?.payment_breakdown ?? [];
-  const cashMethod     = breakdown.find((p) => p.method_name === 'Cash');
-  const cashSales      = parseFloat(cashMethod?.total) || 0;
-  const expectedCash   = openingFloat + cashSales;
-  const closingCounted = parseFloat(closingAmount) || 0;
-  const variance       = closingAmount !== '' ? closingCounted - expectedCash : null;
+  const openingFloat      = parseFloat(session.opening_cash_amount) || 0;
+  const breakdown         = summary?.payment_breakdown ?? [];
+  const cashOuts          = summary?.cash_outs ?? [];
+  const totalCashOuts     = summary?.total_cash_outs ?? 0;
+  const cashOutsByMethod  = summary?.cash_outs_by_method ?? {};
+  const cashMethod        = breakdown.find((p) => p.method_name === 'Cash');
+  // Cash-outs with null payment_method_id (legacy) fall under '__cash__'
+  const cashSpecificOuts  = (cashMethod ? (cashOutsByMethod[cashMethod.payment_method_id] || 0) : 0)
+                          + (cashOutsByMethod['__cash__'] || 0);
+  const cashSales         = parseFloat(cashMethod?.total) || 0;
+  const expectedCash      = openingFloat + cashSales - cashSpecificOuts;
+  const closingCounted    = parseFloat(closingAmount) || 0;
+  const variance          = closingAmount !== '' ? closingCounted - expectedCash : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -578,7 +762,14 @@ function CloseSessionModal({ session, onClose, onClosed }) {
                 <tbody className="divide-y divide-gray-50">
                   {/* Cash row */}
                   <tr className="bg-amber-50/30">
-                    <td className="px-4 py-3 font-medium text-gray-800">Cash</td>
+                    <td className="px-4 py-3 font-medium text-gray-800">
+                      Cash
+                      {totalCashOuts > 0 && (
+                        <span className="ml-1.5 text-xs text-red-500 font-normal">
+                          (−{formatCurrency(totalCashOuts)} cash-outs)
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(openingFloat)}</td>
                     <td className="px-4 py-3 text-right text-green-700">{formatCurrency(cashSales)}</td>
                     <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expectedCash)}</td>
@@ -608,14 +799,21 @@ function CloseSessionModal({ session, onClose, onClosed }) {
 
                   {/* Other methods — count entered manually */}
                   {breakdown.filter((p) => p.method_name !== 'Cash').map((p) => {
-                    const counted  = parseFloat(pmClosing[p.method_name] ?? '') || null;
-                    const pmVar    = counted !== null ? counted - p.total : null;
+                    const methodOuts = cashOutsByMethod[p.payment_method_id] || 0;
+                    const expected   = p.total - methodOuts;
+                    const counted    = parseFloat(pmClosing[p.method_name] ?? '') || null;
+                    const pmVar      = counted !== null ? counted - expected : null;
                     return (
                       <tr key={p.method_name}>
-                        <td className="px-4 py-3 font-medium text-gray-800">{p.method_name}</td>
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          {p.method_name}
+                          {methodOuts > 0 && (
+                            <span className="ml-1.5 text-xs text-red-500 font-normal">(−{formatCurrency(methodOuts)} out)</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right text-gray-400">—</td>
                         <td className="px-4 py-3 text-right text-green-700">{formatCurrency(p.total)}</td>
-                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(p.total)}</td>
+                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expected)}</td>
                         <td className="px-4 py-3 text-right">
                           <input
                             type="number" step="0.01" min="0"
@@ -645,6 +843,43 @@ function CloseSessionModal({ session, onClose, onClosed }) {
             </div>
             <p className="mt-1.5 text-xs text-gray-400">Card and mobile transactions auto-reconcile via bank records.</p>
           </div>
+
+          {/* Cash-outs breakdown */}
+          {cashOuts.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <ArrowDownLeft className="h-4 w-4 text-red-500" />
+                Cash Outs ({cashOuts.length})
+                <span className="ml-auto text-red-600 font-bold">{formatCurrency(totalCashOuts)}</span>
+              </h3>
+              <div className="rounded-xl border border-red-100 overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-red-50 border-b border-red-100">
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Type</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Mode</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Notes</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-red-50">
+                    {cashOuts.map((co) => (
+                      <tr key={co.cash_out_id}>
+                        <td className="px-3 py-2 font-medium text-gray-700 capitalize">
+                          {co.out_type.replace('_', ' ')}
+                          {co.account_name && <span className="block text-gray-400 font-normal">{co.account_name}</span>}
+                          {co.supplier_name && <span className="block text-gray-400 font-normal">{co.supplier_name}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{co.payment_method_name || 'Cash'}</td>
+                        <td className="px-3 py-2 text-gray-500">{co.notes || '—'}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-red-600">{formatCurrency(co.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Overall variance summary */}
           {variance !== null && Math.abs(variance) >= 0.5 && (
@@ -725,6 +960,12 @@ export default function PosTerminal() {
     if (defaultTaxData !== undefined) setDefaultTax(defaultTaxData ?? null);
   }, [defaultTaxData, setDefaultTax]);
 
+  const { data: posMethods = [] } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn:  () => api.get('/pos/payment-methods').then((r) => r.data.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const holdsCount   = usePosDataStore((s) => s.holds.length);
   const offlineQueue = usePosDataStore((s) => s.offlineQueue);
   const markSynced   = usePosDataStore((s) => s.markSynced);
@@ -735,6 +976,7 @@ export default function PosTerminal() {
 
   const [checkoutOpen,     setCheckoutOpen]     = useState(false);
   const [closeOpen,        setCloseOpen]        = useState(false);
+  const [cashOutOpen,      setCashOutOpen]      = useState(false);
   const [shiftOpen,        setShiftOpen]        = useState(false);
   const [holdsOpen,        setHoldsOpen]        = useState(false);
   const [queueOpen,        setQueueOpen]        = useState(false);
@@ -854,8 +1096,8 @@ export default function PosTerminal() {
     setScanResetKey((k) => k + 1);
   }, [setSession]);
 
-  // Show spinner only when we're actively checking for a session on refresh
-  const isCheckingSession = !session && sessionChecking && sessionFetching;
+  // Show spinner while any session fetch is in flight (covers initial load and background refetches)
+  const isCheckingSession = !session && (sessionChecking || sessionFetching);
 
   if (!branchId) {
     return (
@@ -1010,6 +1252,13 @@ export default function PosTerminal() {
                   onClick={() => { setQueueOpen(true); setMenuOpen(false); }}
                 />
               )}
+              <MenuAction
+                icon={ArrowDownLeft}
+                iconBg="bg-orange-100 text-orange-600"
+                label="Cash Out"
+                sub="Record withdrawal, expense or stock payment"
+                onClick={() => { setCashOutOpen(true); setMenuOpen(false); }}
+              />
               <div className="my-1 h-px bg-gray-100" />
               <MenuAction
                 icon={LogOut}
@@ -1097,6 +1346,14 @@ export default function PosTerminal() {
         <ShiftSummaryModal
           session={session}
           onClose={() => setShiftOpen(false)}
+        />
+      )}
+
+      {cashOutOpen && (
+        <CashOutModal
+          session={session}
+          methods={posMethods}
+          onClose={() => setCashOutOpen(false)}
         />
       )}
 

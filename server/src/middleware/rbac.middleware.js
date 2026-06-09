@@ -3,13 +3,11 @@ const { COMPANY_WIDE_ROLES, permissionsForRole } = require('../shared/roles');
 
 // Role hierarchy from the design (§4.1)
 const ROLE_RANK = {
-  super_admin:        100,
-  company_admin:       80,
-  branch_manager:      60,
-  accountant:          50,
-  inventory_manager:   40,
-  cashier:             20,
-  sales_staff:         10,
+  super_admin:    100,
+  company_admin:   80,
+  branch_manager:  60,
+  accountant:      50,
+  cashier:         20,
 };
 
 // Middleware factory: require caller to have AT LEAST one of the given roles
@@ -64,9 +62,11 @@ const requireBranchAccess = (branchIdParam = 'branchId') => (req, _res, next) =>
   next();
 };
 
-// Guard: Finance module — requires has_finance flag in JWT planFeatures
+// Guard: Finance module — requires has_finance flag AND role must not be branch_manager
 const requireFinance = (req, _res, next) => {
   if (req.user?.role === 'super_admin') return next();
+  if (req.user?.role === 'branch_manager')
+    throw AppError.forbidden('Finance reports are not available for branch managers', 'FINANCE_REQUIRED');
   if (!req.user?.planFeatures?.hasFinance)
     throw AppError.forbidden('Finance module requires Growth plan or higher', 'FINANCE_REQUIRED');
   next();

@@ -119,10 +119,34 @@ const forceCloseSession = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const expenseAccounts = async (req, res) => {
+  const { rows } = await require('../../config/database').query(
+    `SELECT account_id, account_code, account_name, account_type
+     FROM accounts
+     WHERE company_id = $1 AND is_active = TRUE
+       AND account_type IN ('expense','asset','liability')
+     ORDER BY account_code`,
+    [req.tenantId]
+  );
+  res.json({ success: true, data: rows });
+};
+
+const cashOut = async (req, res) => {
+  const hasFinance = req.user?.planFeatures?.hasFinance === true;
+  const result = await svc.recordCashOut(req.tenantId, req.params.id, req.user.userId, req.body, hasFinance);
+  res.status(201).json({ success: true, data: result });
+};
+
+const cashOuts = async (req, res) => {
+  const result = await svc.listCashOuts(req.tenantId, req.params.id);
+  res.json({ success: true, data: result });
+};
+
 module.exports = {
   products,
   paymentMethods, createPaymentMethod, updatePaymentMethod,
   terminals, allTerminals, createTerminal, updateTerminal, deleteTerminal,
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession,
+  cashOut, cashOuts, expenseAccounts,
 };

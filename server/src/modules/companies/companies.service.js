@@ -23,15 +23,11 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'view_sales', 'create_transaction', 'apply_discount', 'view_products',
     'view_customers', 'view_inventory', 'open_pos_session',
   ],
-  inventory_manager: [
-    'view_inventory', 'adjust_stock', 'transfer_stock', 'view_products',
-    'manage_products', 'view_reports',
-  ],
   accountant: [
-    'view_sales', 'view_inventory', 'view_products', 'view_customers',
-    'view_reports', 'view_all_branches', 'export_reports',
+    'view_sales', 'view_inventory', 'adjust_stock', 'view_products',
+    'manage_products', 'view_customers', 'view_reports', 'view_all_branches',
+    'export_reports',
   ],
-  sales_staff: ['view_products', 'view_customers'],
 };
 
 async function ensureCompanyRoles(client, companyId) {

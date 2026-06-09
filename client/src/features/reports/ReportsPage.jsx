@@ -1158,7 +1158,8 @@ export default function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'super_admin';
-  const hasFinance = isSuperAdmin || !!user?.planFeatures?.hasFinance;
+  const hasFinance = isSuperAdmin ||
+    (!!user?.planFeatures?.hasFinance && user?.role !== 'branch_manager');
 
   const [filterCompanyId, setFilterCompanyId] = useState('');
 

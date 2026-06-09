@@ -212,7 +212,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
 
 // ── PO Detail Modal ───────────────────────────────────────────────────────────
 
-function PODetail({ po, onClose, onRefetch }) {
+function PODetail({ po, onClose, onEdit }) {
   const qc = useQueryClient();
 
   const action = (type) => useMutation({
@@ -228,6 +228,7 @@ function PODetail({ po, onClose, onRefetch }) {
   const canSubmit  = po.status === 'draft';
   const canApprove = po.status === 'pending_approval';
   const canCancel  = ['draft', 'pending_approval', 'approved'].includes(po.status);
+  const canEdit    = po.status === 'draft';
 
   return (
     <Modal open onClose={onClose} title={`Purchase Order — ${po.po_number}`} size="lg">
@@ -280,6 +281,7 @@ function PODetail({ po, onClose, onRefetch }) {
               <Printer className="h-4 w-4 mr-1" />Print LPO
             </Button>
             <Button variant="outline" onClick={onClose}>Close</Button>
+            {canEdit    && <Button variant="outline" size="sm" onClick={onEdit}><FileText className="h-4 w-4 mr-1" />Edit</Button>}
             {canSubmit  && <Button size="sm" onClick={() => submitM.mutate()}  isLoading={submitM.isPending}><Send className="h-4 w-4 mr-1" />Submit</Button>}
             {canApprove && <Button size="sm" onClick={() => approveM.mutate()} isLoading={approveM.isPending}><CheckCircle className="h-4 w-4 mr-1" />Approve</Button>}
           </div>
@@ -750,6 +752,7 @@ export default function PurchasesPage() {
   const [statusFilt, setStatusFilt] = useState('');
   const [showPOModal,    setShowPOModal]    = useState(false);
   const [selectedPO,     setSelectedPO]     = useState(null);
+  const [editPO,         setEditPO]         = useState(null);
   const [detailPO,       setDetailPO]       = useState(null);
   const [detailGRN,      setDetailGRN]      = useState(null);
   const [grnForPO,       setGrnForPO]       = useState(null); // PO to create GRN against
@@ -781,8 +784,8 @@ export default function PurchasesPage() {
     ? grns.filter((g) => g.grn_number?.toLowerCase().includes(search.toLowerCase()) || g.supplier_name?.toLowerCase().includes(search.toLowerCase()))
     : grns;
 
-  // Fetch full PO detail when viewing detail or creating GRN
-  const poIdForFetch = detailPO?.po_id ?? grnForPO?.po_id;
+  // Fetch full PO detail when viewing detail, editing, or creating GRN
+  const poIdForFetch = detailPO?.po_id ?? editPO?.po_id ?? grnForPO?.po_id;
   const { data: fullPO } = useQuery({
     queryKey: ['purchase', poIdForFetch],
     queryFn:  () => api.get(`/purchases/${poIdForFetch}`).then((r) => r.data?.data),
@@ -862,6 +865,12 @@ export default function PurchasesPage() {
                           className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                           View
                         </button>
+                        {po.status === 'draft' && (
+                          <button className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                            onClick={() => setEditPO(po)}>
+                            Edit
+                          </button>
+                        )}
                         {['approved', 'partially_received'].includes(po.status) && (
                           <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
                             onClick={() => setGrnForPO(po)}>
@@ -933,7 +942,11 @@ export default function PurchasesPage() {
       )}
 
       {detailPO && fullPO && (
-        <PODetail po={fullPO} onClose={() => setDetailPO(null)} />
+        <PODetail po={fullPO} onClose={() => setDetailPO(null)} onEdit={() => { setEditPO(fullPO); setDetailPO(null); }} />
+      )}
+
+      {editPO && fullPO?.po_id === editPO.po_id && (
+        <POModal po={fullPO} suppliers={suppliers} products={products} branches={branches} onClose={() => setEditPO(null)} />
       )}
 
       {grnForPO && fullPO && (

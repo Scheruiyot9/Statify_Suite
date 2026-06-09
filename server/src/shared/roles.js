@@ -1,26 +1,24 @@
 // Roles that can see all branches in a company without explicit branch assignment
-const COMPANY_WIDE_ROLES = ['super_admin', 'company_admin', 'accountant', 'inventory_manager'];
+const COMPANY_WIDE_ROLES = ['super_admin', 'company_admin', 'accountant'];
 
 // Canonical permission set per role — single source of truth on the server.
 // Mirrors the seeded role_permissions rows; eliminates the need to embed
 // permission arrays in every JWT (keeps tokens small regardless of future additions).
 const ROLE_PERMISSIONS = {
-  super_admin:        ['view_products','manage_products','view_inventory','adjust_stock',
-                       'view_customers','manage_customers','view_sales','process_refund',
-                       'view_reports','manage_users','manage_settings','open_pos_session'],
-  company_admin:      ['view_products','manage_products','view_inventory','adjust_stock',
-                       'view_customers','manage_customers','view_sales','process_refund',
-                       'view_reports','manage_users','manage_settings','open_pos_session'],
-  branch_manager:     ['view_products','view_inventory','adjust_stock',
-                       'view_customers','manage_customers','view_sales','process_refund',
-                       'view_reports','open_pos_session'],
-  accountant:         ['view_products','view_inventory','view_customers',
-                       'view_sales','process_refund','view_reports'],
-  inventory_manager:  ['view_products','manage_products','view_inventory',
-                       'adjust_stock','view_reports'],
-  cashier:            ['view_products','view_customers','manage_customers',
-                       'view_sales','process_refund','open_pos_session'],
-  sales_staff:        ['view_products','view_customers'],
+  super_admin:    ['view_products','manage_products','view_inventory','adjust_stock',
+                   'view_customers','manage_customers','view_sales','process_refund',
+                   'view_reports','manage_users','manage_settings','open_pos_session'],
+  company_admin:  ['view_products','manage_products','view_inventory','adjust_stock',
+                   'view_customers','manage_customers','view_sales','process_refund',
+                   'view_reports','manage_users','manage_settings','open_pos_session'],
+  branch_manager: ['view_products','view_inventory','adjust_stock',
+                   'view_customers','manage_customers','view_sales','process_refund',
+                   'open_pos_session'],
+  // accountant now includes all inventory_manager permissions
+  accountant:     ['view_products','manage_products','view_inventory','adjust_stock',
+                   'view_customers','view_sales','process_refund','view_reports'],
+  cashier:        ['view_products','view_customers','manage_customers',
+                   'view_sales','process_refund','open_pos_session'],
 };
 
 function permissionsForRole(role) {

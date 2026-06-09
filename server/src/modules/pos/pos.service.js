@@ -1,4 +1,4 @@
-const { query } = require('../../config/database');
+const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const productsService = require('../products/products.service');
 const QueryBuilder = require('../../shared/qb');
@@ -279,7 +279,7 @@ async function getSessionSummary(companyId, sessionId) {
   `, [sessionId, companyId]);
   if (!sessionRows.length) throw AppError.notFound('Session');
 
-  const [summaryRes, payRes] = await Promise.all([
+  const [summaryRes, payRes, cashOutRes] = await Promise.all([
     query(`
       SELECT COUNT(*)::int AS txn_count,
              COALESCE(SUM(total_amount),    0)::numeric AS total_sales,
@@ -297,9 +297,32 @@ async function getSessionSummary(companyId, sessionId) {
       WHERE st.pos_session_id = $1 AND st.status = 'completed'
       GROUP BY pm.payment_method_id, pm.method_name ORDER BY total DESC
     `, [sessionId]),
+    query(`
+      SELECT co.cash_out_id, co.out_type, co.amount::numeric, co.notes,
+             co.created_at, co.payment_method_id,
+             pm.method_name AS payment_method_name,
+             a.account_name, s.supplier_name,
+             u.first_name || ' ' || u.last_name AS created_by_name
+      FROM session_cash_outs co
+      LEFT JOIN payment_methods pm ON pm.payment_method_id = co.payment_method_id
+      LEFT JOIN accounts  a ON a.account_id  = co.account_id
+      LEFT JOIN suppliers s ON s.supplier_id = co.supplier_id
+      LEFT JOIN users     u ON u.user_id     = co.created_by_user_id
+      WHERE co.session_id = $1
+      ORDER BY co.created_at
+    `, [sessionId]),
   ]);
 
   const s = sessionRows[0];
+  const cashOuts      = cashOutRes.rows.map((r) => ({ ...r, amount: parseFloat(r.amount) }));
+  const totalCashOuts = cashOuts.reduce((acc, r) => acc + r.amount, 0);
+  // Build per-method cash-out map (null payment_method_id treated as Cash)
+  const cashOutsByMethod = {};
+  for (const co of cashOuts) {
+    const key = co.payment_method_id || '__cash__';
+    cashOutsByMethod[key] = (cashOutsByMethod[key] || 0) + co.amount;
+  }
+
   return {
     session_id:          s.session_id,
     session_start:       s.session_start,
@@ -311,6 +334,9 @@ async function getSessionSummary(companyId, sessionId) {
     txn_count:           summaryRes.rows[0].txn_count,
     total_sales:         parseFloat(summaryRes.rows[0].total_sales),
     total_discounts:     parseFloat(summaryRes.rows[0].total_discounts),
+    total_cash_outs:     totalCashOuts,
+    cash_outs:           cashOuts,
+    cash_outs_by_method: cashOutsByMethod,
     payment_breakdown:   payRes.rows.map((r) => ({
       payment_method_id: r.payment_method_id,
       method_name:       r.method_name,
@@ -338,9 +364,30 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     WHERE st.pos_session_id = $1 AND pm.method_name = 'Cash' AND st.status = 'completed'
   `, [sessionId]);
 
+  const { rows: cashOutRows } = await query(`
+    SELECT payment_method_id, COALESCE(SUM(amount), 0)::numeric AS total
+    FROM session_cash_outs
+    WHERE session_id = $1
+    GROUP BY payment_method_id
+  `, [sessionId]);
+
+  // Cash-outs with no payment_method_id default to Cash
+  const cashOutByMethod = {};
+  let cashOutsNullTotal = 0;
+  for (const r of cashOutRows) {
+    if (r.payment_method_id) cashOutByMethod[r.payment_method_id] = parseFloat(r.total);
+    else cashOutsNullTotal += parseFloat(r.total);
+  }
+
   const openingFloat   = parseFloat(sessionRows[0].opening_cash_amount);
   const cashReceived   = parseFloat(cashRows[0]?.cash_received || 0);
-  const expectedCash   = openingFloat + cashReceived;
+  // Cash-specific outs: method-matched to Cash + any legacy null-method outs
+  const cashMethodId   = (await query(
+    `SELECT payment_method_id FROM payment_methods WHERE company_id = $1 AND method_name = 'Cash' LIMIT 1`,
+    [companyId]
+  )).rows[0]?.payment_method_id;
+  const cashOuts       = cashOutsNullTotal + (cashMethodId ? (cashOutByMethod[cashMethodId] || 0) : 0);
+  const expectedCash   = openingFloat + cashReceived - cashOuts;
   const closingCounted = parseFloat(closingCashCounted) || 0;
   const variance       = closingCounted - expectedCash;
 
@@ -552,10 +599,101 @@ async function forceCloseSession(companyId, sessionId, userId, body) {
   return closeSession(companyId, sessionId, userId, body);
 }
 
+// ── Cash-outs (petty cash disbursements during a shift) ───────────────────────
+
+async function recordCashOut(companyId, sessionId, userId, data, hasFinance) {
+  const { out_type, amount, notes, account_id, supplier_id, payment_method_id } = data;
+
+  const { rows: sessionRows } = await query(
+    `SELECT ps.session_id, ps.branch_id
+     FROM pos_sessions ps
+     WHERE ps.session_id = $1 AND ps.company_id = $2 AND ps.status = 'open'`,
+    [sessionId, companyId]
+  );
+  if (!sessionRows.length) throw AppError.notFound('Active session');
+  const { branch_id } = sessionRows[0];
+
+  const amt = parseFloat(amount);
+  if (!amt || amt <= 0) throw AppError.badRequest('Amount must be positive');
+
+  // Resolve the GL account for the payment method's CR side
+  let resolvedPayMethodId = payment_method_id || null;
+  let crAccountId = null;
+
+  if (resolvedPayMethodId) {
+    const { rows: pmRows } = await query(`
+      SELECT pm.payment_method_id, pm.method_name, ba.account_id AS bank_gl_account_id
+      FROM payment_methods pm
+      LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+      WHERE pm.payment_method_id = $1 AND pm.company_id = $2
+    `, [resolvedPayMethodId, companyId]);
+    if (pmRows.length) crAccountId = pmRows[0].bank_gl_account_id || null;
+  }
+
+  let journalEntryId = null;
+
+  if (hasFinance && account_id) {
+    journalEntryId = await transaction(async (client) => {
+      // CR side: use payment method's linked GL account; fall back to Cash on Hand (1000)
+      let crAccId = crAccountId;
+      if (!crAccId) {
+        const { rows } = await client.query(
+          `SELECT account_id FROM accounts WHERE company_id = $1 AND account_code = '1000' AND is_active = TRUE`,
+          [companyId]
+        );
+        if (!rows.length) throw AppError.unprocessable('Cash on Hand account (1000) not found in chart of accounts');
+        crAccId = rows[0].account_id;
+      }
+
+      const jeSvc = require('../journal/journal.service');
+      const typeLabels = { withdrawal: 'Cash Withdrawal', expense: 'Expense Payment', stock_payment: 'Stock Payment' };
+      return jeSvc._post(client, companyId, {
+        entryDate:   new Date().toISOString().slice(0, 10),
+        description: `${typeLabels[out_type] || 'Cash Out'} — ${notes || 'POS shift'}`,
+        sourceType:  'cash_out',
+        sourceId:    sessionId,
+        userId,
+        lines: [
+          { accountId: account_id, debit: amt, credit: 0, description: notes || null, entityType: supplier_id ? 'supplier' : null, entityId: supplier_id || null },
+          { accountId: crAccId,    debit: 0, credit: amt, description: 'Payment mode reduction' },
+        ],
+      });
+    });
+  }
+
+  const { rows } = await query(`
+    INSERT INTO session_cash_outs
+      (company_id, session_id, branch_id, out_type, amount, notes,
+       account_id, supplier_id, payment_method_id, journal_entry_id, created_by_user_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    RETURNING *
+  `, [companyId, sessionId, branch_id, out_type, amt, notes || null,
+      account_id || null, supplier_id || null, resolvedPayMethodId, journalEntryId, userId]);
+
+  return rows[0];
+}
+
+async function listCashOuts(companyId, sessionId) {
+  const { rows } = await query(`
+    SELECT co.*, a.account_name, a.account_code, s.supplier_name,
+           pm.method_name AS payment_method_name,
+           u.first_name || ' ' || u.last_name AS created_by_name
+    FROM session_cash_outs co
+    LEFT JOIN accounts        a  ON a.account_id        = co.account_id
+    LEFT JOIN suppliers       s  ON s.supplier_id       = co.supplier_id
+    LEFT JOIN payment_methods pm ON pm.payment_method_id = co.payment_method_id
+    LEFT JOIN users           u  ON u.user_id           = co.created_by_user_id
+    WHERE co.session_id = $1 AND co.company_id = $2
+    ORDER BY co.created_at
+  `, [sessionId, companyId]);
+  return rows;
+}
+
 module.exports = {
   listSellableProducts,
   listPaymentMethods, createPaymentMethod, updatePaymentMethod,
   listTerminals, listAllTerminals, createTerminal, updateTerminal, deleteTerminal,
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
+  recordCashOut, listCashOuts,
 };

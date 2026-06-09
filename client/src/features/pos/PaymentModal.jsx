@@ -129,10 +129,10 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
       <div className="flex gap-2">
         <Button size="sm" fullWidth
           onClick={handleManual}
-          disabled={isSubmitting || !manualCode.trim()}
+          disabled={isSubmitting || manualCode.trim().length < 3}
           loading={isSubmitting}
           className="!bg-green-600 !text-white hover:!bg-green-700">
-          Confirm Receipt
+          Process
         </Button>
         <button
           onClick={fetchUnlinked}
@@ -162,7 +162,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const method        = methods.find((m) => m.payment_method_id === line.methodId);
   const customerPhone = useAuthStore((s) => s.user)?.phone || '';
 
-  const [mpesaMode,   setMpesaMode]   = useState('stk');
+  const [mpesaMode,   setMpesaMode]   = useState('manual');
   const [phone,       setPhone]       = useState(customerPhone);
   const [manualCode,  setManualCode]  = useState('');
   const [stkState,    setStkState]    = useState('idle');   // idle|sending|waiting|done|failed
@@ -257,6 +257,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
 
       } else if (result.status === 'cancelled') {
         clearInterval(pollRef.current);
+        stopSession();
         setStkState('failed');
         setStkError('Customer cancelled the M-Pesa prompt. Tap "Resend" to try again.');
 
@@ -272,6 +273,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   };
 
   const handleSendSTK = () => {
+    if (stkState !== 'idle') return;
     if (!phone.trim()) { toast.error('Enter a phone number'); return; }
     setStkState('sending');
     setStkError('');
@@ -415,6 +417,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
                   <Button size="sm" fullWidth
                     icon={<Search className="h-3.5 w-3.5" />}
                     onClick={() => {
+                      stopSession();
                       setStkState('idle');
                       setMpesaMode('manual');
                       setAutoLookup(true);

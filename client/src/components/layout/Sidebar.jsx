@@ -205,7 +205,7 @@ function SuperAdminNav({ collapsed }) {
 
 function TenantNav({ collapsed, hasCapability }) {
   const user = useAuthStore((s) => s.user);
-  const hasFinance  = user?.planFeatures?.hasFinance   ?? false;
+  const hasFinance  = (user?.planFeatures?.hasFinance ?? false) && user?.role !== 'branch_manager';
   const hasApiAccess = user?.planFeatures?.hasApiAccess ?? false;
 
   return (

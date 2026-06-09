@@ -95,9 +95,7 @@ async function seed() {
         (gen_random_uuid(), $1,  'company_admin',      TRUE),
         (gen_random_uuid(), $1,  'branch_manager',     TRUE),
         (gen_random_uuid(), $1,  'cashier',            TRUE),
-        (gen_random_uuid(), $1,  'inventory_manager',  TRUE),
         (gen_random_uuid(), $1,  'accountant',         TRUE),
-        (gen_random_uuid(), $1,  'sales_staff',        TRUE),
         (gen_random_uuid(), $2,  'company_admin',      TRUE),
         (gen_random_uuid(), $2,  'cashier',            TRUE)
       ON CONFLICT (company_id, role_name) DO NOTHING
@@ -146,7 +144,8 @@ async function seed() {
                           'view_reports','manage_customers'];
     const adminPerms   = [...managerPerms, 'manage_products','manage_users','manage_settings',
                           'view_all_branches','export_reports'];
-    const invMgrPerms  = ['view_inventory','adjust_stock','transfer_stock','view_products','view_reports'];
+    const accountantPerms = ['view_sales','view_inventory','adjust_stock','view_products',
+                             'manage_products','view_customers','view_reports','view_all_branches','export_reports'];
 
     const insertRolePerms = async (roleId, codes) => {
       for (const code of codes) {
@@ -160,19 +159,19 @@ async function seed() {
       }
     };
 
-    const fmCashierId  = roleByName('cashier',           freshmart.company_id);
-    const fmManagerId  = roleByName('branch_manager',    freshmart.company_id);
-    const fmAdminId    = roleByName('company_admin',     freshmart.company_id);
-    const fmInvMgrId   = roleByName('inventory_manager', freshmart.company_id);
-    const superAdminId = roleByName('super_admin');
-    const tzAdminId    = roleByName('company_admin',     techzone.company_id);
-    const tzCashierId  = roleByName('cashier',           techzone.company_id);
+    const fmCashierId    = roleByName('cashier',        freshmart.company_id);
+    const fmManagerId    = roleByName('branch_manager', freshmart.company_id);
+    const fmAdminId      = roleByName('company_admin',  freshmart.company_id);
+    const fmAccountantId = roleByName('accountant',     freshmart.company_id);
+    const superAdminId   = roleByName('super_admin');
+    const tzAdminId      = roleByName('company_admin',  techzone.company_id);
+    const tzCashierId    = roleByName('cashier',        techzone.company_id);
 
-    await insertRolePerms(fmCashierId,  cashierPerms);
-    await insertRolePerms(fmManagerId,  managerPerms);
-    await insertRolePerms(fmAdminId,    adminPerms);
-    await insertRolePerms(fmInvMgrId,   invMgrPerms);
-    await insertRolePerms(superAdminId, adminPerms);
+    await insertRolePerms(fmCashierId,    cashierPerms);
+    await insertRolePerms(fmManagerId,    managerPerms);
+    await insertRolePerms(fmAdminId,      adminPerms);
+    await insertRolePerms(fmAccountantId, accountantPerms);
+    await insertRolePerms(superAdminId,   adminPerms);
     await insertRolePerms(tzAdminId,    adminPerms);
     await insertRolePerms(tzCashierId,  cashierPerms);
     console.log('  ✓ Role permissions');

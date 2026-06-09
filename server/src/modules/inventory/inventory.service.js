@@ -140,6 +140,61 @@ async function adjustStock(companyId, userId, data) {
   });
 }
 
+async function adjustStockBulk(companyId, userId, items) {
+  if (!Array.isArray(items) || !items.length) throw AppError.badRequest('items array is required');
+
+  return transaction(async (client) => {
+    const results = [];
+
+    for (const item of items) {
+      const { product_id, branch_id, adjustment, notes } = item;
+      if (!product_id || !branch_id) throw AppError.badRequest('Each item requires product_id and branch_id');
+      const qty = parseFloat(adjustment);
+      if (!qty || qty === 0) throw AppError.badRequest('Adjustment quantity cannot be zero');
+
+      const { rows } = await client.query(`
+        SELECT pbi.quantity_available, pbi.reorder_level,
+               p.product_name, p.sku,
+               b.branch_name,
+               c.contact_email, c.company_name
+        FROM product_branch_inventory pbi
+        JOIN products  p ON p.product_id = pbi.product_id AND p.company_id = $1
+        JOIN branches  b ON b.branch_id  = $3
+        JOIN companies c ON c.company_id = $1
+        WHERE pbi.product_id = $2 AND pbi.branch_id = $3
+        FOR UPDATE
+      `, [companyId, product_id, branch_id]);
+
+      if (!rows.length) throw AppError.notFound(`Inventory record for product ${product_id}`);
+
+      const { product_name, sku, branch_name, contact_email, company_name } = rows[0];
+      const reorderLevel = parseInt(rows[0].reorder_level) || 0;
+      const current = parseFloat(rows[0].quantity_available);
+      const newQty  = current + qty;
+      if (newQty < 0) throw AppError.unprocessable(`Cannot reduce ${product_name} below zero. Current stock: ${current}`);
+
+      await client.query(`
+        UPDATE product_branch_inventory
+        SET quantity_available = $1, last_updated = now()
+        WHERE product_id = $2 AND branch_id = $3
+      `, [newQty, product_id, branch_id]);
+
+      if (reorderLevel > 0 && newQty <= reorderLevel && contact_email) {
+        sendMail({
+          to:      contact_email,
+          subject: `Low Stock Alert — ${product_name} at ${branch_name}`,
+          html: `<p>Hi ${company_name} team,</p><p>${product_name}${sku ? ` (${sku})` : ''} at ${branch_name} is at ${newQty} (reorder level: ${reorderLevel}).</p>`,
+          text: `Low Stock Alert: ${product_name} at ${branch_name} — stock ${newQty} at or below reorder level ${reorderLevel}.`,
+        }).catch(() => {});
+      }
+
+      results.push({ product_name, quantity_before: current, quantity_after: newQty, adjustment: qty, notes });
+    }
+
+    return results;
+  });
+}
+
 async function updateReorderLevel(companyId, productId, branchId, data) {
   const { reorder_level } = data;
   const { rows } = await query(`
@@ -153,4 +208,4 @@ async function updateReorderLevel(companyId, productId, branchId, data) {
   return rows[0];
 }
 
-module.exports = { listInventory, adjustStock, updateReorderLevel };
+module.exports = { listInventory, adjustStock, adjustStockBulk, updateReorderLevel };

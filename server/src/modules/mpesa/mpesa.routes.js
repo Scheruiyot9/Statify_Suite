@@ -18,7 +18,7 @@ const stkPushSchema = Joi.object({
 });
 
 const manualSchema = Joi.object({
-  receiptNumber:    Joi.string().alphanum().min(6).max(20).required(),
+  receiptNumber:    Joi.string().alphanum().min(3).max(20).required(),
   amount:           Joi.number().positive().required(),
   phone:            phone.allow(null, ''),
   accountReference: Joi.string().max(12).allow(null, ''),

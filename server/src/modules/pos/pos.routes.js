@@ -11,6 +11,9 @@ router.use(authenticate, attachTenant, verifyTenant, scopeTenant, requireTenantC
 // ── POS Product Catalog ───────────────────────────────────────────────────────
 router.get('/products',                  requirePermission('open_pos_session'), controller.products);
 
+// ── Expense accounts (cashier-accessible, finance module only) ────────────────
+router.get('/expense-accounts',          requirePermission('open_pos_session'), controller.expenseAccounts);
+
 // ── Payment methods ───────────────────────────────────────────────────────────
 router.get('/payment-methods',           controller.paymentMethods);
 router.post('/payment-methods',          requireRole('company_admin'), controller.createPaymentMethod);
@@ -28,6 +31,8 @@ router.get('/sessions/active',           requirePermission('open_pos_session'), 
 router.post('/sessions',                 requirePermission('open_pos_session'), controller.openSession);
 router.get('/sessions/:id/summary',      requireRole('cashier'),        controller.sessionSummary);
 router.patch('/sessions/:id/close',      requireRole('cashier'),        controller.closeSession);
+router.post('/sessions/:id/cash-outs',   requireRole('cashier'),        controller.cashOut);
+router.get('/sessions/:id/cash-outs',    requireRole('cashier'),        controller.cashOuts);
 
 // ── Sessions — branch manager level ──────────────────────────────────────────
 router.get('/sessions',                  requireRole('branch_manager'), controller.listSessions);

@@ -63,20 +63,14 @@ export const ROLE_CAPABILITIES = {
   accountant: [
     'dashboard.view',
     'products.view',
+    'products.manage',
     'inventory.view',
+    'inventory.adjust',
     'customers.view',
     'sales.view',
     'returns.view',
     'reports.view',
     'mpesa.view',
-  ],
-  inventory_manager: [
-    'dashboard.view',
-    'products.view',
-    'products.manage',
-    'inventory.view',
-    'inventory.adjust',
-    'reports.view',
   ],
   cashier: [
     'dashboard.view',
@@ -86,11 +80,6 @@ export const ROLE_CAPABILITIES = {
     'customers.create',
     'sales.view',
     'returns.view',
-  ],
-  sales_staff: [
-    'dashboard.view',
-    'products.view',
-    'customers.view',
   ],
 };
 

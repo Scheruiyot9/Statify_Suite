@@ -17,6 +17,10 @@ router.post('/adjust',
   requireBranchAccess('branch_id'),
   controller.adjust
 );
+router.post('/adjust-bulk',
+  requirePermission('adjust_stock'),
+  controller.adjustBulk
+);
 router.put('/:productId/branches/:branchId/reorder',
   requirePermission('adjust_stock'),
   requireBranchAccess('branchId'),

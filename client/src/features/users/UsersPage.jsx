@@ -11,12 +11,10 @@ import { useAuthStore }  from '@/app/store';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ROLE_COLORS = {
-  company_admin:    'bg-purple-100 text-purple-700',
-  branch_manager:   'bg-blue-100 text-blue-700',
-  cashier:          'bg-green-100 text-green-700',
-  inventory_manager:'bg-orange-100 text-orange-700',
-  accountant:       'bg-teal-100 text-teal-700',
-  sales_staff:      'bg-yellow-100 text-yellow-700',
+  company_admin:  'bg-purple-100 text-purple-700',
+  branch_manager: 'bg-blue-100 text-blue-700',
+  cashier:        'bg-green-100 text-green-700',
+  accountant:     'bg-teal-100 text-teal-700',
 };
 
 function RoleBadge({ role }) {

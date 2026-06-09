@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -8,6 +8,8 @@ import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
+
+// ── Single-item adjust form ───────────────────────────────────────────────────
 
 function AdjustForm({ item, onSave, onClose }) {
   const [qty, setQty]     = useState('');
@@ -63,14 +65,187 @@ function AdjustForm({ item, onSave, onClose }) {
   );
 }
 
+// ── Bulk adjust modal ─────────────────────────────────────────────────────────
+
+const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none';
+
+function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
+  // rows keyed by product_id+branch_id; initialise from selected items
+  const [rows, setRows] = useState(
+    items.map((i) => ({
+      key: `${i.product_id}:${i.branch_id}`,
+      product_id:          i.product_id,
+      branch_id:           i.branch_id,
+      product_name:        i.product_name,
+      branch_name:         i.branch_name,
+      quantity_available:  i.quantity_available,
+      adjustment:          '',
+      notes:               '',
+    }))
+  );
+
+  const usedKeys = new Set(rows.map((r) => r.key));
+
+  const addRow = (inv) => {
+    const key = `${inv.product_id}:${inv.branch_id}`;
+    if (usedKeys.has(key)) return;
+    setRows((prev) => [...prev, {
+      key,
+      product_id:         inv.product_id,
+      branch_id:          inv.branch_id,
+      product_name:       inv.product_name,
+      branch_name:        inv.branch_name,
+      quantity_available: inv.quantity_available,
+      adjustment:         '',
+      notes:              '',
+    }]);
+  };
+
+  const removeRow = (key) => setRows((prev) => prev.filter((r) => r.key !== key));
+  const updateRow = (key, field, value) =>
+    setRows((prev) => prev.map((r) => r.key === key ? { ...r, [field]: value } : r));
+
+  const validRows = rows.filter((r) => {
+    const n = parseFloat(r.adjustment);
+    return !isNaN(n) && n !== 0 && (r.quantity_available + n) >= 0;
+  });
+
+  const handleSubmit = () => {
+    if (!validRows.length) return toast.error('Enter valid adjustments for at least one item');
+    onSave(validRows.map((r) => ({
+      product_id: r.product_id,
+      branch_id:  r.branch_id,
+      adjustment: parseFloat(r.adjustment),
+      notes:      r.notes,
+    })));
+  };
+
+  const availableToAdd = allInventory.filter((i) => !usedKeys.has(`${i.product_id}:${i.branch_id}`));
+
+  return (
+    <Modal open onClose={onClose} title="Bulk Stock Adjustment" size="xl">
+      <div className="space-y-4">
+
+        {/* Row table */}
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="py-2 pl-3 text-left text-xs font-medium text-gray-500">Product</th>
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Branch</th>
+                <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-20">Current</th>
+                <th className="py-2 px-2 text-center text-xs font-medium text-gray-500 w-32">Adjustment</th>
+                <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-20">New Qty</th>
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500">Notes</th>
+                <th className="py-2 pr-3 w-8" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((row) => {
+                const n       = parseFloat(row.adjustment);
+                const newQty  = isNaN(n) ? null : row.quantity_available + n;
+                const invalid = newQty !== null && newQty < 0;
+                return (
+                  <tr key={row.key} className={invalid ? 'bg-red-50' : ''}>
+                    <td className="py-2 pl-3">
+                      <p className="font-medium text-gray-900 text-xs">{row.product_name}</p>
+                    </td>
+                    <td className="py-2 px-2 text-xs text-gray-500 hidden sm:table-cell">{row.branch_name}</td>
+                    <td className="py-2 px-2 text-right text-xs font-semibold text-gray-700">{row.quantity_available}</td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="number"
+                        value={row.adjustment}
+                        onChange={(e) => updateRow(row.key, 'adjustment', e.target.value)}
+                        placeholder="e.g. 10 or -5"
+                        className={`w-full rounded border px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 ${
+                          invalid
+                            ? 'border-red-400 focus:ring-red-400'
+                            : 'border-gray-300 focus:ring-primary-400'
+                        }`}
+                      />
+                    </td>
+                    <td className={`py-2 px-2 text-right text-xs font-bold ${invalid ? 'text-red-600' : newQty !== null ? 'text-green-700' : 'text-gray-400'}`}>
+                      {newQty !== null ? newQty : '—'}
+                    </td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="text"
+                        value={row.notes}
+                        onChange={(e) => updateRow(row.key, 'notes', e.target.value)}
+                        placeholder="Reason (optional)"
+                        className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
+                      />
+                    </td>
+                    <td className="py-2 pr-3 text-center">
+                      <button onClick={() => removeRow(row.key)}
+                        className="text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-xs text-gray-400">
+                    No items added — use the dropdown below to add products.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Add more items */}
+        {availableToAdd.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 flex-shrink-0">Add product:</span>
+            <select
+              className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-sm bg-white focus:border-primary-500 focus:outline-none"
+              value=""
+              onChange={(e) => {
+                const inv = allInventory.find(
+                  (i) => `${i.product_id}:${i.branch_id}` === e.target.value
+                );
+                if (inv) addRow(inv);
+              }}
+            >
+              <option value="">— Select a product to add —</option>
+              {availableToAdd.map((i) => (
+                <option key={`${i.product_id}:${i.branch_id}`} value={`${i.product_id}:${i.branch_id}`}>
+                  {i.product_name} · {i.branch_name} (stock: {i.quantity_available})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400">
+          {validRows.length} of {rows.length} row{rows.length !== 1 ? 's' : ''} ready to apply.
+        </p>
+
+        <div className="flex justify-end gap-3 pt-1">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} isLoading={isSaving} disabled={!validRows.length}>
+            Apply {validRows.length > 0 ? `${validRows.length} Adjustment${validRows.length > 1 ? 's' : ''}` : 'Adjustments'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function InventoryPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
   const canAdjustStock = hasCapability('inventory.adjust');
-  const [search, setSearch]       = useState('');
-  const [lowStock, setLowStock]   = useState(false);
-  const [page, setPage]           = useState(1);
+  const [search, setSearch]         = useState('');
+  const [lowStock, setLowStock]     = useState(false);
+  const [page, setPage]             = useState(1);
   const [adjustItem, setAdjustItem] = useState(null);
+  const [selected, setSelected]     = useState(new Set()); // keys: product_id:branch_id
+  const [bulkOpen, setBulkOpen]     = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory', search, lowStock, page],
@@ -90,15 +265,44 @@ export default function InventoryPage() {
     onError: (e) => toast.error(e.response?.data?.message || 'Adjustment failed'),
   });
 
+  const bulkMut = useMutation({
+    mutationFn: (items) => api.post('/inventory/adjust-bulk', { items }),
+    onSuccess: (res) => {
+      const results = res.data.data;
+      toast.success(`${results.length} adjustment${results.length > 1 ? 's' : ''} applied`);
+      qc.invalidateQueries(['inventory']);
+      setBulkOpen(false);
+      setSelected(new Set());
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Bulk adjustment failed'),
+  });
+
   const inventory = data?.inventory ?? [];
   const total     = data?.total     ?? 0;
   const pages     = data?.pages     ?? 1;
   const lowCount  = inventory.filter((i) => i.is_low_stock).length;
 
+  const toggleSelect = (key) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const toggleAll = () => {
+    if (selected.size === inventory.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(inventory.map((i) => `${i.product_id}:${i.branch_id}`)));
+    }
+  };
+
+  const selectedItems = inventory.filter((i) => selected.has(`${i.product_id}:${i.branch_id}`));
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search by product name or SKU…"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -115,6 +319,12 @@ export default function InventoryPage() {
             {lowCount} low stock
           </div>
         )}
+        {canAdjustStock && selected.size > 0 && (
+          <Button size="sm" onClick={() => setBulkOpen(true)}>
+            <Layers className="h-4 w-4 mr-1" />
+            Adjust {selected.size} selected
+          </Button>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -123,6 +333,14 @@ export default function InventoryPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
+                {canAdjustStock && (
+                  <th className="px-4 py-3 w-8">
+                    <input type="checkbox"
+                      checked={inventory.length > 0 && selected.size === inventory.length}
+                      onChange={toggleAll}
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Category</th>
@@ -135,45 +353,55 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {inventory.map((item, i) => (
-                <tr key={`${item.product_id}-${item.branch_id}`}
-                  className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${item.is_low_stock ? 'bg-red-50/30' : ''}`}>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{item.product_name}</p>
-                    <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
-                      {item.quantity_available}
-                    </span>
-                    <span className="text-xs text-gray-400 ml-1">{item.unit_of_measure}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-500 hidden lg:table-cell">{item.reorder_level}</td>
-                  <td className="px-4 py-3 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
-                  <td className="px-4 py-3 text-center">
-                    {item.is_low_stock
-                      ? <span className="flex items-center justify-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                          <AlertTriangle className="h-3 w-3" /> Low
-                        </span>
-                      : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">OK</span>}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
-                    {item.last_updated ? formatDate(item.last_updated) : '—'}
-                  </td>
-                  {canAdjustStock && (
+              {inventory.map((item) => {
+                const key = `${item.product_id}:${item.branch_id}`;
+                const isSelected = selected.has(key);
+                return (
+                  <tr key={key}
+                    className={`hover:bg-gray-50 transition-colors ${item.is_low_stock ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-primary-50/40' : ''}`}>
+                    {canAdjustStock && (
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(key)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
-                      <button onClick={() => setAdjustItem(item)}
-                        className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors">
-                        Adjust
-                      </button>
+                      <p className="font-medium text-gray-900">{item.product_name}</p>
+                      <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
+                        {item.quantity_available}
+                      </span>
+                      <span className="text-xs text-gray-400 ml-1">{item.unit_of_measure}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-500 hidden lg:table-cell">{item.reorder_level}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
+                    <td className="px-4 py-3 text-center">
+                      {item.is_low_stock
+                        ? <span className="flex items-center justify-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                            <AlertTriangle className="h-3 w-3" /> Low
+                          </span>
+                        : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">OK</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
+                      {item.last_updated ? formatDate(item.last_updated) : '—'}
+                    </td>
+                    {canAdjustStock && (
+                      <td className="px-4 py-3 text-center">
+                        <button onClick={() => setAdjustItem(item)}
+                          className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors">
+                          Adjust
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
               {inventory.length === 0 && (
-                <tr><td colSpan={canAdjustStock ? 9 : 8} className="py-12 text-center text-gray-400">No inventory records found</td></tr>
+                <tr><td colSpan={canAdjustStock ? 10 : 8} className="py-12 text-center text-gray-400">No inventory records found</td></tr>
               )}
             </tbody>
           </table>
@@ -190,9 +418,21 @@ export default function InventoryPage() {
         )}
       </div>
 
+      {/* Single adjust modal */}
       <Modal open={canAdjustStock && !!adjustItem} onClose={() => setAdjustItem(null)} title="Adjust Stock" size="sm">
         <AdjustForm item={adjustItem} onClose={() => setAdjustItem(null)} onSave={(d) => adjustMut.mutate(d)} />
       </Modal>
+
+      {/* Bulk adjust modal */}
+      {canAdjustStock && bulkOpen && (
+        <BulkAdjustModal
+          items={selectedItems}
+          allInventory={inventory}
+          onClose={() => setBulkOpen(false)}
+          onSave={(items) => bulkMut.mutate(items)}
+          isSaving={bulkMut.isPending}
+        />
+      )}
     </div>
   );
 }
