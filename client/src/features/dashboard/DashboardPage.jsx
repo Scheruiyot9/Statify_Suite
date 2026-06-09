@@ -109,17 +109,19 @@ function BarChart({ data, color = '#FFA916' }) {
 }
 
 // ── Stat card ──────────────────────────────────────────────────────────────────
-function StatCard({ label, value, Icon, iconBg, sub }) {
+function StatCard({ label, value, Icon, gradient, iconColor, sub, accent }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900 break-all leading-tight">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
+    <div className={`relative overflow-hidden rounded-2xl p-5 shadow-sm ${gradient}`}>
+      <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-white/10" />
+      <div className="absolute right-4 bottom-2 h-12 w-12 rounded-full bg-white/5" />
+      <div className="relative flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <p className={`text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</p>
+          <p className="mt-1.5 text-3xl font-extrabold leading-none text-white break-all">{value}</p>
+          {sub && <p className={`mt-1.5 text-xs ${accent} flex items-center gap-1`}>{sub}</p>}
         </div>
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-          <Icon className="h-5 w-5 text-white" />
+        <div className="ml-3 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/20">
+          <Icon className={`h-5 w-5 ${iconColor}`} />
         </div>
       </div>
     </div>
@@ -143,12 +145,19 @@ function StatusBadge({ status }) {
 }
 
 // ── Section card wrapper ───────────────────────────────────────────────────────
-function Card({ title, icon: Icon, children, className = '' }) {
+function Card({ title, icon: Icon, children, className = '', action }) {
   return (
-    <div className={`rounded-xl border border-gray-100 bg-white shadow-sm ${className}`}>
-      <div className="flex items-center gap-2 border-b border-gray-50 px-5 py-4">
-        {Icon && <Icon className="h-4 w-4 text-gray-400" />}
-        <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+    <div className={`rounded-2xl border border-gray-100 bg-white shadow-sm ${className}`}>
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
+        <div className="flex items-center gap-2">
+          {Icon && (
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50">
+              <Icon className="h-3.5 w-3.5 text-primary-600" />
+            </div>
+          )}
+          <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+        </div>
+        {action}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -163,36 +172,25 @@ const PERIOD_OPTIONS = [
 ];
 
 function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
-  const grouped   = groupTrend(trend, trendDays ?? 6);
+  const grouped     = groupTrend(trend, trendDays ?? 6);
   const periodTotal = grouped.reduce((s, d) => s + (d.total || 0), 0);
-  const bucketLabel = trendDays <= 31 ? 'days' : trendDays <= 89 ? 'weeks' : 'months';
+
+  const periodToggle = (
+    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
+      {PERIOD_OPTIONS.map((p) => (
+        <button key={p.label} onClick={() => onPeriod(p.label)}
+          className={`px-2.5 py-1 font-medium transition-colors ${
+            period === p.label ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+          }`}>{p.label}</button>
+      ))}
+    </div>
+  );
 
   return (
-    <Card title="Revenue Trend" icon={TrendingUp}>
-      {/* Period tabs */}
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-gray-400">
-          {bucketLabel === 'days'   && `Last ${trendDays + 1} days`}
-          {bucketLabel === 'weeks'  && `${grouped.length} week${grouped.length !== 1 ? 's' : ''}`}
-          {bucketLabel === 'months' && `${grouped.length} months`}
-          {': '}
-          <span className="font-semibold text-gray-700">{formatCurrency(periodTotal)}</span>
-        </p>
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-          {PERIOD_OPTIONS.map((p) => (
-            <button
-              key={p.label}
-              onClick={() => onPeriod(p.label)}
-              className={`px-2.5 py-1 font-medium transition-colors ${
-                period === p.label
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+    <Card title="Revenue Trend" icon={TrendingUp} action={periodToggle}>
+      <div className="mb-4">
+        <p className="text-2xl font-extrabold text-gray-900">{formatCurrency(periodTotal)}</p>
+        <p className="text-xs text-gray-400 mt-0.5">Total revenue for selected period</p>
       </div>
       <BarChart data={grouped} />
     </Card>
@@ -289,6 +287,12 @@ function CategoryBreakdownCard({ categories }) {
 }
 
 // ── Top products card ──────────────────────────────────────────────────────────
+const RANK_STYLES = [
+  'bg-amber-400 text-white',
+  'bg-gray-300 text-gray-700',
+  'bg-orange-300 text-white',
+];
+
 function TopProductsCard({ products }) {
   if (!products?.length) {
     return (
@@ -297,28 +301,25 @@ function TopProductsCard({ products }) {
       </Card>
     );
   }
-
   const maxRevenue = Math.max(...products.map((p) => p.revenue), 1);
 
   return (
     <Card title="Top Products (30 days)" icon={Package}>
       <div className="space-y-3">
         {products.map((p, i) => (
-          <div key={p.sku}>
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="font-medium text-gray-700 truncate max-w-[130px]" title={p.productName}>
-                <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold">
-                  {i + 1}
-                </span>
-                {p.productName}
-              </span>
-              <span className="text-gray-500">{formatCurrency(p.revenue)}</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-              <div
-                className="h-full rounded-full bg-primary-500 transition-all duration-500"
-                style={{ width: `${(p.revenue / maxRevenue) * 100}%` }}
-              />
+          <div key={p.sku} className="flex items-center gap-3">
+            <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[i] || 'bg-gray-100 text-gray-400'}`}>
+              {i + 1}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-700 truncate max-w-[140px]" title={p.productName}>{p.productName}</span>
+                <span className="text-xs font-semibold text-gray-900 ml-2 flex-shrink-0">{formatCurrency(p.revenue)}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full rounded-full bg-primary-500 transition-all duration-700"
+                  style={{ width: `${(p.revenue / maxRevenue) * 100}%` }} />
+              </div>
             </div>
           </div>
         ))}
@@ -329,55 +330,46 @@ function TopProductsCard({ products }) {
 
 // ── Recent transactions table ──────────────────────────────────────────────────
 function RecentTransactionsCard({ transactions }) {
+  const viewAll = <a href="/app/sales" className="text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors">View all →</a>;
+
   if (!transactions?.length) {
     return (
-      <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2">
-        <p className="text-sm text-gray-400">No transactions yet today.</p>
+      <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2" action={viewAll}>
+        <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+          <ShoppingCart className="h-8 w-8 text-gray-200" />
+          <p className="text-sm text-gray-400">No transactions yet today.</p>
+        </div>
       </Card>
     );
   }
 
   return (
-    <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2">
+    <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2" action={viewAll}>
       <div className="overflow-x-auto -mx-5 px-5">
-        <table className="w-full text-sm">
+        <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-100 text-xs font-medium uppercase tracking-wide text-gray-400">
-              <th className="pb-2 text-left">Ref</th>
-              <th className="pb-2 text-left">Customer</th>
-              <th className="pb-2 text-left hidden md:table-cell">Cashier</th>
-              <th className="pb-2 text-left hidden lg:table-cell">Branch</th>
-              <th className="pb-2 text-right">Amount</th>
-              <th className="pb-2 text-center hidden sm:table-cell">Method</th>
-              <th className="pb-2 text-center">Status</th>
+            <tr className="border-b border-gray-100">
+              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Ref</th>
+              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Customer</th>
+              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cashier</th>
+              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Branch</th>
+              <th className="pb-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400">Amount</th>
+              <th className="pb-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Method</th>
+              <th className="pb-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody>
             {transactions.map((t) => (
-              <tr key={t.transactionId} className="hover:bg-gray-50/50 transition-colors">
-                <td className="py-2.5 pr-4 font-mono text-xs text-gray-600">
-                  {t.transactionNumber}
+              <tr key={t.transactionId} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors">
+                <td className="py-3 pr-4 font-mono text-xs font-medium text-primary-600">{t.transactionNumber}</td>
+                <td className="py-3 pr-4 text-sm text-gray-800 truncate max-w-[110px]">{t.customerName}</td>
+                <td className="py-3 pr-4 text-xs text-gray-500 hidden md:table-cell truncate max-w-[90px]">{t.cashierName}</td>
+                <td className="py-3 pr-4 text-xs text-gray-500 hidden lg:table-cell truncate max-w-[100px]">{t.branchName}</td>
+                <td className="py-3 pr-4 text-right text-sm font-bold text-gray-900">{formatCurrency(t.totalAmount)}</td>
+                <td className="py-3 pr-4 text-center hidden sm:table-cell">
+                  <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">{t.paymentMethod}</span>
                 </td>
-                <td className="py-2.5 pr-4 text-gray-800 truncate max-w-[110px]">
-                  {t.customerName}
-                </td>
-                <td className="py-2.5 pr-4 text-gray-500 hidden md:table-cell truncate max-w-[90px]">
-                  {t.cashierName}
-                </td>
-                <td className="py-2.5 pr-4 text-gray-500 hidden lg:table-cell truncate max-w-[100px]">
-                  {t.branchName}
-                </td>
-                <td className="py-2.5 pr-4 text-right font-semibold text-gray-900">
-                  {formatCurrency(t.totalAmount)}
-                </td>
-                <td className="py-2.5 pr-4 text-center hidden sm:table-cell">
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                    {t.paymentMethod}
-                  </span>
-                </td>
-                <td className="py-2.5 text-center">
-                  <StatusBadge status={t.status} />
-                </td>
+                <td className="py-3 text-center"><StatusBadge status={t.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -690,68 +682,115 @@ export default function DashboardPage() {
   const today = new Date().toLocaleDateString('en-KE', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
+  const greeting = (() => {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  })();
 
   return (
     <div className="space-y-6">
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {canViewSales && (
-          <>
-            <StatCard
-              label="Today's Sales"
-              value={formatCurrency(data?.todaySales ?? 0)}
-              Icon={TrendingUp}
-              iconBg="bg-secondary-500"
-              sub={`${data?.todayTransactions ?? 0} transactions`}
-            />
-            <StatCard
-              label="Transactions"
-              value={data?.todayTransactions ?? 0}
-              Icon={ShoppingCart}
-              iconBg="bg-green-500"
-              sub="completed today"
-            />
-          </>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs text-gray-400 mb-0.5">{today}</p>
+          <h1 className="text-xl font-bold text-gray-900">{greeting}, {user?.firstName ?? 'there'} 👋</h1>
+        </div>
+        {data && canViewSales && (
+          <div className="hidden sm:flex items-center gap-1.5 rounded-xl border border-green-100 bg-green-50 px-3 py-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            <span className="text-xs font-medium text-green-700">Live data</span>
+          </div>
         )}
-        {canViewInventory && (
+      </div>
+
+      {/* ── Hero stat strip ── */}
+      {canViewSales && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
-            label="Low Stock Items"
-            value={data?.lowStockCount ?? 0}
-            Icon={Package}
-            iconBg={data?.lowStockCount > 0 ? 'bg-red-500' : 'bg-gray-400'}
-            sub={data?.lowStockCount > 0 ? 'need restocking' : 'all healthy'}
+            label="Today's Sales"
+            value={formatCurrency(data?.todaySales ?? 0)}
+            Icon={TrendingUp}
+            gradient="bg-gradient-to-br from-primary-600 to-primary-800"
+            iconColor="text-white"
+            accent="text-primary-200"
+            sub={`${data?.todayTransactions ?? 0} transactions today`}
           />
-        )}
-      </div>
+          <StatCard
+            label="Transactions"
+            value={data?.todayTransactions ?? 0}
+            Icon={ShoppingCart}
+            gradient="bg-gradient-to-br from-secondary-500 to-secondary-700"
+            iconColor="text-white"
+            accent="text-secondary-200"
+            sub="completed today"
+          />
+          {canViewInventory && (
+            <StatCard
+              label="Low Stock"
+              value={data?.lowStockCount ?? 0}
+              Icon={Package}
+              gradient={data?.lowStockCount > 0
+                ? 'bg-gradient-to-br from-red-500 to-red-700'
+                : 'bg-gradient-to-br from-emerald-500 to-emerald-700'}
+              iconColor="text-white"
+              accent={data?.lowStockCount > 0 ? 'text-red-200' : 'text-emerald-200'}
+              sub={data?.lowStockCount > 0 ? 'items need restocking' : 'all stock healthy'}
+            />
+          )}
+          {canCompareBranches && data?.branchComparison?.length > 0 && (
+            <StatCard
+              label="Branches"
+              value={data.branchComparison.length}
+              Icon={Building2}
+              gradient="bg-gradient-to-br from-violet-500 to-violet-700"
+              iconColor="text-white"
+              accent="text-violet-200"
+              sub={`${formatCurrency(data.branchComparison.reduce((s,b) => s + b.todaySales, 0))} total today`}
+            />
+          )}
+        </div>
+      )}
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* ── Charts row ── */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         {canViewSales && (
-          <SalesTrendCard
-            trend={data?.salesTrend}
-            trendDays={data?.trendDays ?? 6}
-            period={trendPeriod}
-            onPeriod={setTrendPeriod}
-          />
+          <div className="lg:col-span-3">
+            <SalesTrendCard
+              trend={data?.salesTrend}
+              trendDays={data?.trendDays ?? 6}
+              period={trendPeriod}
+              onPeriod={setTrendPeriod}
+            />
+          </div>
         )}
-        {canCompareBranches
-          ? <BranchComparisonCard branches={data?.branchComparison} />
-          : canViewSales
-          ? <TopProductsCard products={data?.topProducts} />
-          : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-        }
+        <div className="lg:col-span-2">
+          {canCompareBranches
+            ? <BranchComparisonCard branches={data?.branchComparison} />
+            : canViewSales
+            ? <TopProductsCard products={data?.topProducts} />
+            : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
+          }
+        </div>
       </div>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {canViewSales && <RecentTransactionsCard transactions={data?.recentTransactions} />}
-        {canViewSales && <CategoryBreakdownCard categories={data?.categoryBreakdown} />}
-        {canCompareBranches
-          ? <TopProductsCard products={data?.topProducts} />
-          : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-        }
+      {/* ── Bottom grid ── */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {canViewSales && (
+          <div className="lg:col-span-2">
+            <RecentTransactionsCard transactions={data?.recentTransactions} />
+          </div>
+        )}
+        <div className="flex flex-col gap-5">
+          {canViewSales && <CategoryBreakdownCard categories={data?.categoryBreakdown} />}
+          {canCompareBranches && <TopProductsCard products={data?.topProducts} />}
+          {!canCompareBranches && canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />}
+        </div>
       </div>
+
     </div>
   );
 }
