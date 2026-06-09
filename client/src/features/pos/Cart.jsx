@@ -128,21 +128,25 @@ function QtyInput({ item }) {
   const updateQuantity = useCartStore((s) => s.updateQuantity);
 
   const commit = () => {
-    const n = parseInt(draft, 10);
-    if (!isNaN(n)) updateQuantity(item.product.product_id, n);
+    const n = parseFloat(draft);
+    if (!isNaN(n) && n > 0) updateQuantity(item.product.product_id, Math.round(n * 100) / 100);
     setEditing(false);
   };
+
+  const displayQty = Number.isInteger(item.quantity)
+    ? item.quantity
+    : item.quantity.toFixed(2).replace(/\.?0+$/, '');
 
   if (editing) {
     return (
       <input
-        type="number" min="1"
+        type="number" min="0.01" step="0.01"
         value={draft}
         autoFocus
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-        className="w-9 rounded border border-primary-400 px-0.5 py-0.5 text-center text-xs font-semibold focus:outline-none"
+        className="w-12 rounded border border-primary-400 px-0.5 py-0.5 text-center text-xs font-semibold focus:outline-none"
       />
     );
   }
@@ -152,7 +156,7 @@ function QtyInput({ item }) {
       title="Click to edit quantity"
       className="w-7 text-center text-xs font-bold text-gray-800 hover:text-primary-600 transition-colors"
     >
-      {item.quantity}
+      {displayQty}
     </button>
   );
 }
@@ -436,7 +440,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
     onCartCleared?.();
   };
 
-  const totalQty = items.reduce((n, i) => n + i.quantity, 0);
+  const totalQty = Math.round(items.reduce((n, i) => n + i.quantity, 0) * 100) / 100;
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
