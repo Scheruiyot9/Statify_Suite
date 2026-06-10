@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Minus, UserCircle2, Percent, ChevronDown, Gift,
   Clock, BadgeCheck, Phone, X, Pencil,
@@ -159,6 +159,58 @@ function QtyInput({ item }) {
       {displayQty}
     </button>
   );
+}
+
+// ── Editable unit price ───────────────────────────────────────────────────────
+function PriceInput({ item }) {
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState('');
+  const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
+
+  const commit = () => {
+    const n = parseFloat(draft);
+    if (!isNaN(n) && n >= 0) updateUnitPrice(item.product.product_id, Math.round(n * 100) / 100);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="number" min="0" step="0.01"
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+        className="w-20 rounded border border-primary-400 px-1 py-0.5 text-right text-[10px] font-semibold focus:outline-none"
+      />
+    );
+  }
+  return (
+    <button
+      onClick={() => { setDraft(String(item.unitPrice)); setEditing(true); }}
+      title="Click to edit price"
+      className="text-[10px] text-primary-600 underline decoration-dotted hover:text-primary-800 transition-colors"
+    >
+      {formatCurrency(item.unitPrice)}
+    </button>
+  );
+}
+
+// ── Partial-qty stepper helpers ───────────────────────────────────────────────
+const QTR = [0.25, 0.5, 0.75];
+
+function stepDown(qty) {
+  if (qty > 1) return Math.round((qty - 1) * 100) / 100;
+  if (qty === 1) return 0.75;
+  const idx = QTR.indexOf(qty);
+  return idx > 0 ? QTR[idx - 1] : 0.25; // floor at 0.25 (can't go lower)
+}
+
+function stepUp(qty) {
+  const idx = QTR.indexOf(qty);
+  if (idx !== -1 && qty < 1) return QTR[idx + 1] ?? 1;
+  return Math.round((qty + 1) * 100) / 100;
 }
 
 // ── Hold dialog ───────────────────────────────────────────────────────────────
@@ -397,6 +449,12 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   const { subtotal, tax, itemDiscounts, orderDiscountAmt, total } = totals();
   const holdCart = usePosDataStore((s) => s.holdCart);
 
+  // Read company POS settings from the cached query (AppLayout already fetches this)
+  const qc = useQueryClient();
+  const companySettings = qc.getQueryData(['my-company']);
+  const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
+  const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
+
   const [discountItemId, setDiscountItemId] = useState(null);
   const [orderDiscOpen,  setOrderDiscOpen]  = useState(false);
   const [holdDialogOpen, setHoldDialogOpen] = useState(false);
@@ -489,31 +547,50 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
                       {item.product.product_name}
                     </p>
                     <p className="flex items-center gap-1.5 text-[10px] text-gray-400 leading-snug">
-                      <span>{formatCurrency(item.unitPrice)}</span>
+                      {allowPriceEdit
+                        ? <PriceInput item={item} />
+                        : <span>{formatCurrency(item.unitPrice)}</span>
+                      }
                       <span className="font-mono truncate">{item.product.barcode || item.product.sku || `#${item.product.product_id}`}</span>
                     </p>
                   </div>
 
                   {/* Stepper */}
                   <div className="flex items-center gap-1 flex-shrink-0 w-28 justify-center">
-                    <button
-                      onClick={() => item.quantity > 1 && updateQuantity(item.product.product_id, item.quantity - 1)}
-                      disabled={item.quantity <= 1}
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                        item.quantity <= 1
-                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <QtyInput item={item} />
-                    <button
-                      onClick={() => updateQuantity(item.product.product_id, item.quantity + 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
+                    {(() => {
+                      const atMin = allowPartialQty ? item.quantity <= 0.25 : item.quantity <= 1;
+                      const handleDown = () => {
+                        if (atMin) return;
+                        const next = allowPartialQty ? stepDown(item.quantity) : item.quantity - 1;
+                        updateQuantity(item.product.product_id, next);
+                      };
+                      const handleUp = () => {
+                        const next = allowPartialQty ? stepUp(item.quantity) : item.quantity + 1;
+                        updateQuantity(item.product.product_id, next);
+                      };
+                      return (
+                        <>
+                          <button
+                            onClick={handleDown}
+                            disabled={atMin}
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                              atMin
+                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                            }`}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <QtyInput item={item} />
+                          <button
+                            onClick={handleUp}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Total */}

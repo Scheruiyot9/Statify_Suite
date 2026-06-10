@@ -1722,8 +1722,10 @@ function SecurityTab() {
   // super_admin has no company context.
   const isCompanyAdmin = userRole === 'company_admin';
 
-  const [timeoutVal,   setTimeoutVal]   = useState('');
-  const [sessionDays,  setSessionDays]  = useState('7');
+  const [timeoutVal,      setTimeoutVal]      = useState('');
+  const [sessionDays,     setSessionDays]     = useState('7');
+  const [allowPriceEdit,  setAllowPriceEdit]  = useState(false);
+  const [allowPartialQty, setAllowPartialQty] = useState(false);
 
   // Fetch current company settings (React Query v5: use useEffect, not onSuccess)
   const { data: companyData } = useQuery({
@@ -1740,8 +1742,20 @@ function SecurityTab() {
       setSessionDays(
         companyData.session_lifetime_days ? String(companyData.session_lifetime_days) : '7'
       );
+      setAllowPriceEdit(!!companyData.pos_allow_price_edit);
+      setAllowPartialQty(!!companyData.pos_allow_partial_qty);
     }
   }, [companyData]);
+
+  const savePosBehaviourMut = useMutation({
+    mutationFn: (patch) =>
+      api.patch('/companies/mine/profile', patch).then((r) => r.data.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
+      qc.invalidateQueries({ queryKey: ['my-company'] });
+      toast.success('POS settings saved');
+    },
+  });
 
   // Single mutation handles both settings in one PATCH
   const saveLockMut = useMutation({
@@ -1842,6 +1856,71 @@ function SecurityTab() {
             <p className="text-xs text-gray-400">
               For shift-based operations, 1 day ensures cashiers log in at the start of each shift.
             </p>
+          </div>
+
+          {/* POS Behaviour */}
+          <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
+                <Monitor className="h-5 w-5 text-primary-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">POS Behaviour</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Controls what cashiers can do at the point of sale.
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle: price edit */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div className="relative mt-0.5 flex-shrink-0">
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={allowPriceEdit}
+                  onChange={(e) => setAllowPriceEdit(e.target.checked)}
+                />
+                <div className={`h-5 w-9 rounded-full transition-colors ${allowPriceEdit ? 'bg-primary-500' : 'bg-gray-200'}`} />
+                <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowPriceEdit ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Allow price editing on cart</p>
+                <p className="text-xs text-gray-500">
+                  Cashiers can tap the unit price on any cart item to override it before checkout.
+                </p>
+              </div>
+            </label>
+
+            {/* Toggle: partial qty */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div className="relative mt-0.5 flex-shrink-0">
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={allowPartialQty}
+                  onChange={(e) => setAllowPartialQty(e.target.checked)}
+                />
+                <div className={`h-5 w-9 rounded-full transition-colors ${allowPartialQty ? 'bg-primary-500' : 'bg-gray-200'}`} />
+                <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowPartialQty ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Partial quantity stepping (¼ units)</p>
+                <p className="text-xs text-gray-500">
+                  The − button steps through 1 → 0.75 → 0.50 → 0.25. Useful for businesses that sell by weight or measure.
+                </p>
+              </div>
+            </label>
+
+            <Button
+              loading={savePosBehaviourMut.isPending}
+              onClick={() => savePosBehaviourMut.mutate({
+                pos_allow_price_edit:  allowPriceEdit,
+                pos_allow_partial_qty: allowPartialQty,
+              })}
+            >
+              Save POS Settings
+            </Button>
           </div>
         </>
       )}

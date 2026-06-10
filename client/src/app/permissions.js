@@ -71,6 +71,7 @@ export const ROLE_CAPABILITIES = {
     'sales.view',
     'returns.view',
     'reports.view',
+    'finance.view',
     'mpesa.view',
   ],
   cashier: [

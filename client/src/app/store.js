@@ -183,6 +183,19 @@ export const useCartStore = create((set, get) => ({
     });
   },
 
+  updateUnitPrice: (productId, newPrice) => {
+    const { defaultTax } = get();
+    set({
+      items: get().items.map((i) => {
+        if (i.product.product_id !== productId) return i;
+        const discount  = computeItemDiscount(i.quantity, newPrice, i.discountType, i.discountValue);
+        const lineTotal = i.quantity * newPrice - discount;
+        const taxAmount = extractTax(lineTotal, resolveItemTax(i.product, defaultTax));
+        return { ...i, unitPrice: newPrice, discount, lineTotal, taxAmount };
+      }),
+    });
+  },
+
   setItemDiscount: (productId, discountValue, discountType) => {
     const { defaultTax } = get();
     set({

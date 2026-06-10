@@ -127,7 +127,7 @@ function FinanceGroup({ collapsed, hasCapability }) {
   const user = useAuthStore((s) => s.user);
   const hasFinance = user?.planFeatures?.hasFinance ?? false;
 
-  if (!hasCapability('settings.manage') || !hasFinance) return null;
+  if ((!hasCapability('settings.manage') && !hasCapability('finance.view')) || !hasFinance) return null;
 
   return (
     <NavGroup id="finance" label="Finance" collapsed={collapsed} defaultOpen={false}>

@@ -298,7 +298,8 @@ async function updateCompany(companyId, data) {
 async function getMyCompany(companyId) {
   const { rows } = await query(
     `SELECT company_id, company_name, logo_url, tax_id,
-            lock_timeout_minutes, session_lifetime_days
+            lock_timeout_minutes, session_lifetime_days,
+            pos_allow_price_edit, pos_allow_partial_qty
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -306,7 +307,7 @@ async function getMyCompany(companyId) {
   return rows[0];
 }
 
-async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes, session_lifetime_days }) {
+async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes, session_lifetime_days, pos_allow_price_edit, pos_allow_partial_qty }) {
   // lock_timeout_minutes: 1-120 minutes, or null to disable
   const timeout = lock_timeout_minutes != null
     ? Math.min(120, Math.max(1, parseInt(lock_timeout_minutes, 10))) || null
@@ -320,16 +321,22 @@ async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes, sessio
         : 7)
     : null;
 
+  const priceEdit  = pos_allow_price_edit  != null ? Boolean(pos_allow_price_edit)  : null;
+  const partialQty = pos_allow_partial_qty != null ? Boolean(pos_allow_partial_qty) : null;
+
   const { rows } = await query(
     `UPDATE companies
         SET tax_id                = COALESCE($2, tax_id),
             lock_timeout_minutes  = $3,
             session_lifetime_days = COALESCE($4, session_lifetime_days),
+            pos_allow_price_edit  = COALESCE($5, pos_allow_price_edit),
+            pos_allow_partial_qty = COALESCE($6, pos_allow_partial_qty),
             updated_at            = now()
       WHERE company_id = $1
       RETURNING company_id, company_name, logo_url, tax_id,
-                lock_timeout_minutes, session_lifetime_days`,
-    [companyId, tax_id ?? null, timeout, sessionDays]
+                lock_timeout_minutes, session_lifetime_days,
+                pos_allow_price_edit, pos_allow_partial_qty`,
+    [companyId, tax_id ?? null, timeout, sessionDays, priceEdit, partialQty]
   );
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];
