@@ -451,10 +451,9 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
   // Read company POS settings from the cached query (AppLayout already fetches this)
   const qc = useQueryClient();
-  const isCompanyAdmin  = useAuthStore((s) => s.user?.role === 'company_admin');
   const companySettings = qc.getQueryData(['my-company']);
-  const allowPriceEdit  = isCompanyAdmin || (companySettings?.pos_allow_price_edit  ?? false);
-  const allowPartialQty = isCompanyAdmin || (companySettings?.pos_allow_partial_qty ?? false);
+  const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
+  const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
 
   const holdMut = useMutation({
     mutationFn: ({ label, cartData }) =>
