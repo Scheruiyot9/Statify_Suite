@@ -968,7 +968,14 @@ export default function PosTerminal() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const holdsCount   = usePosDataStore((s) => s.holds.length);
+  const { data: holdsData = [] } = useQuery({
+    queryKey: ['pos-holds', branchId],
+    queryFn:  () => api.get('/pos/holds', { params: { branchId } }).then((r) => r.data.data),
+    enabled:  !!branchId,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+  const holdsCount = holdsData.length;
   const offlineQueue = usePosDataStore((s) => s.offlineQueue);
   const markSynced   = usePosDataStore((s) => s.markSynced);
   const markFailed   = usePosDataStore((s) => s.markFailed);
@@ -1345,6 +1352,7 @@ export default function PosTerminal() {
       <HoldModal
         open={holdsOpen}
         onClose={() => setHoldsOpen(false)}
+        branchId={branchId}
       />
 
       <OfflineQueueModal

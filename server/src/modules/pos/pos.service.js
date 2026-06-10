@@ -720,6 +720,40 @@ async function listCashOuts(companyId, sessionId) {
   return rows;
 }
 
+// ── Hold Carts ────────────────────────────────────────────────────────────────
+
+async function createHold(companyId, branchId, userId, { label, cartData }) {
+  const { rows } = await query(
+    `INSERT INTO pos_holds (company_id, branch_id, created_by, label, cart_data)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING hold_id, label, created_at,
+               (SELECT first_name || ' ' || last_name FROM users WHERE user_id = $3) AS created_by_name`,
+    [companyId, branchId, userId, label || null, JSON.stringify(cartData)]
+  );
+  return rows[0];
+}
+
+async function listHolds(companyId, branchId) {
+  const { rows } = await query(
+    `SELECT h.hold_id, h.label, h.cart_data, h.created_at,
+            u.first_name || ' ' || u.last_name AS created_by_name
+       FROM pos_holds h
+       JOIN users u ON u.user_id = h.created_by
+      WHERE h.company_id = $1 AND h.branch_id = $2
+      ORDER BY h.created_at DESC`,
+    [companyId, branchId]
+  );
+  return rows;
+}
+
+async function deleteHold(companyId, holdId) {
+  const { rowCount } = await query(
+    `DELETE FROM pos_holds WHERE hold_id = $1 AND company_id = $2`,
+    [holdId, companyId]
+  );
+  if (!rowCount) throw AppError.notFound('Hold');
+}
+
 module.exports = {
   listSellableProducts,
   listPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
@@ -727,4 +761,5 @@ module.exports = {
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
   recordCashOut, listCashOuts,
+  createHold, listHolds, deleteHold,
 };

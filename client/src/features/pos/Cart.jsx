@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Plus, Minus, UserCircle2, Percent, ChevronDown, Gift,
   Clock, BadgeCheck, Phone, X, Pencil,
   RotateCcw, XCircle, Wallet, ShoppingCart, Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useCartStore, usePosDataStore } from '@/app/store';
+import { useCartStore, useAuthStore } from '@/app/store';
 import { formatCurrency } from '@/utils/formatters';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
@@ -447,13 +447,26 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
     orderDiscount, orderDiscountType, defaultTax, notes, setNotes,
   } = useCartStore();
   const { subtotal, tax, itemDiscounts, orderDiscountAmt, total } = totals();
-  const holdCart = usePosDataStore((s) => s.holdCart);
+  const branchId = session?.branch_id ?? useAuthStore.getState().user?.branchIds?.[0];
 
   // Read company POS settings from the cached query (AppLayout already fetches this)
   const qc = useQueryClient();
   const companySettings = qc.getQueryData(['my-company']);
   const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
   const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
+
+  const holdMut = useMutation({
+    mutationFn: ({ label, cartData }) =>
+      api.post('/pos/holds', { label, cartData, branchId }).then((r) => r.data.data),
+    onSuccess: (_, { label }) => {
+      qc.invalidateQueries({ queryKey: ['pos-holds'] });
+      clearCart();
+      setHoldDialogOpen(false);
+      toast.success(label ? `"${label}" held` : 'Cart held');
+      onCartCleared?.();
+    },
+    onError: () => toast.error('Failed to hold cart'),
+  });
 
   const [discountItemId, setDiscountItemId] = useState(null);
   const [orderDiscOpen,  setOrderDiscOpen]  = useState(false);
@@ -477,17 +490,16 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
   const handleHold = (label) => {
     const snap = useCartStore.getState();
-    holdCart({
-      items:             snap.items,
-      customer:          snap.customer,
-      notes:             snap.notes,
-      orderDiscount:     snap.orderDiscount,
-      orderDiscountType: snap.orderDiscountType,
-    }, label);
-    clearCart();
-    setHoldDialogOpen(false);
-    toast.success(label ? `"${label}" held` : 'Cart held');
-    onCartCleared?.();
+    holdMut.mutate({
+      label,
+      cartData: {
+        items:             snap.items,
+        customer:          snap.customer,
+        notes:             snap.notes,
+        orderDiscount:     snap.orderDiscount,
+        orderDiscountType: snap.orderDiscountType,
+      },
+    });
   };
 
   const handleCancelSale = () => {

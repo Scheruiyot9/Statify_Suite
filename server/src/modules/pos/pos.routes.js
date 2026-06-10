@@ -40,4 +40,9 @@ router.get('/sessions',                  requireRole('branch_manager'), controll
 router.get('/sessions/:id/detail',       requireRole('branch_manager'), controller.sessionDetail);
 router.patch('/sessions/:id/force-close',requireRole('branch_manager'), controller.forceCloseSession);
 
+// ── Hold Carts ────────────────────────────────────────────────────────────────
+router.get('/holds',                     requirePermission('open_pos_session'), controller.listHolds);
+router.post('/holds',                    requirePermission('open_pos_session'), controller.createHold);
+router.delete('/holds/:id',              requirePermission('open_pos_session'), controller.deleteHold);
+
 module.exports = router;

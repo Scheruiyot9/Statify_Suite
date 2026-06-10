@@ -147,6 +147,25 @@ const cashOuts = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+// ── Hold Carts ────────────────────────────────────────────────────────────────
+
+const createHold = async (req, res) => {
+  const branchId = resolveBranchId(req);
+  const result = await svc.createHold(req.tenantId, branchId, req.user.userId, req.body);
+  res.status(201).json({ success: true, data: result });
+};
+
+const listHolds = async (req, res) => {
+  const branchId = resolveBranchId(req);
+  const result = await svc.listHolds(req.tenantId, branchId);
+  res.json({ success: true, data: result });
+};
+
+const deleteHold = async (req, res) => {
+  await svc.deleteHold(req.tenantId, req.params.id);
+  res.json({ success: true });
+};
+
 module.exports = {
   products,
   paymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
@@ -154,4 +173,5 @@ module.exports = {
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession,
   cashOut, cashOuts, expenseAccounts,
+  createHold, listHolds, deleteHold,
 };

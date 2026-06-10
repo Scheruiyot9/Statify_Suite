@@ -247,31 +247,11 @@ export const useCartStore = create((set, get) => ({
   },
 }));
 
-// ── POS Data Store (persisted — holds + offline queue survive page refresh) ────
+// ── POS Data Store (persisted — offline queue survives page refresh) ─────────
 export const usePosDataStore = create(
   persist(
     (set, get) => ({
-      holds:        [],
       offlineQueue: [],
-
-      // ── Holds ────────────────────────────────────────────────────────────────
-      holdCart: (snapshot, label) => {
-        const hold = {
-          id:                `hold-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          savedAt:           new Date().toISOString(),
-          label:             label || null,
-          items:             snapshot.items,
-          customer:          snapshot.customer ?? null,
-          notes:             snapshot.notes    ?? '',
-          orderDiscount:     snapshot.orderDiscount    ?? 0,
-          orderDiscountType: snapshot.orderDiscountType ?? 'fixed',
-        };
-        set({ holds: [...get().holds, hold] });
-        return hold.id;
-      },
-
-      deleteHold: (id) =>
-        set({ holds: get().holds.filter((h) => h.id !== id) }),
 
       // ── Offline queue ─────────────────────────────────────────────────────────
       enqueueTransaction: (payload, sessionId) => {
