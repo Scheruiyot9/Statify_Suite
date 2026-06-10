@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   TrendingUp, ShoppingCart, Users, Package,
   ArrowUpRight, AlertTriangle, Star, Building2,
   GitBranch, UserCheck, Monitor, DollarSign,
   Activity, Settings, PlusCircle, ChevronRight,
-  Globe, BarChart3, CreditCard, Layers,
+  Globe, BarChart3, CreditCard, Layers, ShoppingBag,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -269,10 +269,11 @@ const CATEGORY_COLORS = [
   '#024A59','#FFA916','#16a34a','#7c3aed','#0ea5e9','#f43f5e','#f97316','#64748b',
 ];
 
-function CategoryBreakdownCard({ categories }) {
+function CategoryBreakdownCard({ categories, period }) {
+  const label = PERIOD_LABEL[period] ?? '30 days';
   if (!categories?.length) {
     return (
-      <Card title="Sales by Category (30 days)" icon={Layers}>
+      <Card title={`Sales by Category (${label})`} icon={Layers}>
         <p className="text-sm text-gray-400">No sales data yet.</p>
       </Card>
     );
@@ -280,7 +281,7 @@ function CategoryBreakdownCard({ categories }) {
   const total = categories.reduce((s, c) => s + c.revenue, 0) || 1;
 
   return (
-    <Card title="Sales by Category (30 days)" icon={Layers}>
+    <Card title={`Sales by Category (${label})`} icon={Layers}>
       <div className="space-y-2.5">
         {categories.map((c, i) => {
           const pct = Math.round((c.revenue / total) * 100);
@@ -320,10 +321,13 @@ const RANK_STYLES = [
   'bg-orange-300 text-white',
 ];
 
-function TopProductsCard({ products }) {
+const PERIOD_LABEL = { '7d': '7 days', '30d': '30 days', '90d': '90 days', '1y': '1 year' };
+
+function TopProductsCard({ products, period }) {
+  const label = PERIOD_LABEL[period] ?? '30 days';
   if (!products?.length) {
     return (
-      <Card title="Top Products (30 days)" icon={Package}>
+      <Card title={`Top Products (${label})`} icon={Package}>
         <p className="text-sm text-gray-400">No sales data yet.</p>
       </Card>
     );
@@ -331,7 +335,7 @@ function TopProductsCard({ products }) {
   const maxRevenue = Math.max(...products.map((p) => p.revenue), 1);
 
   return (
-    <Card title="Top Products (30 days)" icon={Package}>
+    <Card title={`Top Products (${label})`} icon={Package}>
       <div className="space-y-3">
         {products.map((p, i) => (
           <div key={p.sku} className="flex items-center gap-3">
@@ -340,8 +344,11 @@ function TopProductsCard({ products }) {
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-gray-700 truncate max-w-[140px]" title={p.productName}>{p.productName}</span>
-                <span className="text-xs font-semibold text-gray-900 ml-2 flex-shrink-0">{formatCurrency(p.revenue)}</span>
+                <span className="text-xs font-medium text-gray-700 truncate max-w-[120px]" title={p.productName}>{p.productName}</span>
+                <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                  <span className="text-[10px] text-gray-400">{p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2)} units</span>
+                  <span className="text-xs font-semibold text-gray-900">{formatCurrency(p.revenue)}</span>
+                </div>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
                 <div className="h-full rounded-full bg-primary-500 transition-all duration-700"
@@ -402,6 +409,80 @@ function RecentTransactionsCard({ transactions }) {
           </tbody>
         </table>
       </div>
+    </Card>
+  );
+}
+
+// ── Product quantity analysis card ────────────────────────────────────────────
+const QTY_PERIOD_OPTIONS = [
+  { label: 'Week', value: '7d' },
+  { label: 'Month', value: '30d' },
+];
+
+function ProductQtyCard() {
+  const [period, setPeriod] = useState('7d');
+  const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['product-qty', activeCompanyId, period],
+    queryFn: () => api.get('/reports/product-qty', { params: { period } }).then((r) => r.data.data),
+    staleTime: 60_000,
+    keepPreviousData: true,
+  });
+
+  const maxQty = Math.max(...products.map((p) => p.qtySold), 1);
+  const toggle = (
+    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
+      {QTY_PERIOD_OPTIONS.map((o) => (
+        <button key={o.value} onClick={() => setPeriod(o.value)}
+          className={`px-2.5 py-1 font-medium transition-colors ${
+            period === o.value ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+          }`}>{o.label}</button>
+      ))}
+    </div>
+  );
+
+  return (
+    <Card title="Units Sold by Product" icon={ShoppingBag} action={toggle}>
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="animate-pulse space-y-1.5">
+              <div className="h-2.5 w-32 rounded bg-gray-100" />
+              <div className="h-1.5 w-full rounded-full bg-gray-100" />
+            </div>
+          ))}
+        </div>
+      ) : products.length === 0 ? (
+        <p className="text-sm text-gray-400">No sales data for this period.</p>
+      ) : (
+        <div className="space-y-3">
+          {products.map((p, i) => {
+            const displayQty = p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2);
+            return (
+              <div key={p.sku}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-700 truncate max-w-[160px]" title={p.productName}>
+                    {p.productName}
+                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                    <span className="text-xs font-bold text-gray-900">{displayQty} <span className="font-normal text-gray-400">units</span></span>
+                  </div>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${(p.qtySold / maxQty) * 100}%`,
+                      background: `hsl(${200 - i * 15}, 70%, 45%)`,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 }
@@ -792,17 +873,27 @@ export default function DashboardPage() {
         )}
         <div className="lg:col-span-1">
           {canViewSales
-            ? <TopProductsCard products={data?.topProducts} />
+            ? <TopProductsCard products={data?.topProducts} period={trendPeriod} />
             : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
           }
         </div>
       </div>
 
-      {/* ── Row 4: Category Breakdown + Low Stock ── */}
+      {/* ── Row 4: Category Breakdown + Product Qty ── */}
       {canViewSales && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <CategoryBreakdownCard categories={data?.categoryBreakdown} />
-          {canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />}
+          <CategoryBreakdownCard categories={data?.categoryBreakdown} period={trendPeriod} />
+          <ProductQtyCard />
+        </div>
+      )}
+
+      {/* ── Row 5: Low Stock ── */}
+      {canViewInventory && !canViewSales && (
+        <LowStockAlertCard count={data?.lowStockCount ?? 0} />
+      )}
+      {canViewInventory && canViewSales && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <LowStockAlertCard count={data?.lowStockCount ?? 0} />
         </div>
       )}
 

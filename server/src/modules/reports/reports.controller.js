@@ -3,6 +3,7 @@ const {
   getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement,
   getStockValuation, getPurchasesSummary,
   getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries,
+  getProductQty,
 } = require('./reports.service');
 
 const dashboard = async (req, res) => {
@@ -71,4 +72,11 @@ const cashFlow = async (req, res) => {
   res.json({ success: true, data });
 };
 
-module.exports = { dashboard, salesReport, plReport, apAging, balanceSheet, cashFlow, stockValuation, purchasesSummary, lpoReport, grnReport, trialBalance, ledgerEntries };
+const productQty = async (req, res) => {
+  const { role, branchIds = [] } = req.user;
+  const { period = '7d' } = req.query;
+  const data = await getProductQty(req.tenantId, role, branchIds, { period });
+  res.json({ success: true, data });
+};
+
+module.exports = { dashboard, salesReport, plReport, apAging, balanceSheet, cashFlow, stockValuation, purchasesSummary, lpoReport, grnReport, trialBalance, ledgerEntries, productQty };

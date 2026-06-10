@@ -127,25 +127,27 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       LIMIT 5
     `, bParams),
 
-    // 5. Top 5 products (last 30 days)
-    query(`
-      SELECT
-        p.product_name,
-        p.sku,
-        SUM(sti.quantity)::numeric   AS qty_sold,
-        SUM(sti.line_total)::numeric AS revenue
-      FROM sales_transaction_items sti
-      JOIN products p ON p.product_id = sti.product_id
-      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
-        AND st.transaction_date >= CURRENT_DATE - INTERVAL '29 days'
-        ${bClause}
-      GROUP BY p.product_id, p.product_name, p.sku
-      ORDER BY revenue DESC
-      LIMIT 5
-    `, bParams),
+    // 5. Top 5 products (period-aware)
+    canViewSales
+      ? query(`
+          SELECT
+            p.product_name,
+            p.sku,
+            SUM(sti.quantity)::numeric   AS qty_sold,
+            SUM(sti.line_total)::numeric AS revenue
+          FROM sales_transaction_items sti
+          JOIN products p ON p.product_id = sti.product_id
+          JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+          WHERE st.company_id = $1 AND st.status = 'completed'
+            AND st.transaction_date >= CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day')
+            ${bClause}
+          GROUP BY p.product_id, p.product_name, p.sku
+          ORDER BY revenue DESC
+          LIMIT 5
+        `, [...bParams, trendDays])
+      : Promise.resolve({ rows: [] }),
 
-    // 6. Category breakdown (last 30 days)
+    // 6. Category breakdown (period-aware)
     canViewSales
       ? query(`
           SELECT
@@ -157,12 +159,12 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
           LEFT JOIN categories pc ON pc.category_id = p.category_id
           JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
           WHERE st.company_id = $1 AND st.status = 'completed'
-            AND st.transaction_date >= CURRENT_DATE - INTERVAL '29 days'
+            AND st.transaction_date >= CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day')
             ${bClause}
           GROUP BY pc.category_name
           ORDER BY revenue DESC
           LIMIT 8
-        `, bParams)
+        `, [...bParams, trendDays])
       : Promise.resolve({ rows: [] }),
 
     // 7. Branch comparison (only useful for company-wide roles)
@@ -1226,4 +1228,35 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
 }
 
 
-module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries };
+// ── Product quantity analysis (dashboard qty card) ────────────────────────────
+async function getProductQty(companyId, role, branchIds, { period = '7d' } = {}) {
+  const days = period === '30d' ? 29 : 6;
+  const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
+  const dIdx = bParams.length + 1;
+
+  const { rows } = await query(`
+    SELECT
+      p.product_name,
+      p.sku,
+      SUM(sti.quantity)::numeric   AS qty_sold,
+      SUM(sti.line_total)::numeric AS revenue
+    FROM sales_transaction_items sti
+    JOIN products p ON p.product_id = sti.product_id
+    JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+    WHERE st.company_id = $1 AND st.status = 'completed'
+      AND st.transaction_date >= CURRENT_DATE - ($${dIdx}::int * INTERVAL '1 day')
+      ${bClause}
+    GROUP BY p.product_id, p.product_name, p.sku
+    ORDER BY qty_sold DESC
+    LIMIT 10
+  `, [...bParams, days]);
+
+  return rows.map((r) => ({
+    productName: r.product_name,
+    sku:         r.sku,
+    qtySold:     parseFloat(r.qty_sold),
+    revenue:     parseFloat(r.revenue),
+  }));
+}
+
+module.exports = { getDashboard, getSalesReport, getPLReport, getAPAging, getBalanceSheet, getCashFlowStatement, getStockValuation, getPurchasesSummary, getLPOReport, getGRNReport, getTrialBalance, getLedgerEntries, getProductQty };

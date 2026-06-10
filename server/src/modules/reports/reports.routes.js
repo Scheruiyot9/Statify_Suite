@@ -9,7 +9,8 @@ const router = Router();
 router.use(authenticate, attachTenant, verifyTenant, scopeTenant);
 
 // Dashboard — accessible to all authenticated users
-router.get('/dashboard', controller.dashboard);
+router.get('/dashboard',    controller.dashboard);
+router.get('/product-qty',  requireTenantContext, controller.productQty);
 
 // Sales reports — tenant context + view_reports permission
 router.get('/sales',           requireTenantContext, requirePermission('view_reports'), controller.salesReport);
