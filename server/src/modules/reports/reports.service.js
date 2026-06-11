@@ -1,8 +1,8 @@
 ﻿const { query } = require('../../config/database');
 const { isCompanyWide, branchScope } = require('../../shared/roles');
 
-const SALES_DASHBOARD_ROLES = ['super_admin', 'company_admin', 'branch_manager', 'accountant', 'cashier', 'sales_staff'];
-const INVENTORY_DASHBOARD_ROLES = ['super_admin', 'company_admin', 'branch_manager', 'accountant', 'inventory_manager'];
+const SALES_DASHBOARD_ROLES = ['super_admin', 'company_admin', 'branch_manager', 'accountant', 'cashier'];
+const INVENTORY_DASHBOARD_ROLES = ['super_admin', 'company_admin', 'branch_manager', 'accountant'];
 
 // Platform-level summary when super_admin has no tenant context
 async function getPlatformSummary() {

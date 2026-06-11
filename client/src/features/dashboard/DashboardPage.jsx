@@ -739,9 +739,10 @@ export default function DashboardPage() {
     keepPreviousData: true,
   });
 
-  const { hasCapability, user } = usePermission();
+  const { hasCapability, hasRole, user } = usePermission();
   const isSuperAdmin = user?.role === 'super_admin';
   const canViewSales = hasCapability('sales.view') || ['super_admin', 'company_admin', 'branch_manager', 'accountant'].includes(user?.role);
+  const canViewProductQty = hasRole('super_admin', 'company_admin', 'branch_manager', 'accountant') || canViewSales;
   const canViewInventory = hasCapability('inventory.view');
   const canViewCustomers = hasCapability('customers.view');
   const canCompareBranches = hasCapability('settings.manage') || hasCapability('platform.admin');
@@ -880,7 +881,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Row 4: Category Breakdown + Product Qty ── */}
-      {canViewSales && (
+      {canViewProductQty && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <CategoryBreakdownCard categories={data?.categoryBreakdown} period={trendPeriod} />
           <ProductQtyCard />

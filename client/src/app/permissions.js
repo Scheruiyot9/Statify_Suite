@@ -83,23 +83,6 @@ export const ROLE_CAPABILITIES = {
     'sales.view',
     'returns.view',
   ],
-  inventory_manager: [
-    'dashboard.view',
-    'products.view',
-    'products.manage',
-    'inventory.view',
-    'inventory.adjust',
-    'reports.view',
-  ],
-  sales_staff: [
-    'dashboard.view',
-    'pos.open',
-    'products.view',
-    'customers.view',
-    'customers.create',
-    'sales.view',
-    'returns.view',
-  ],
 };
 
 export const permissionToCapability = {
