@@ -192,10 +192,10 @@ function Card({ title, icon: Icon, children, className = '', action }) {
 
 // ── Sales trend chart card ─────────────────────────────────────────────────────
 const PERIOD_OPTIONS = [
-  { label: '7d',  days: 6   },
-  { label: '30d', days: 29  },
-  { label: '90d', days: 89  },
-  { label: '1y',  days: 364 },
+  { label: 'Week',    value: '7d',  days: 6   },
+  { label: 'Month',   value: '30d', days: 29  },
+  { label: 'Quarter', value: '90d', days: 89  },
+  { label: 'Year',    value: '1y',  days: 364 },
 ];
 
 function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
@@ -205,9 +205,9 @@ function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
   const periodToggle = (
     <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
       {PERIOD_OPTIONS.map((p) => (
-        <button key={p.label} onClick={() => onPeriod(p.label)}
+        <button key={p.value} onClick={() => onPeriod(p.value)}
           className={`px-2.5 py-1 font-medium transition-colors ${
-            period === p.label ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+            period === p.value ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
           }`}>{p.label}</button>
       ))}
     </div>
@@ -270,7 +270,7 @@ const CATEGORY_COLORS = [
 ];
 
 function CategoryBreakdownCard({ categories, period }) {
-  const label = PERIOD_LABEL[period] ?? '30 days';
+  const label = PERIOD_LABEL[period] ?? 'This Month';
   if (!categories?.length) {
     return (
       <Card title={`Sales by Category (${label})`} icon={Layers}>
@@ -321,10 +321,10 @@ const RANK_STYLES = [
   'bg-orange-300 text-white',
 ];
 
-const PERIOD_LABEL = { '7d': '7 days', '30d': '30 days', '90d': '90 days', '1y': '1 year' };
+const PERIOD_LABEL = { '7d': 'This Week', '30d': 'This Month', '90d': 'Last Quarter', '1y': 'This Year' };
 
 function TopProductsCard({ products, period }) {
-  const label = PERIOD_LABEL[period] ?? '30 days';
+  const label = PERIOD_LABEL[period] ?? 'This Month';
   if (!products?.length) {
     return (
       <Card title={`Top Products (${label})`} icon={Package}>
