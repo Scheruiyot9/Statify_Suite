@@ -35,6 +35,9 @@ router.patch('/sessions/:id/close',      requireRole('cashier'),        controll
 router.post('/sessions/:id/cash-outs',   requireRole('cashier'),        controller.cashOut);
 router.get('/sessions/:id/cash-outs',    requireRole('cashier'),        controller.cashOuts);
 
+// ── Company-wide cash-outs listing ───────────────────────────────────────────
+router.get('/cash-outs',                 requireRole('branch_manager'), controller.allCashOuts);
+
 // ── Sessions — branch manager level ──────────────────────────────────────────
 router.get('/sessions',                  requireRole('branch_manager'), controller.listSessions);
 router.get('/sessions/:id/detail',       requireRole('branch_manager'), controller.sessionDetail);

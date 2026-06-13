@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Calendar } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Calendar, RotateCcw } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -105,16 +106,54 @@ function EntryLinesModal({ entryId, onClose }) {
   );
 }
 
+// ── Reverse Entry Modal ───────────────────────────────────────────────────────
+
+function ReverseModal({ entry, onClose, onDone }) {
+  const [reason, setReason] = useState('');
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.post(`/accounts/entry/${entry.entryId}/void`, { reason: reason.trim() || null }),
+    onSuccess: () => { toast.success('Entry reversed'); onDone(); onClose(); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not reverse entry'),
+  });
+
+  return (
+    <Modal open onClose={onClose} size="sm" title="Reverse Entry"
+      footer={
+        <div className="flex gap-2">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button variant="danger" fullWidth loading={isPending} onClick={() => mutate()}>Reverse</Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600">
+          This will post an offsetting entry to cancel{' '}
+          <span className="font-semibold font-mono">{entry.sourceRef ?? entry.entryNumber}</span>.
+          The original entry will be marked void.
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Reason <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. entered in wrong account" autoFocus
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SupplierLedgerPage() {
   const { supplierId } = useParams();
   const navigate       = useNavigate();
+  const qc             = useQueryClient();
 
-  const [startDate,      setStart]   = useState(toISO(new Date(Date.now() - 89 * 86400000)));
-  const [endDate,        setEnd]     = useState(todayISO);
-  const [page,           setPage]    = useState(1);
-  const [viewingEntryId, setViewing] = useState(null);
+  const [startDate,      setStart]     = useState(toISO(new Date(Date.now() - 89 * 86400000)));
+  const [endDate,        setEnd]       = useState(todayISO);
+  const [page,           setPage]      = useState(1);
+  const [viewingEntryId, setViewing]   = useState(null);
+  const [reversingEntry, setReversing] = useState(null);
 
   const { data: supplier } = useQuery({
     queryKey: ['supplier', supplierId],
@@ -207,10 +246,18 @@ export default function SupplierLedgerPage() {
                     {e.credit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-2 py-3 text-center">
-                    <button onClick={() => setViewing(e.entryId)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => setViewing(e.entryId)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                      {e.sourceType !== 'VOID' && e.entryId && (
+                        <button onClick={() => setReversing(e)} title="Reverse entry"
+                          className="rounded-lg border border-red-200 bg-red-50 p-1 text-red-500 hover:bg-red-100 transition-colors">
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -232,6 +279,13 @@ export default function SupplierLedgerPage() {
       )}
 
       {viewingEntryId && <EntryLinesModal entryId={viewingEntryId} onClose={() => setViewing(null)} />}
+      {reversingEntry && (
+        <ReverseModal
+          entry={reversingEntry}
+          onClose={() => setReversing(null)}
+          onDone={() => qc.invalidateQueries({ queryKey: ['supplier-ledger', supplierId] })}
+        />
+      )}
     </div>
   );
 }

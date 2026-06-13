@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ScrollText, Plus, XCircle, RefreshCw, Download, Upload,
   AlertCircle, CheckCircle2, Building2, User, Briefcase, BookOpen, Edit2,
+  ArrowDownLeft, Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -656,7 +657,17 @@ function ImportModal({ onClose }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+const OUT_TYPE_LABELS = { withdrawal: 'Withdrawal', expense: 'Expense', stock_payment: 'Stock Payment' };
+const OUT_TYPE_COLORS = {
+  withdrawal:    'bg-amber-100 text-amber-700',
+  expense:       'bg-red-100 text-red-600',
+  stock_payment: 'bg-blue-100 text-blue-700',
+};
+
 export default function JournalPage() {
+  const [activeTab,    setActiveTab]    = useState('journals');
+
+  // ── Journal entries state ──
   const [startDate,    setStartDate]    = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
   const [endDate,      setEndDate]      = useState(new Date().toISOString().slice(0, 10));
   const [statusFilter, setStatusFilter] = useState('');
@@ -665,6 +676,11 @@ export default function JournalPage() {
   const [editTarget,   setEditTarget]   = useState(null);
   const [showNew,      setShowNew]      = useState(false);
   const [showImport,   setShowImport]   = useState(false);
+
+  // ── Cash outs state ──
+  const [coStart, setCoStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
+  const [coEnd,   setCoEnd]   = useState(new Date().toISOString().slice(0, 10));
+  const [coPage,  setCoPage]  = useState(1);
 
   const qc = useQueryClient();
 
@@ -681,9 +697,21 @@ export default function JournalPage() {
     placeholderData: (prev) => prev,
   });
 
-  const journals = data?.journals ?? [];
-  const total    = data?.total    ?? 0;
-  const pages    = data?.pages    ?? 1;
+  const { data: coData, isLoading: coLoading } = useQuery({
+    queryKey: ['pos-cash-outs-all', coStart, coEnd, coPage],
+    queryFn: () => api.get('/pos/cash-outs', {
+      params: { startDate: coStart, endDate: coEnd, page: coPage, limit: 30 },
+    }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+    enabled: activeTab === 'cash-outs',
+  });
+
+  const journals   = data?.journals ?? [];
+  const total      = data?.total    ?? 0;
+  const pages      = data?.pages    ?? 1;
+  const cashOuts   = coData?.cashOuts ?? [];
+  const coTotal    = coData?.total    ?? 0;
+  const coPages    = coData?.pages    ?? 1;
 
   return (
     <div className="h-full flex flex-col">
@@ -693,110 +721,217 @@ export default function JournalPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
             <ScrollText className="h-5 w-5 text-primary-600" />
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={downloadTemplate}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
-            <Download className="h-4 w-4" />Template
-          </button>
-          <button onClick={() => setShowImport(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
-            <Upload className="h-4 w-4" />Import
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
-            <Plus className="h-4 w-4" />New Journal
-          </button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
-        <div className="flex items-center gap-2 text-sm">
-          <label className="text-gray-500 font-medium">From</label>
-          <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-            value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
-          <label className="text-gray-500 font-medium">To</label>
-          <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-            value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
-        </div>
-        <select className="border rounded-lg px-3 py-1.5 text-sm"
-          value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="posted">Posted</option>
-          <option value="void">Void</option>
-        </select>
-        <button onClick={() => qc.invalidateQueries({ queryKey: ['journals'] })}
-          className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
-          <RefreshCw className="h-4 w-4" />Refresh
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="py-24 text-center text-gray-400">Loading…</div>
-        ) : journals.length === 0 ? (
-          <div className="py-24 text-center text-gray-400">
-            <ScrollText className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p>No journal entries in this period.</p>
-            <p className="text-sm mt-1">Create a manual journal entry using the button above.</p>
+          {/* Tab strip */}
+          <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+            <button
+              onClick={() => setActiveTab('journals')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === 'journals' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <ScrollText className="h-3.5 w-3.5" />Journal Entries
+            </button>
+            <button
+              onClick={() => setActiveTab('cash-outs')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === 'cash-outs' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <ArrowDownLeft className="h-3.5 w-3.5" />Cash Outs
+            </button>
           </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 border-b z-10">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Number</th>
-                <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Date</th>
-                <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Description</th>
-                <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Reference</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Debit</th>
-                <th className="hidden sm:table-cell text-right px-4 py-3 font-medium text-gray-600 w-32">Credit</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">Status</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600 w-20">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {journals.map((j) => (
-                <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
-                  onClick={() => setSelectedId(j.journalId)}>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journalNumber}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
-                  <td className="hidden lg:table-cell px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
-                      {j.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setSelectedId(j.journalId)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        </div>
+        {activeTab === 'journals' && (
+          <div className="flex items-center gap-2">
+            <button onClick={downloadTemplate}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
+              <Download className="h-4 w-4" />Template
+            </button>
+            <button onClick={() => setShowImport(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
+              <Upload className="h-4 w-4" />Import
+            </button>
+            <button onClick={() => setShowNew(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
+              <Plus className="h-4 w-4" />New Journal
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Pagination */}
-      {total > 0 && (
-        <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
-          <span>{total} journal{total !== 1 ? 's' : ''}</span>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-              className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
-            <span>Page {page} of {pages}</span>
-            <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}
-              className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+      {/* Filters */}
+      {activeTab === 'journals' ? (
+        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+          <div className="flex items-center gap-2 text-sm">
+            <label className="text-gray-500 font-medium">From</label>
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
+            <label className="text-gray-500 font-medium">To</label>
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
           </div>
+          <select className="border rounded-lg px-3 py-1.5 text-sm"
+            value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+            <option value="">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="posted">Posted</option>
+            <option value="void">Void</option>
+          </select>
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['journals'] })}
+            className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
+            <RefreshCw className="h-4 w-4" />Refresh
+          </button>
         </div>
+      ) : (
+        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm">
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={coStart} onChange={(e) => { setCoStart(e.target.value); setCoPage(1); }} />
+            <span className="text-gray-400">—</span>
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={coEnd} onChange={(e) => { setCoEnd(e.target.value); setCoPage(1); }} />
+          </div>
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['pos-cash-outs-all'] })}
+            className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
+            <RefreshCw className="h-4 w-4" />Refresh
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      {activeTab === 'journals' ? (
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="py-24 text-center text-gray-400">Loading…</div>
+          ) : journals.length === 0 ? (
+            <div className="py-24 text-center text-gray-400">
+              <ScrollText className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p>No journal entries in this period.</p>
+              <p className="text-sm mt-1">Create a manual journal entry using the button above.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 border-b z-10">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Number</th>
+                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Date</th>
+                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Description</th>
+                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Reference</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Debit</th>
+                  <th className="hidden sm:table-cell text-right px-4 py-3 font-medium text-gray-600 w-32">Credit</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">Status</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600 w-20">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {journals.map((j) => (
+                  <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
+                    onClick={() => setSelectedId(j.journalId)}>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journalNumber}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
+                    <td className="px-4 py-3 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
+                        {j.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setSelectedId(j.journalId)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto">
+          {coLoading ? (
+            <div className="py-24 text-center text-gray-400">Loading…</div>
+          ) : cashOuts.length === 0 ? (
+            <div className="py-24 text-center text-gray-400">
+              <ArrowDownLeft className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p>No cash outs in this period.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 border-b z-10">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-28">Type</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Amount</th>
+                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Account / Supplier</th>
+                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-32">Payment</th>
+                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600">Notes</th>
+                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Terminal</th>
+                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Branch</th>
+                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600 w-32">Posted By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashOuts.map((co) => (
+                  <tr key={co.cash_out_id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3 text-xs text-gray-600">{String(co.created_at).slice(0, 10)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${OUT_TYPE_COLORS[co.out_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {OUT_TYPE_LABELS[co.out_type] ?? co.out_type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-right font-mono">{fmt(co.amount)}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">
+                      {co.supplier_name ?? (
+                        co.account_name
+                          ? <>{co.account_name}{co.account_code && <span className="ml-1 text-gray-400">({co.account_code})</span>}</>
+                          : '—'
+                      )}
+                    </td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{co.payment_method_name ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-4 py-3 text-xs text-gray-600 truncate max-w-[12rem]">{co.notes ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-4 py-3 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {activeTab === 'journals' ? (
+        total > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
+            <span>{total} journal{total !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
+              <span>Page {page} of {pages}</span>
+              <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+            </div>
+          </div>
+        )
+      ) : (
+        coTotal > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
+            <span>{coTotal} cash out{coTotal !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCoPage((p) => Math.max(1, p - 1))} disabled={coPage <= 1}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
+              <span>Page {coPage} of {coPages}</span>
+              <button onClick={() => setCoPage((p) => Math.min(coPages, p + 1))} disabled={coPage >= coPages}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+            </div>
+          </div>
+        )
       )}
 
       {/* Modals */}

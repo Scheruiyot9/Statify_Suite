@@ -720,6 +720,51 @@ async function listCashOuts(companyId, sessionId) {
   return rows;
 }
 
+async function listAllCashOuts(companyId, { startDate, endDate, branchId, page = 1, limit = 30 } = {}) {
+  const params = [companyId];
+  const where  = ['co.company_id = $1'];
+
+  if (startDate) { params.push(startDate); where.push(`co.created_at >= $${params.length}::date`); }
+  if (endDate)   { params.push(endDate);   where.push(`co.created_at <  ($${params.length}::date + INTERVAL '1 day')`); }
+  if (branchId)  { params.push(branchId);  where.push(`co.branch_id = $${params.length}`); }
+
+  const offset = (page - 1) * limit;
+  params.push(limit, offset);
+
+  const { rows } = await query(`
+    SELECT co.cash_out_id, co.out_type, co.amount::numeric, co.notes, co.created_at,
+           co.journal_entry_id,
+           a.account_name, a.account_code,
+           s.supplier_name,
+           pm.method_name  AS payment_method_name,
+           pt.terminal_name,
+           b.branch_name,
+           u.first_name || ' ' || u.last_name AS created_by_name
+    FROM session_cash_outs co
+    LEFT JOIN accounts        a  ON a.account_id         = co.account_id
+    LEFT JOIN suppliers       s  ON s.supplier_id        = co.supplier_id
+    LEFT JOIN payment_methods pm ON pm.payment_method_id = co.payment_method_id
+    LEFT JOIN pos_sessions    ps ON ps.session_id        = co.session_id
+    LEFT JOIN pos_terminals   pt ON pt.terminal_id       = ps.terminal_id
+    LEFT JOIN branches        b  ON b.branch_id          = co.branch_id
+    LEFT JOIN users           u  ON u.user_id            = co.created_by_user_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY co.created_at DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `, params);
+
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*)::int AS total FROM session_cash_outs co WHERE ${where.slice(0, where.length - 0).join(' AND ')}`,
+    params.slice(0, params.length - 2)
+  );
+
+  return {
+    cashOuts: rows.map((r) => ({ ...r, amount: parseFloat(r.amount) })),
+    total:    countRows[0].total,
+    pages:    Math.ceil(countRows[0].total / limit),
+  };
+}
+
 // ── Hold Carts ────────────────────────────────────────────────────────────────
 
 async function createHold(companyId, branchId, userId, { label, cartData }) {
@@ -760,6 +805,6 @@ module.exports = {
   listTerminals, listAllTerminals, createTerminal, updateTerminal, deleteTerminal,
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
-  recordCashOut, listCashOuts,
+  recordCashOut, listCashOuts, listAllCashOuts,
   createHold, listHolds, deleteHold,
 };

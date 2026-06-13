@@ -147,6 +147,16 @@ const cashOuts = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const allCashOuts = async (req, res) => {
+  const { startDate, endDate, branchId, page, limit } = req.query;
+  const result = await svc.listAllCashOuts(req.tenantId, {
+    startDate, endDate, branchId,
+    page:  page  ? parseInt(page,  10) : 1,
+    limit: limit ? parseInt(limit, 10) : 30,
+  });
+  res.json({ success: true, data: result });
+};
+
 // ── Hold Carts ────────────────────────────────────────────────────────────────
 
 const createHold = async (req, res) => {
@@ -172,6 +182,6 @@ module.exports = {
   terminals, allTerminals, createTerminal, updateTerminal, deleteTerminal,
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession,
-  cashOut, cashOuts, expenseAccounts,
+  cashOut, cashOuts, allCashOuts, expenseAccounts,
   createHold, listHolds, deleteHold,
 };
