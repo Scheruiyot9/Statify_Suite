@@ -218,9 +218,19 @@ async function createUser(companyId, data) {
 }
 
 async function updateUser(companyId, userId, data) {
-  const { first_name, last_name, phone, is_active, role_id, branch_id } = data;
+  const { first_name, last_name, phone, is_active, role_id, branch_id, email } = data;
 
   return transaction(async (client) => {
+    // Check email uniqueness if being changed
+    if (email) {
+      const emailLower = email.toLowerCase().trim();
+      const { rows: dup } = await client.query(
+        `SELECT 1 FROM users WHERE email = $1 AND user_id != $2 AND deleted_at IS NULL`,
+        [emailLower, userId]
+      );
+      if (dup.length) throw AppError.conflict('Email is already in use by another account');
+    }
+
     // 1. Core user fields
     const { rows } = await client.query(`
       UPDATE users
@@ -228,10 +238,12 @@ async function updateUser(companyId, userId, data) {
           last_name  = COALESCE($4, last_name),
           phone      = COALESCE($5, phone),
           is_active  = COALESCE($6, is_active),
+          email      = COALESCE($7, email),
           updated_at = now()
       WHERE company_id = $1 AND user_id = $2 AND deleted_at IS NULL
       RETURNING user_id, first_name, last_name, email, phone, is_active
-    `, [companyId, userId, first_name ?? null, last_name ?? null, phone ?? null, is_active ?? null]);
+    `, [companyId, userId, first_name ?? null, last_name ?? null, phone ?? null, is_active ?? null,
+        email ? email.toLowerCase().trim() : null]);
 
     if (!rows.length) throw AppError.notFound('User');
 

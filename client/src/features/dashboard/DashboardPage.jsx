@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, ShoppingCart, Users, Package,
   ArrowUpRight, AlertTriangle, Star, Building2,
   GitBranch, UserCheck, Monitor, DollarSign,
   Activity, Settings, PlusCircle, ChevronRight,
-  Globe, BarChart3, CreditCard, Layers, ShoppingBag,
+  Globe, BarChart3, CreditCard, Layers,
   RefreshCw,
 } from 'lucide-react';
 import api from '@/services/api';
@@ -16,14 +16,14 @@ import { usePermission } from '@/hooks/usePermission';
 import { PageSpinner } from '@/components/ui/Spinner';
 
 // ── Trend grouping helper ──────────────────────────────────────────────────────
-// Aggregates daily trend rows into day / week / month buckets based on range length.
+// Aggregates daily trend rows into day / week / month buckets based on period.
 // Each output item: { date, total, txnCount, label }
-function groupTrend(trend, days) {
+function groupTrend(trend, days, period) {
   if (!trend?.length) return [];
   const toDate = (s) => new Date(String(s).slice(0, 10) + 'T12:00:00');
 
-  // 7d → daily (all labels)
-  if (days <= 8) {
+  // 1d / 7d → daily
+  if (period === '1d' || period === '7d' || days <= 8) {
     return trend.map((d) => ({
       ...d,
       label: toDate(d.date).toLocaleDateString('en', { day: 'numeric', month: 'short' }),
@@ -31,8 +31,8 @@ function groupTrend(trend, days) {
     }));
   }
 
-  // 30d → weekly buckets
-  if (days <= 35) {
+  // 30d → weekly buckets (Mon–Sun)
+  if (period === '30d' || days <= 35) {
     const map = new Map();
     for (const d of trend) {
       const dt = toDate(d.date);
@@ -55,7 +55,7 @@ function groupTrend(trend, days) {
   }
 
   // 90d → monthly buckets
-  if (days <= 95) {
+  if (period === '90d' || days <= 95) {
     const map = new Map();
     for (const d of trend) {
       const key = String(d.date).slice(0, 7);
@@ -193,6 +193,7 @@ function Card({ title, icon: Icon, children, className = '', action }) {
 
 // ── Sales trend chart card ─────────────────────────────────────────────────────
 const PERIOD_OPTIONS = [
+  { label: 'Today',   value: '1d',  days: 0   },
   { label: 'Week',    value: '7d',  days: 6   },
   { label: 'Month',   value: '30d', days: 29  },
   { label: 'Quarter', value: '90d', days: 89  },
@@ -213,7 +214,7 @@ function PeriodToggle({ period, onPeriod }) {
 }
 
 function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
-  const grouped     = groupTrend(trend, trendDays ?? 6);
+  const grouped     = groupTrend(trend, trendDays ?? 6, period);
   const periodTotal = grouped.reduce((s, d) => s + (d.total || 0), 0);
 
   return (
@@ -326,43 +327,65 @@ const RANK_STYLES = [
   'bg-orange-300 text-white',
 ];
 
-const PERIOD_LABEL = { '7d': 'This Week', '30d': 'This Month', '90d': 'Last Quarter', '1y': 'This Year' };
+const PERIOD_LABEL = { '1d': 'Today', '7d': 'This Week', '30d': 'This Month', '90d': 'Last Quarter', '1y': 'This Year' };
 
 function TopProductsCard({ products, period, onPeriod }) {
-  const label = PERIOD_LABEL[period] ?? 'This Month';
-  if (!products?.length) {
-    return (
-      <Card title={`Top Products (${label})`} icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
-        <p className="text-sm text-gray-400">No sales data yet.</p>
-      </Card>
-    );
-  }
-  const maxRevenue = Math.max(...products.map((p) => p.revenue), 1);
+  const [sortBy, setSortBy] = useState('revenue');
+
+  const sorted = [...(products ?? [])].sort((a, b) =>
+    sortBy === 'qty' ? b.qtySold - a.qtySold : b.revenue - a.revenue
+  );
 
   return (
-    <Card title={`Top Products (${label})`} icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
-      <div className="space-y-3">
-        {products.map((p, i) => (
-          <div key={p.sku} className="flex items-center gap-3">
-            <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[i] || 'bg-gray-100 text-gray-400'}`}>
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-gray-700 truncate max-w-[120px]" title={p.productName}>{p.productName}</span>
-                <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
-                  <span className="text-[10px] text-gray-400">{p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2)} units</span>
-                  <span className="text-xs font-semibold text-gray-900">{formatCurrency(p.revenue)}</span>
-                </div>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-                <div className="h-full rounded-full bg-primary-500 transition-all duration-700"
-                  style={{ width: `${(p.revenue / maxRevenue) * 100}%` }} />
-              </div>
-            </div>
+    <Card title="Top Products" icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
+      {!sorted.length ? (
+        <p className="text-sm text-gray-400">No sales data yet.</p>
+      ) : (
+        <>
+          <div className="flex items-center justify-end gap-3 mb-3 text-xs">
+            <span className="text-gray-400">Sort:</span>
+            <button onClick={() => setSortBy('revenue')}
+              className={`font-medium transition-colors ${sortBy === 'revenue' ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              Amount
+            </button>
+            <button onClick={() => setSortBy('qty')}
+              className={`font-medium transition-colors ${sortBy === 'qty' ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
+              Quantity
+            </button>
           </div>
-        ))}
-      </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="pb-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-7">#</th>
+                <th className="pb-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Product</th>
+                <th className="pb-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide pr-4">Units</th>
+                <th className="pb-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p, i) => (
+                <tr key={p.sku} className="border-b border-gray-50 last:border-0">
+                  <td className="py-2.5 pr-2">
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[i] || 'bg-gray-100 text-gray-400'}`}>
+                      {i + 1}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3 text-xs font-medium text-gray-700 max-w-0 w-full">
+                    <span className="truncate block" title={p.productName}>{p.productName}</span>
+                    <span className="text-[10px] font-mono text-gray-400">{p.sku}</span>
+                  </td>
+                  <td className="py-2.5 pr-4 text-right font-mono text-xs text-gray-600 whitespace-nowrap">
+                    {p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2)}
+                  </td>
+                  <td className="py-2.5 text-right font-mono text-xs font-semibold text-gray-900 whitespace-nowrap">
+                    {formatCurrency(p.revenue)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </Card>
   );
 }
@@ -414,77 +437,6 @@ function RecentTransactionsCard({ transactions }) {
           </tbody>
         </table>
       </div>
-    </Card>
-  );
-}
-
-// ── Product quantity analysis card ────────────────────────────────────────────
-function ProductQtyCard({ period, onPeriod }) {
-  const [showAll, setShowAll] = useState(false);
-  const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
-
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['product-qty', activeCompanyId, period],
-    queryFn: () => api.get('/reports/product-qty', { params: { period } }).then((r) => r.data.data),
-    staleTime: 60_000,
-    keepPreviousData: true,
-  });
-
-  const maxQty = Math.max(...products.map((p) => p.qtySold), 1);
-  const visible = showAll ? products : products.slice(0, 5);
-  const extra   = products.length - 5;
-
-  return (
-    <Card title="Units Sold by Product" icon={ShoppingBag} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="animate-pulse space-y-1.5">
-              <div className="h-2.5 w-32 rounded bg-gray-100" />
-              <div className="h-1.5 w-full rounded-full bg-gray-100" />
-            </div>
-          ))}
-        </div>
-      ) : products.length === 0 ? (
-        <p className="text-sm text-gray-400">No sales data for this period.</p>
-      ) : (
-        <>
-          <div className="space-y-3">
-            {visible.map((p, i) => {
-              const displayQty = p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2);
-              return (
-                <div key={p.sku}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-700 truncate max-w-[160px]" title={p.productName}>
-                      {p.productName}
-                    </span>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      <span className="text-xs font-bold text-gray-900">{displayQty} <span className="font-normal text-gray-400">units</span></span>
-                    </div>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${(p.qtySold / maxQty) * 100}%`,
-                        background: `hsl(${200 - i * 15}, 70%, 45%)`,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {extra > 0 && (
-            <button
-              onClick={() => setShowAll((v) => !v)}
-              className="mt-3 w-full text-center text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
-            >
-              {showAll ? 'Show less' : `See ${extra} more`}
-            </button>
-          )}
-        </>
-      )}
     </Card>
   );
 }
@@ -744,7 +696,6 @@ export default function DashboardPage() {
   const { hasCapability, hasRole, user } = usePermission();
   const isSuperAdmin = user?.role === 'super_admin';
   const canViewSales = hasCapability('sales.view') || ['super_admin', 'company_admin', 'branch_manager', 'accountant'].includes(user?.role);
-  const canViewProductQty = hasRole('super_admin', 'company_admin', 'branch_manager', 'accountant') || canViewSales;
   const canViewInventory = hasCapability('inventory.view');
   const canViewCustomers = hasCapability('customers.view');
   const canCompareBranches = hasCapability('settings.manage') || hasCapability('platform.admin');
@@ -887,20 +838,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Row 3: Top Products + Units Sold by Product ── */}
-      {(canViewSales || canViewProductQty) && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          {canViewSales && (
-            <TopProductsCard
-              products={data?.topProducts}
-              period={trendPeriod}
-              onPeriod={setTrendPeriod}
-            />
-          )}
-          {canViewProductQty && (
-            <ProductQtyCard period={trendPeriod} onPeriod={setTrendPeriod} />
-          )}
-        </div>
+      {/* ── Row 3: Top Products ── */}
+      {canViewSales && (
+        <TopProductsCard
+          products={data?.topProducts}
+          period={trendPeriod}
+          onPeriod={setTrendPeriod}
+        />
       )}
 
       {/* ── Row 4: Revenue Trend + Recent Transactions ── */}

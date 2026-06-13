@@ -46,8 +46,21 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
 
   const canViewSales = SALES_DASHBOARD_ROLES.includes(role);
   const canViewInventory = INVENTORY_DASHBOARD_ROLES.includes(role);
-  // Trend date range: 7d=6, 30d=29, 90d=89, 1y=364 days back from today
-  const trendDays = period === '1y' ? 364 : period === '90d' ? 89 : period === '30d' ? 29 : 6;
+
+  // Calendar-aligned date ranges so "Week" = Mon–today, "Month" = 1st–today, "Year" = Jan 1–today
+  const _now = new Date();
+  const _dow = _now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysSinceMon  = _dow === 0 ? 6 : _dow - 1;
+  const daysSince1st  = _now.getDate() - 1;
+  const daysSinceJan1 = Math.floor((_now - new Date(_now.getFullYear(), 0, 1)) / 86400000);
+
+  const trendDays =
+    period === '1d'  ? 0 :
+    period === '7d'  ? daysSinceMon :
+    period === '30d' ? daysSince1st :
+    period === '90d' ? 89 :
+    period === '1y'  ? daysSinceJan1 :
+    daysSinceMon;
 
   const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
   const allBranches = isCompanyWide(role);
@@ -802,7 +815,7 @@ async function getLedgerEntries(companyId, { accountId, startDate, endDate, page
       LEFT JOIN grns               grn     ON je.source_type = 'GRN'            AND grn.grn_id              = je.source_id
       LEFT JOIN sales_transactions st_ar   ON je.source_type = 'AR_SETTLEMENT' AND st_ar.transaction_id    = je.source_id
       WHERE je.company_id = $1
-        AND je.status     = 'posted'
+        AND je.status     IN ('posted', 'void')
         AND je.entry_date BETWEEN $2 AND $3
         AND ($4::uuid IS NULL OR lel.account_id = $4::uuid)
     ),
@@ -832,6 +845,7 @@ async function getLedgerEntries(companyId, { accountId, startDate, endDate, page
       entryDate:   r.entry_date,
       sourceType:  r.source_type,
       sourceRef:   r.source_ref || r.entry_number,
+      status:      r.status,
       accountCode: r.account_code,
       accountName: r.account_name,
       description: r.description,

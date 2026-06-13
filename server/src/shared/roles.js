@@ -17,7 +17,7 @@ const ROLE_PERMISSIONS = {
   // accountant now includes all inventory_manager permissions
   accountant:     ['view_products','manage_products','view_inventory','adjust_stock',
                    'view_customers','view_sales','process_refund','view_reports'],
-  cashier:        ['view_products','view_customers','manage_customers',
+  cashier:        ['view_products','view_inventory','view_customers','manage_customers',
                    'view_sales','process_refund','open_pos_session'],
 };
 

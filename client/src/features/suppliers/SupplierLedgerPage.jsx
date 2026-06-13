@@ -240,12 +240,15 @@ export default function SupplierLedgerPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {entries.map((e) => (
-                <tr key={e.entryId} className="hover:bg-gray-50 transition-colors">
+                <tr key={e.entryId} className={`transition-colors ${e.status === 'void' ? 'bg-red-50 opacity-70' : 'hover:bg-gray-50'}`}>
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(e.entryDate)}</td>
                   <td className="hidden sm:table-cell px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                       {e.sourceType ?? '—'}
                     </span>
+                    {e.status === 'void' && (
+                      <span className="ml-1 inline-flex rounded-full px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-600">voided</span>
+                    )}
                   </td>
                   <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600">{e.entryNumber ?? '—'}</td>
                   <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-700 truncate max-w-xs">{e.description ?? '—'}</td>

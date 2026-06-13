@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy, ShieldOff } from 'lucide-react';
+import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy, ShieldOff, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Button      from '@/components/ui/Button';
@@ -163,8 +163,8 @@ function UserForm({ user, onClose }) {
     if (!form.role_id)                     { toast.error('Role is required'); return; }
 
     const payload = { ...form };
-    if (isEdit)          delete payload.email;    // email cannot be changed
-    if (!payload.password) delete payload.password; // omit if blank (create only)
+    if (!payload.email?.trim()) delete payload.email; // skip blank (keeps existing on edit)
+    if (!payload.password) delete payload.password;
     mutate(payload);
   };
 
@@ -197,13 +197,13 @@ function UserForm({ user, onClose }) {
           </div>
         </div>
 
-        {/* Email — create only */}
-        {!isEdit && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Email *</label>
-            <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inputCls} />
-          </div>
-        )}
+        {/* Email */}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">
+            Email {isEdit ? <span className="text-gray-400 font-normal">(change to update login address)</span> : '*'}
+          </label>
+          <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inputCls} />
+        </div>
 
         {/* Phone */}
         <div>
@@ -306,6 +306,47 @@ function ResetPasswordModal({ user, onClose }) {
           <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Delete User Modal ─────────────────────────────────────────────────────────
+function DeleteUserModal({ user, onClose }) {
+  const qc = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.delete(`/users/${user.user_id}`),
+    onSuccess: () => {
+      toast.success(`${user.first_name} ${user.last_name} deleted`);
+      qc.invalidateQueries({ queryKey: ['users'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Delete failed'),
+  });
+
+  return (
+    <Modal open onClose={onClose} title="Delete User" size="sm"
+      footer={
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button variant="danger" fullWidth loading={isPending} onClick={() => mutate()}>Delete</Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex items-start gap-3 rounded-lg bg-red-50 border border-red-100 px-4 py-3">
+          <Trash2 className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-red-800">
+              Delete {user.first_name} {user.last_name}?
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              This user will be deactivated and removed from the system. This action cannot be undone.
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">Email: <span className="font-medium text-gray-700">{user.email}</span></p>
       </div>
     </Modal>
   );
@@ -538,6 +579,7 @@ function UsersListTab({ canManageUsers }) {
   const [formUser,     setFormUser]     = useState(null);  // null=closed, false=new, obj=edit
   const [resetUser,    setResetUser]    = useState(null);
   const [clearPinUser, setClearPinUser] = useState(null);
+  const [deleteUser,   setDeleteUser]   = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', search],
@@ -634,6 +676,10 @@ function UsersListTab({ canManageUsers }) {
                               : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
                             {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
                           </button>
+                          <button title="Delete user" onClick={() => setDeleteUser(u)}
+                            className="rounded-md bg-red-50 p-1.5 text-red-600 hover:bg-red-100 transition-colors">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </td>
                     )}
@@ -654,6 +700,9 @@ function UsersListTab({ canManageUsers }) {
       )}
       {canManageUsers && clearPinUser && (
         <ClearPinModal user={clearPinUser} onClose={() => setClearPinUser(null)} />
+      )}
+      {canManageUsers && deleteUser && (
+        <DeleteUserModal user={deleteUser} onClose={() => setDeleteUser(null)} />
       )}
     </div>
   );

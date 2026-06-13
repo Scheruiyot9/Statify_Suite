@@ -150,7 +150,7 @@ async function getSupplierLedger(companyId, supplierId, { startDate, endDate, pa
   if (!sup) throw AppError.notFound('Supplier');
 
   const vals  = [companyId, supplierId];
-  const conds = ['je.company_id = $1', 'je.status = \'posted\'',
+  const conds = ['je.company_id = $1', "je.status IN ('posted', 'void')",
                  'lel.entity_type = \'supplier\'', 'lel.entity_id = $2'];
 
   if (startDate) { vals.push(startDate); conds.push(`je.entry_date >= $${vals.length}`); }
@@ -161,14 +161,14 @@ async function getSupplierLedger(companyId, supplierId, { startDate, endDate, pa
   const { rows } = await query(`
     WITH base AS (
       SELECT je.journal_entry_id, je.entry_number, je.entry_date, je.description,
-             je.source_type, je.source_id, je.created_at,
+             je.source_type, je.source_id, je.status, je.created_at,
              SUM(lel.debit)::numeric  AS debit,
              SUM(lel.credit)::numeric AS credit
       FROM ledger_entry_lines lel
       JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
       WHERE ${conds.join(' AND ')}
       GROUP BY je.journal_entry_id, je.entry_number, je.entry_date,
-               je.description, je.source_type, je.source_id, je.created_at
+               je.description, je.source_type, je.source_id, je.status, je.created_at
     )
     SELECT *, COUNT(*) OVER() AS total_count
     FROM base
@@ -185,6 +185,7 @@ async function getSupplierLedger(companyId, supplierId, { startDate, endDate, pa
       description: r.description,
       sourceType:  r.source_type,
       sourceId:    r.source_id,
+      status:      r.status,
       debit:       parseFloat(r.debit),
       credit:      parseFloat(r.credit),
     })),

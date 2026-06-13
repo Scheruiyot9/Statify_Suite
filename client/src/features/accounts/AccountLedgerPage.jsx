@@ -305,12 +305,15 @@ export default function AccountLedgerPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {entries.map((e, idx) => (
-                <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <tr key={`${e.lineId ?? e.entryId ?? idx}`} className={`transition-colors ${e.status === 'void' ? 'bg-red-50 opacity-70' : 'hover:bg-gray-50 active:bg-gray-100'}`}>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
                   <td className="hidden sm:table-cell px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ENTRY_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                       {e.sourceType ?? '—'}
                     </span>
+                    {e.status === 'void' && (
+                      <span className="ml-1 inline-flex rounded-full px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-600">voided</span>
+                    )}
                   </td>
                   <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
                   <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-700">
