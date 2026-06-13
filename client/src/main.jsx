@@ -3,20 +3,12 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { queryClient } from './app/queryClient';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import InstallPrompt from './components/ui/InstallPrompt';
+import UpdatePrompt from './components/ui/UpdatePrompt';
 import './index.css';
-
-// Register service worker — auto-updates in the background
-registerSW({
-  onNeedRefresh() {}, // silent auto-update
-  onOfflineReady() {
-    console.log('[PWA] App ready to work offline');
-  },
-});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -25,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <App />
         <InstallPrompt />
+        <UpdatePrompt />
         <Toaster
           position="top-right"
           toastOptions={{
