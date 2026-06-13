@@ -725,7 +725,7 @@ async function getTrialBalance(companyId, { asOf } = {}) {
              COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
       FROM ledger_entry_lines jel
       JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
-      WHERE je.company_id = $1 AND je.status = 'posted' AND je.entry_date <= $2
+      WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_type != 'VOID' AND je.entry_date <= $2
       GROUP BY jel.account_id
     `, [companyId, asOfDate]),
   ]);
@@ -821,7 +821,7 @@ async function getLedgerEntries(companyId, { accountId, startDate, endDate, page
     ),
     with_balance AS (
       SELECT *,
-        SUM(debit - credit) OVER (
+        SUM(CASE WHEN status = 'posted' AND source_type != 'VOID' THEN debit - credit ELSE 0 END) OVER (
           PARTITION BY account_id
           ORDER BY entry_date ASC, entry_number ASC
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW

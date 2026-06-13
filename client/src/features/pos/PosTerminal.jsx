@@ -228,7 +228,10 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
   const [notes,         setNotes]         = useState('');
   const [pmAmounts,     setPmAmounts]     = useState({});
   // Stuck session recovery state
-  const [stuckSession,  setStuckSession]  = useState(null); // { sessionId, sessionStart, cashierName }
+  const [stuckSession,    setStuckSession]    = useState(null); // { sessionId, sessionStart, cashierName }
+  const [showTakeover,    setShowTakeover]    = useState(false);
+  const [takeoverCash,    setTakeoverCash]    = useState('');
+  const [takeoverNotes,   setTakeoverNotes]   = useState('');
 
   const { data: terminals = [], isPending: terminalsLoading } = useQuery({
     queryKey: ['pos-terminals', branchId],
@@ -248,7 +251,7 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
   }, [terminals, terminalId]);
 
   // Clear stuck-session banner when the user picks a different terminal
-  useEffect(() => { setStuckSession(null); }, [terminalId]);
+  useEffect(() => { setStuckSession(null); setShowTakeover(false); setTakeoverCash(''); setTakeoverNotes(''); }, [terminalId]);
 
   const { mutate: open, isPending } = useMutation({
     mutationFn: (data) => api.post('/pos/sessions', data),
@@ -274,13 +277,19 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
     .filter((m) => parseFloat(pmAmounts[m.payment_method_id]) > 0)
     .map((m) => ({ paymentMethodId: m.payment_method_id, amount: parseFloat(pmAmounts[m.payment_method_id]) }));
 
-  const doOpen = (forceClose = false) => open({
+  const doOpen = (forceClose = false, extra = {}) => open({
     branchId,
     terminalId,
     openingCashAmount: parseFloat(openingAmount) || 0,
     openingNotes: notes || null,
     payModeAmounts,
     forceClose,
+    ...extra,
+  });
+
+  const confirmTakeover = () => doOpen(true, {
+    takeoverCashCounted: parseFloat(takeoverCash) || 0,
+    takeoverNotes: takeoverNotes || null,
   });
 
   return (
@@ -295,12 +304,12 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
         </div>
 
         {/* Stuck session recovery banner */}
-        {stuckSession && (
+        {stuckSession && !showTakeover && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
             <div className="flex items-start gap-2">
               <span className="text-amber-500 text-lg leading-none">⚠</span>
               <div>
-                <p className="text-sm font-semibold text-amber-800">Terminal has a stuck session</p>
+                <p className="text-sm font-semibold text-amber-800">Terminal has an open session</p>
                 <p className="text-xs text-amber-700 mt-0.5">
                   {stuckSession.cashierName ? `Opened by ${stuckSession.cashierName}` : 'Unknown cashier'}
                   {stuckSession.sessionStart ? ` · ${new Date(stuckSession.sessionStart).toLocaleString()}` : ''}
@@ -309,12 +318,58 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
             </div>
             <Button
               fullWidth
-              loading={isPending}
               className="!bg-amber-600 hover:!bg-amber-700 !text-white"
-              onClick={() => doOpen(true)}
+              onClick={() => setShowTakeover(true)}
             >
               Take Over Terminal
             </Button>
+          </div>
+        )}
+
+        {/* Takeover cash count form */}
+        {stuckSession && showTakeover && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Close {stuckSession.cashierName ?? 'previous'}'s session</p>
+              <p className="text-xs text-amber-700 mt-0.5">Count the cash in the drawer to close their shift before you start yours.</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-amber-800">Cash in drawer now</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={takeoverCash}
+                onChange={(e) => setTakeoverCash(e.target.value)}
+                className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-amber-800">Notes (optional)</label>
+              <textarea
+                rows={2}
+                placeholder="e.g. Taking over from morning shift"
+                value={takeoverNotes}
+                onChange={(e) => setTakeoverNotes(e.target.value)}
+                className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowTakeover(false)}
+                className="flex-1 rounded-lg border border-amber-300 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100"
+              >
+                Back
+              </button>
+              <Button
+                loading={isPending}
+                className="flex-1 !bg-amber-600 hover:!bg-amber-700 !text-white"
+                onClick={confirmTakeover}
+              >
+                Confirm Takeover
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1100,8 +1155,7 @@ export default function PosTerminal() {
     queryKey: ['active-session', branchId],
     queryFn:  () => api.get('/pos/sessions/active', { params: { branchId } }).then((r) => r.data.data),
     enabled:  !!branchId && !session,
-    retry:    false,
-    staleTime: Infinity,
+    retry:    1,
   });
 
   useEffect(() => {

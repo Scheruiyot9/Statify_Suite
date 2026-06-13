@@ -163,7 +163,7 @@ async function getAccountBalance(companyId, accountId) {
            COALESCE(SUM(jel.credit), 0)::numeric AS total_credit
     FROM ledger_entry_lines jel
     JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
-    WHERE je.company_id = $1 AND je.status = 'posted' AND jel.account_id = $2
+    WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_type != 'VOID' AND jel.account_id = $2
   `, [companyId, accountId]);
 
   const dr      = parseFloat(balRows[0]?.total_debit  ?? 0);

@@ -393,22 +393,22 @@ export default function InventoryPage() {
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 {canAdjustStock && (
-                  <th className="px-4 py-3 w-8">
+                  <th className="px-3 py-2 w-8">
                     <input type="checkbox"
                       checked={inventory.length > 0 && selected.size === inventory.length}
                       onChange={toggleAll}
                       className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                   </th>
                 )}
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Category</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Available</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600 hidden lg:table-cell">Reorder At</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600 hidden sm:table-cell">Selling Price</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 hidden lg:table-cell">Last Updated</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Product</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">SKU</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Category</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Available</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600 hidden lg:table-cell w-16">Min</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600 hidden sm:table-cell">Selling Price</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -419,36 +419,31 @@ export default function InventoryPage() {
                   <tr key={key}
                     className={`hover:bg-gray-50 transition-colors ${item.is_low_stock ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-primary-50/40' : ''}`}>
                     {canAdjustStock && (
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(key)}
                           className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                       </td>
                     )}
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">{item.product_name}</p>
-                      <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-2 font-medium text-gray-900">{item.product_name}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400 hidden sm:table-cell">{item.sku}</td>
+                    <td className="px-3 py-2 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">
                       <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
                         {item.quantity_available}
                       </span>
                       <span className="text-xs text-gray-400 ml-1">{item.unit_of_measure}</span>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-500 hidden lg:table-cell">{item.reorder_level}</td>
-                    <td className="px-4 py-3 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-3 py-2 text-right text-gray-500 text-xs hidden lg:table-cell">{item.reorder_level}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
+                    <td className="px-3 py-2 text-center">
                       {item.is_low_stock
                         ? <span className="flex items-center justify-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
                             <AlertTriangle className="h-3 w-3" /> Low
                           </span>
                         : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">OK</span>}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
-                      {item.last_updated ? formatDate(item.last_updated) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-3 py-2 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button onClick={() => setLedgerItem({ product_id: item.product_id, product_name: item.product_name, branch_id: item.branch_id, branch_name: item.branch_name })}
                           className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
@@ -473,7 +468,7 @@ export default function InventoryPage() {
           </div>
         )}
         {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
             <p className="text-xs text-gray-500">Page {page} of {pages} ({total} total)</p>
             <div className="flex gap-1">
               <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-md border border-gray-200 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-50">← Prev</button>

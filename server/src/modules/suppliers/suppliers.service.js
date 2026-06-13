@@ -9,7 +9,7 @@ const LIVE_BALANCE_SQL = `
     SELECT (SUM(lel.credit) - SUM(lel.debit))::numeric
     FROM ledger_entry_lines lel
     JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
-    WHERE je.status = 'posted'
+    WHERE je.status = 'posted' AND je.source_type != 'VOID'
       AND lel.entity_type = 'supplier'
       AND lel.entity_id = s.supplier_id
   ), 0) AS current_balance

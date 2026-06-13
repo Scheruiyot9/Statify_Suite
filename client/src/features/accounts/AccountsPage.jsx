@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 
-const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+const inp = 'w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 const sel = inp + ' bg-white';
 const Field = ({ label, children, required }) => (
   <div>
@@ -86,7 +86,7 @@ function AccountModal({ account, accounts, onClose, onDelete }) {
     <div className="flex gap-3 w-full">
       {canDelete && (
         <button onClick={() => setConfirmDelete(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors mr-auto">
+          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors mr-auto">
           <Trash2 className="h-3.5 w-3.5" />Deactivate
         </button>
       )}
@@ -252,7 +252,7 @@ function TrialBalanceTab() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+        <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
           <Scale className="h-4 w-4 text-gray-500" />
           <span className="font-semibold text-sm text-gray-700">Trial Balance — as of {formatDate(asOf)}</span>
         </div>
@@ -260,27 +260,27 @@ function TrialBalanceTab() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50/50 border-b border-gray-200">
               <tr>
-                <th className="hidden sm:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Account Name</th>
-                <th className="hidden md:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
+                <th className="hidden sm:table-cell px-2 py-1.5 text-left text-xs font-medium text-gray-500">Code</th>
+                <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500">Account Name</th>
+                <th className="hidden md:table-cell px-2 py-1.5 text-left text-xs font-medium text-gray-500">Type</th>
+                <th className="px-2 py-1.5 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
+                <th className="px-2 py-1.5 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((row) => (
                 <tr key={row.accountCode} className={!row.hasData ? 'opacity-40' : 'hover:bg-gray-50 active:bg-gray-100'}>
-                  <td className="hidden sm:table-cell px-4 py-2.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-900 truncate">{row.accountName}</td>
-                  <td className="hidden md:table-cell px-4 py-2.5">
+                  <td className="hidden sm:table-cell px-2 py-1.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
+                  <td className="px-2 py-1.5 font-medium text-gray-900 truncate">{row.accountName}</td>
+                  <td className="hidden md:table-cell px-2 py-1.5">
                     <span className={`text-xs font-medium capitalize ${TB_TYPE_COLORS[row.accountType] ?? 'text-gray-600'}`}>
                       {row.accountType}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono">
+                  <td className="px-2 py-1.5 text-right font-mono">
                     {row.debit > 0 ? <span className="text-blue-700 font-semibold">{formatCurrency(row.debit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono">
+                  <td className="px-2 py-1.5 text-right font-mono">
                     {row.credit > 0 ? <span className="text-green-700 font-semibold">{formatCurrency(row.credit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
                 </tr>
@@ -288,9 +288,9 @@ function TrialBalanceTab() {
             </tbody>
             <tfoot className="border-t-2 border-gray-400">
               <tr className="font-bold bg-gray-50">
-                <td colSpan={3} className="px-4 py-3 text-sm text-gray-800">TOTALS</td>
-                <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">{formatCurrency(totalDebits)}</td>
-                <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">{formatCurrency(totalCredits)}</td>
+                <td colSpan={3} className="px-2 py-1.5 text-sm text-gray-800">TOTALS</td>
+                <td className="px-2 py-1.5 text-right text-sm font-bold text-gray-900">{formatCurrency(totalDebits)}</td>
+                <td className="px-2 py-1.5 text-right text-sm font-bold text-gray-900">{formatCurrency(totalCredits)}</td>
               </tr>
             </tfoot>
           </table>
@@ -370,7 +370,7 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
   return (
     <>
       <tr className={`hover:bg-gray-50 transition-colors ${!account.is_active ? 'opacity-50' : ''}`}>
-        <td className="px-4 py-2.5" style={{ paddingLeft: `${16 + depth * 24}px` }}>
+        <td className="px-2 py-1.5" style={{ paddingLeft: `${16 + depth * 24}px` }}>
           <div className="flex items-center gap-2">
             {children.length > 0 ? (
               <button onClick={() => setExpanded((v) => !v)} className="text-gray-400 hover:text-gray-600">
@@ -386,23 +386,23 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
             )}
           </div>
         </td>
-        <td className="px-4 py-2.5 text-xs text-gray-500">{account.account_subtype || '—'}</td>
+        <td className="px-2 py-1.5 text-xs text-gray-500">{account.account_subtype || '—'}</td>
 
         {/* Debit column */}
-        <td className="px-4 py-2.5 text-right font-mono text-xs">
+        <td className="px-2 py-1.5 text-right font-mono text-xs">
           {drAmt > 0
             ? <span className={`font-semibold ${isDebitNormal ? 'text-blue-700' : 'text-gray-500'}`}>{formatCurrency(drAmt)}</span>
             : <span className="text-gray-300">—</span>}
         </td>
 
         {/* Credit column */}
-        <td className="px-4 py-2.5 text-right font-mono text-xs">
+        <td className="px-2 py-1.5 text-right font-mono text-xs">
           {crAmt > 0
             ? <span className={`font-semibold ${!isDebitNormal ? 'text-green-700' : 'text-gray-500'}`}>{formatCurrency(crAmt)}</span>
             : <span className="text-gray-300">—</span>}
         </td>
 
-        <td className="px-4 py-2.5 text-center">
+        <td className="px-2 py-1.5 text-center">
           <div className="flex items-center justify-center gap-1.5">
             <button onClick={() => onEdit(account)}
               className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
@@ -631,7 +631,7 @@ export default function AccountsPage() {
                 if (roots.length === 0) return null;
                 return (
                   <div key={type} className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-                    <div className={`px-4 py-2.5 flex items-center gap-2 border-b border-gray-100 ${TYPE_COLORS[type]} bg-opacity-30`}>
+                    <div className={`px-2 py-1.5 flex items-center gap-2 border-b border-gray-100 ${TYPE_COLORS[type]} bg-opacity-30`}>
                       <BookOpen className="h-4 w-4" />
                       <span className="font-semibold text-sm">{TYPE_LABELS[type]}</span>
                       <span className="text-xs opacity-70">({typeAccounts.length})</span>

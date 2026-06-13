@@ -159,39 +159,39 @@ function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines,
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-3 py-2 font-medium text-gray-600">Account / Entity</th>
-              <th className="text-left px-3 py-2 font-medium text-gray-600 w-40">Line Note</th>
-              <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Debit</th>
-              <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Credit</th>
+              <th className="text-left px-2 py-1.5 font-medium text-gray-600">Account / Entity</th>
+              <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-40">Line Note</th>
+              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-28">Debit</th>
+              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-28">Credit</th>
               <th className="w-8" />
             </tr>
           </thead>
           <tbody className="divide-y">
             {lines.map((l, i) => (
               <tr key={i} className="align-top">
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">
                   <SmartAccountPicker line={l} idx={i} accounts={accounts}
                     bankAccounts={bankAccounts} customers={customers} suppliers={suppliers}
                     onChange={updateLine} />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">
                   <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Note…"
                     value={l.description}
                     onChange={(e) => updateLine(i, { ...l, description: e.target.value })} />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">
                   <input type="number" min="0" step="0.01" placeholder="0.00"
                     className="w-full border rounded-lg px-2 py-1.5 text-sm text-right"
                     value={l.debit}
                     onChange={(e) => updateLine(i, { ...l, debit: e.target.value, credit: e.target.value ? '' : l.credit })} />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">
                   <input type="number" min="0" step="0.01" placeholder="0.00"
                     className="w-full border rounded-lg px-2 py-1.5 text-sm text-right"
                     value={l.credit}
                     onChange={(e) => updateLine(i, { ...l, credit: e.target.value, debit: e.target.value ? '' : l.debit })} />
                 </td>
-                <td className="px-3 py-2 pt-3">
+                <td className="px-2 py-1.5 pt-3">
                   {lines.length > 2 && (
                     <button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500">
                       <XCircle className="h-4 w-4" />
@@ -203,11 +203,11 @@ function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines,
           </tbody>
           <tfoot className="border-t bg-gray-50">
             <tr>
-              <td colSpan={2} className="px-3 py-2 text-sm font-semibold">Totals</td>
-              <td className={`px-3 py-2 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
+              <td colSpan={2} className="px-2 py-1.5 text-sm font-semibold">Totals</td>
+              <td className={`px-2 py-1.5 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
                 {fmt(totalDr)}
               </td>
-              <td className={`px-3 py-2 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
+              <td className={`px-2 py-1.5 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
                 {fmt(totalCr)}
               </td>
               <td />
@@ -328,17 +328,17 @@ function JournalFormModal({ existing, accounts, onClose }) {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
+            <input type="date" className="w-full border rounded-lg px-2 py-1.5 text-sm"
               value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Monthly accrual"
+            <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="e.g. Monthly accrual"
               value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Reference</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. INV-001"
+            <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="e.g. INV-001"
               value={reference} onChange={(e) => setReference(e.target.value)} />
           </div>
         </div>
@@ -474,7 +474,7 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
             <div className="border-t pt-4">
               {showVoidForm ? (
                 <div className="flex gap-2">
-                  <input className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                  <input className="flex-1 border rounded-lg px-2 py-1.5 text-sm"
                     placeholder="Reason for voiding…"
                     value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
                   <button onClick={() => voidMut.mutate()} disabled={!voidReason.trim() || voidMut.isPending}
@@ -744,11 +744,11 @@ export default function JournalPage() {
         {activeTab === 'journals' && (
           <div className="flex items-center gap-2">
             <button onClick={downloadTemplate}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
               <Download className="h-4 w-4" />Template
             </button>
             <button onClick={() => setShowImport(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
               <Upload className="h-4 w-4" />Import
             </button>
             <button onClick={() => setShowNew(true)}
@@ -814,32 +814,32 @@ export default function JournalPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b z-10">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Number</th>
-                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Date</th>
-                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Description</th>
-                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Reference</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Debit</th>
-                  <th className="hidden sm:table-cell text-right px-4 py-3 font-medium text-gray-600 w-32">Credit</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-24">Status</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600 w-20">Action</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Number</th>
+                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Date</th>
+                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Description</th>
+                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Reference</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Debit</th>
+                  <th className="hidden sm:table-cell text-right px-2 py-1.5 font-medium text-gray-600 w-32">Credit</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-24">Status</th>
+                  <th className="text-center px-2 py-1.5 font-medium text-gray-600 w-20">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {journals.map((j) => (
                   <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                     onClick={() => setSelectedId(j.journalId)}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{j.journalNumber}</td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
-                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-4 py-3 text-gray-500 text-xs">{j.reference ?? '—'}</td>
-                    <td className="px-4 py-3 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-1.5 font-mono text-xs text-gray-700">{j.journalNumber}</td>
+                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
+                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-2 py-1.5 text-gray-500 text-xs">{j.reference ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
+                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
+                    <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
                         {j.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setSelectedId(j.journalId)}
                         className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                         View
@@ -864,39 +864,39 @@ export default function JournalPage() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b z-10">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-36">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-28">Type</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Amount</th>
-                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600">Account / Supplier</th>
-                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-32">Payment</th>
-                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600">Notes</th>
-                  <th className="hidden lg:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Terminal</th>
-                  <th className="hidden sm:table-cell text-left px-4 py-3 font-medium text-gray-600 w-28">Branch</th>
-                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium text-gray-600 w-32">Posted By</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
+                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Account / Supplier</th>
+                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">Payment</th>
+                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
+                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
+                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
+                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">Posted By</th>
                 </tr>
               </thead>
               <tbody>
                 {cashOuts.map((co) => (
                   <tr key={co.cash_out_id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 text-xs text-gray-600">{String(co.created_at).slice(0, 10)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{String(co.created_at).slice(0, 10)}</td>
+                    <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${OUT_TYPE_COLORS[co.out_type] ?? 'bg-gray-100 text-gray-600'}`}>
                         {OUT_TYPE_LABELS[co.out_type] ?? co.out_type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-right font-mono">{fmt(co.amount)}</td>
-                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-800 truncate max-w-xs">
+                    <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(co.amount)}</td>
+                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">
                       {co.supplier_name ?? (
                         co.account_name
                           ? <>{co.account_name}{co.account_code && <span className="ml-1 text-gray-400">({co.account_code})</span>}</>
                           : '—'
                       )}
                     </td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{co.payment_method_name ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-4 py-3 text-xs text-gray-600 truncate max-w-[12rem]">{co.notes ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-4 py-3 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
-                    <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
+                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{co.payment_method_name ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{co.notes ?? '—'}</td>
+                    <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
+                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
+                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

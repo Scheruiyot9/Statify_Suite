@@ -444,50 +444,47 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">SKU</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Category</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Tax</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Price</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Cost</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Product</th>
+                <th className="hidden sm:table-cell px-3 py-2 text-left font-medium text-gray-600">SKU</th>
+                <th className="hidden md:table-cell px-3 py-2 text-left font-medium text-gray-600">Category</th>
+                <th className="hidden md:table-cell px-3 py-2 text-left font-medium text-gray-600">Tax</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Price</th>
+                <th className="hidden sm:table-cell px-3 py-2 text-right font-medium text-gray-600">Cost</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {products.map((p) => (
                 <tr key={p.product_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       {p.image_url ? (
                         <img src={p.image_url} alt={p.product_name}
-                          className="h-8 w-8 flex-shrink-0 rounded-lg object-cover border border-gray-100" />
+                          className="h-7 w-7 flex-shrink-0 rounded-lg object-cover border border-gray-100" />
                       ) : (
-                        <div className="h-8 w-8 flex-shrink-0 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs">
+                        <div className="h-7 w-7 flex-shrink-0 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs">
                           {p.product_name[0]}
                         </div>
                       )}
-                      <div>
-                        <p className="font-medium text-gray-900">{p.product_name}</p>
-                        {p.barcode && <p className="text-xs text-gray-400">{p.barcode}</p>}
-                      </div>
+                      <p className="font-medium text-gray-900">{p.product_name}</p>
                     </div>
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600">{p.sku}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-500">{p.category_name ?? '—'}</td>
-                  <td className="hidden md:table-cell px-4 py-3">
+                  <td className="hidden sm:table-cell px-3 py-2 font-mono text-xs text-gray-600">{p.sku}</td>
+                  <td className="hidden md:table-cell px-3 py-2 text-gray-500">{p.category_name ?? '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-2">
                     {p.tax_template_name
                       ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{p.tax_template_name}</span>
                       : <span className="text-xs text-gray-300">default</span>}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(p.base_price)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatCurrency(p.base_price)}</td>
+                  <td className="hidden sm:table-cell px-3 py-2 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
+                  <td className="px-3 py-2 text-center">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
                         className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
@@ -513,7 +510,7 @@ export default function ProductsPage() {
           </div>
         )}
         {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
             <p className="text-xs text-gray-500">Page {page} of {pages} ({total} total)</p>
             <div className="flex gap-1">
               <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-md border border-gray-200 px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-50">← Prev</button>

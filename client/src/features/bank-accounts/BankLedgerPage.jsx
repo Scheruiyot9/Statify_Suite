@@ -187,8 +187,8 @@ export default function BankLedgerPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Header + summary */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/app/bank-accounts')}
             className="flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
@@ -201,23 +201,21 @@ export default function BankLedgerPage() {
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Balance summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl bg-primary-50 border border-primary-200 p-4 text-center">
-          <p className="text-xs text-gray-500">Current Balance</p>
-          <p className="text-lg font-bold text-primary-700 mt-0.5">
-            {account ? `${account.currency} ${formatCurrency(account.current_balance).replace('KES', '').trim()}` : '—'}
-          </p>
-        </div>
-        <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
-          <p className="text-xs text-gray-500 flex items-center justify-center gap-1"><ArrowDownLeft className="h-3 w-3 text-green-600" />Money In</p>
-          <p className="text-lg font-bold text-green-700 mt-0.5">{formatCurrency(summary.totalIn ?? 0)}</p>
-        </div>
-        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-center">
-          <p className="text-xs text-gray-500 flex items-center justify-center gap-1"><ArrowUpRight className="h-3 w-3 text-red-500" />Money Out</p>
-          <p className="text-lg font-bold text-red-600 mt-0.5">{formatCurrency(summary.totalOut ?? 0)}</p>
+        <div className="flex items-stretch divide-x divide-gray-200 rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="px-4 py-2 text-center bg-primary-50">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Balance</p>
+            <p className="text-sm font-bold text-primary-700 mt-0.5">
+              {account ? formatCurrency(account.current_balance) : '—'}
+            </p>
+          </div>
+          <div className="px-4 py-2 text-center">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide flex items-center gap-1 justify-center"><ArrowDownLeft className="h-3 w-3 text-green-600" />In</p>
+            <p className="text-sm font-bold text-green-700 mt-0.5">{formatCurrency(summary.totalIn ?? 0)}</p>
+          </div>
+          <div className="px-4 py-2 text-center">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide flex items-center gap-1 justify-center"><ArrowUpRight className="h-3 w-3 text-red-500" />Out</p>
+            <p className="text-sm font-bold text-red-600 mt-0.5">{formatCurrency(summary.totalOut ?? 0)}</p>
+          </div>
         </div>
       </div>
 
@@ -246,49 +244,51 @@ export default function BankLedgerPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Date</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Type</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Reference</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Description</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-green-600">In (Cr)</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-red-500">Out (Dr)</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Balance</th>
-                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500">Entry</th>
+                <th className="px-2 py-1.5 text-left font-medium text-gray-500 w-20">Date</th>
+                <th className="hidden sm:table-cell px-2 py-1.5 text-left font-medium text-gray-500 w-20">Type</th>
+                <th className="hidden sm:table-cell px-2 py-1.5 text-left font-medium text-gray-500 w-28">Reference</th>
+                <th className="hidden md:table-cell px-2 py-1.5 text-left font-medium text-gray-500">Description</th>
+                <th className="px-2 py-1.5 text-right font-medium text-green-600 w-24">In</th>
+                <th className="px-2 py-1.5 text-right font-medium text-red-500 w-24">Out</th>
+                <th className="px-2 py-1.5 text-right font-medium text-gray-500 w-24">Balance</th>
+                <th className="px-2 py-1.5 w-12" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {entries.map((e, idx) => (
-                <tr key={`${e.lineId ?? e.entryId ?? idx}`} className={`transition-colors ${e.status === 'void' ? 'bg-red-50 opacity-70' : 'hover:bg-gray-50 active:bg-gray-100'}`}>
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {e.sourceType ?? '—'}
-                    </span>
-                    {e.status === 'void' && (
-                      <span className="ml-1 inline-flex rounded-full px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-600">voided</span>
-                    )}
+                <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="transition-colors hover:bg-gray-50 active:bg-gray-100">
+                  <td className="px-2 py-2 text-gray-500 whitespace-nowrap">{formatDate(e.entryDate)}</td>
+                  <td className="hidden sm:table-cell px-2 py-2">
+                    <div className="flex items-center gap-1 flex-nowrap">
+                      <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {e.sourceType ?? '—'}
+                      </span>
+                      {e.status === 'void' && (
+                        <span className="text-[10px] font-medium text-red-400">· voided</span>
+                      )}
+                    </div>
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-700">
+                  <td className="hidden sm:table-cell px-2 py-2 font-mono text-[11px] text-gray-500">{e.sourceRef ?? e.entryNumber}</td>
+                  <td className="hidden md:table-cell px-2 py-2 text-gray-700 max-w-[180px]">
                     <p className="truncate" title={e.description}>{e.description}</p>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
+                  <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
                     {e.debit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
+                  <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
                     {e.credit > 0 ? <span className="font-semibold text-red-600">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono text-xs font-semibold ${(e.balance ?? 0) >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
-                    {e.balance != null ? formatCurrency(e.balance) : '—'}
+                  <td className={`px-2 py-2 text-right font-mono font-semibold whitespace-nowrap ${(e.status === 'void' || e.sourceType === 'VOID') ? 'text-gray-300' : (e.balance ?? 0) >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                    {(e.status === 'void' || e.sourceType === 'VOID') ? '—' : e.balance != null ? formatCurrency(e.balance) : '—'}
                   </td>
-                  <td className="px-2 py-3 text-center">
+                  <td className="px-2 py-2 text-center">
                     {e.entryId && (
-                      <button onClick={() => setViewing(e.entryId)} title="View double entry"
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        Entry
+                      <button onClick={() => setViewing(e.entryId)}
+                        className="rounded border border-primary-200 bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     )}
                   </td>

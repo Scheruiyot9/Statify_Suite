@@ -231,7 +231,7 @@ async function getActiveSession(companyId, userId, branchId, role) {
   };
 }
 
-async function openSession(companyId, branchId, userId, { terminalId, openingCashAmount = 0, openingNotes, payModeAmounts = [], forceClose = false }) {
+async function openSession(companyId, branchId, userId, { terminalId, openingCashAmount = 0, openingNotes, payModeAmounts = [], forceClose = false, takeoverCashCounted = 0, takeoverNotes = null }) {
   const { rows: termRows } = await query(
     `SELECT terminal_id, terminal_name, terminal_code FROM pos_terminals
      WHERE terminal_id = $1 AND branch_id = $2 AND company_id = $3 AND is_active = TRUE`,
@@ -256,12 +256,11 @@ async function openSession(companyId, branchId, userId, { terminalId, openingCas
         { sessionId: stuck.session_id, sessionStart: stuck.session_start, cashierName: stuck.cashier_name }
       );
     }
-    // Force-close the stuck session before opening a new one
-    await query(`
-      UPDATE pos_sessions
-      SET status = 'closed', session_end = now(), closing_notes = 'Force-closed by new session open', updated_at = now()
-      WHERE session_id = $1
-    `, [stuck.session_id]);
+    // Properly close the stuck session (calculates variance, records closer)
+    await closeSession(companyId, stuck.session_id, userId, {
+      closingCashCounted: takeoverCashCounted,
+      closingNotes: takeoverNotes ?? 'Force-closed via terminal takeover',
+    });
   }
 
   const { rows } = await query(`

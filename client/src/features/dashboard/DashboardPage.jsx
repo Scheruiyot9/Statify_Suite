@@ -95,35 +95,60 @@ function groupTrend(trend, days, period) {
 }
 
 // ── Mini bar chart (pure SVG, no library) ──────────────────────────────────────
-function BarChart({ data, color = '#FFA916' }) {
-  if (!data?.length) return <div className="flex h-20 items-center justify-center text-xs text-gray-300">No data</div>;
-  const max = Math.max(...data.map((d) => d.value ?? d.total ?? 0), 1);
-  const W = 300;
-  const H = 100;
-  const labelH = 18;
+function BarChart({ data }) {
+  if (!data?.length) return <div className="flex h-24 items-center justify-center text-xs text-gray-300">No data</div>;
+  const vals = data.map((d) => d.value ?? d.total ?? 0);
+  const max  = Math.max(...vals, 1);
+  const W = 400;
+  const H = 120;
+  const labelH = 16;
   const chartH = H - labelH;
-  const count = data.length;
-  const gap = count > 20 ? 1 : count > 10 ? 2 : 4;
-  const barW = Math.max(2, (W - gap * (count - 1)) / count);
+  const count  = data.length;
+  const gap    = count > 20 ? 1 : count > 10 ? 2 : 5;
+  const barW   = Math.max(3, (W - gap * (count - 1)) / count);
+  const maxIdx = vals.indexOf(Math.max(...vals));
+
+  const GRID_LINES = 3;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden>
+      <defs>
+        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFA916" stopOpacity="1" />
+          <stop offset="100%" stopColor="#FF8C00" stopOpacity="0.7" />
+        </linearGradient>
+        <linearGradient id="barGradPeak" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#024A59" stopOpacity="1" />
+          <stop offset="100%" stopColor="#036F80" stopOpacity="0.8" />
+        </linearGradient>
+      </defs>
+
+      {/* Horizontal grid lines */}
+      {Array.from({ length: GRID_LINES }).map((_, g) => {
+        const y = chartH * (g / GRID_LINES);
+        return <line key={g} x1={0} y1={y} x2={W} y2={y} stroke="#F3F4F6" strokeWidth="1" />;
+      })}
+
       {data.map((d, i) => {
-        const val = d.value ?? d.total ?? 0;
-        const bh = Math.max((val / max) * chartH, val > 0 ? 2 : 0);
-        const x = i * (barW + gap);
-        const y = chartH - bh;
-        // Use per-item flag if set, otherwise fall back to spacing heuristic
+        const val  = d.value ?? d.total ?? 0;
+        const bh   = Math.max((val / max) * chartH, val > 0 ? 3 : 0);
+        const x    = i * (barW + gap);
+        const y    = chartH - bh;
+        const isPeak = i === maxIdx && val > 0;
+        const isEmpty = val === 0;
         const showLabel = d.showLabel !== undefined
           ? d.showLabel
           : count <= 10 || i % Math.ceil(count / 10) === 0 || i === count - 1;
+
         return (
           <g key={d.date ?? i}>
-            <rect x={x} y={y} width={barW} height={bh}
-              fill={val > 0 ? color : '#E5E7EB'} rx="2" />
+            <rect x={x} y={isEmpty ? chartH - 2 : y} width={barW} height={isEmpty ? 2 : bh}
+              fill={isEmpty ? '#E5E7EB' : isPeak ? 'url(#barGradPeak)' : 'url(#barGrad)'}
+              rx="2" />
             {showLabel && (
               <text x={x + barW / 2} y={H - 2}
-                textAnchor="middle" fontSize="8" fill="#9CA3AF"
+                textAnchor="middle" fontSize="7.5" fill={isPeak ? '#024A59' : '#9CA3AF'}
+                fontWeight={isPeak ? '600' : '400'}
                 fontFamily="system-ui, sans-serif">
                 {d.label}
               </text>
@@ -200,12 +225,21 @@ const PERIOD_OPTIONS = [
   { label: 'Year',    value: '1y',  days: 364 },
 ];
 
-function PeriodToggle({ period, onPeriod }) {
+const PERIOD_OPTIONS_COMPACT = [
+  { label: 'D', value: '1d'  },
+  { label: 'W', value: '7d'  },
+  { label: 'M', value: '30d' },
+  { label: 'Q', value: '90d' },
+  { label: 'Y', value: '1y'  },
+];
+
+function PeriodToggle({ period, onPeriod, compact = false }) {
+  const opts = compact ? PERIOD_OPTIONS_COMPACT : PERIOD_OPTIONS;
   return (
     <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-      {PERIOD_OPTIONS.map((p) => (
+      {opts.map((p) => (
         <button key={p.value} onClick={() => onPeriod(p.value)}
-          className={`px-2.5 py-1 font-medium transition-colors ${
+          className={`${compact ? 'px-2 py-1' : 'px-2.5 py-1'} font-medium transition-colors ${
             period === p.value ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
           }`}>{p.label}</button>
       ))}
@@ -214,14 +248,28 @@ function PeriodToggle({ period, onPeriod }) {
 }
 
 function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
-  const grouped     = groupTrend(trend, trendDays ?? 6, period);
-  const periodTotal = grouped.reduce((s, d) => s + (d.total || 0), 0);
+  const grouped      = groupTrend(trend, trendDays ?? 6, period);
+  const periodTotal  = grouped.reduce((s, d) => s + (d.total    || 0), 0);
+  const periodTxns   = (trend ?? []).reduce((s, d) => s + (d.txnCount || 0), 0);
+  const activeDays   = grouped.filter((d) => d.total > 0).length || 1;
+  const avgPerBucket = periodTotal / activeDays;
 
   return (
     <Card title="Revenue Trend" icon={TrendingUp} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
-      <div className="mb-4">
-        <p className="text-2xl font-extrabold text-gray-900">{formatCurrency(periodTotal)}</p>
-        <p className="text-xs text-gray-400 mt-0.5">Total revenue for selected period</p>
+      {/* Stats strip */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div>
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Total</p>
+          <p className="text-xl font-extrabold text-gray-900 mt-0.5 leading-tight">{formatCurrencyCompact(periodTotal)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Transactions</p>
+          <p className="text-xl font-extrabold text-gray-900 mt-0.5 leading-tight">{periodTxns.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Avg / Period</p>
+          <p className="text-xl font-extrabold text-gray-900 mt-0.5 leading-tight">{formatCurrencyCompact(avgPerBucket)}</p>
+        </div>
       </div>
       <BarChart data={grouped} />
     </Card>
@@ -321,10 +369,9 @@ function CategoryBreakdownCard({ categories, period, onPeriod }) {
 }
 
 // ── Top products card ──────────────────────────────────────────────────────────
-const RANK_STYLES = [
-  'bg-amber-400 text-white',
-  'bg-gray-300 text-gray-700',
-  'bg-orange-300 text-white',
+const RANK_MEDAL = ['🥇', '🥈', '🥉'];
+const RANK_BAR_COLORS = [
+  'bg-amber-400', 'bg-gray-300', 'bg-orange-300', 'bg-primary-300', 'bg-primary-200',
 ];
 
 const PERIOD_LABEL = { '1d': 'Today', '7d': 'This Week', '30d': 'This Month', '90d': 'Last Quarter', '1y': 'This Year' };
@@ -336,56 +383,76 @@ function TopProductsCard({ products, period, onPeriod }) {
     sortBy === 'qty' ? b.qtySold - a.qtySold : b.revenue - a.revenue
   );
 
-  return (
-    <Card title="Top Products" icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
-      {!sorted.length ? (
+  const maxVal = sortBy === 'qty'
+    ? Math.max(...sorted.map((p) => p.qtySold), 1)
+    : Math.max(...sorted.map((p) => p.revenue), 1);
+
+  if (!sorted.length) {
+    return (
+      <Card title="Top Products" icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} compact />}>
         <p className="text-sm text-gray-400">No sales data yet.</p>
-      ) : (
-        <>
-          <div className="flex items-center justify-end gap-3 mb-3 text-xs">
-            <span className="text-gray-400">Sort:</span>
-            <button onClick={() => setSortBy('revenue')}
-              className={`font-medium transition-colors ${sortBy === 'revenue' ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              Amount
-            </button>
-            <button onClick={() => setSortBy('qty')}
-              className={`font-medium transition-colors ${sortBy === 'qty' ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              Quantity
-            </button>
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pb-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-7">#</th>
-                <th className="pb-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Product</th>
-                <th className="pb-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide pr-4">Units</th>
-                <th className="pb-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((p, i) => (
-                <tr key={p.sku} className="border-b border-gray-50 last:border-0">
-                  <td className="py-2.5 pr-2">
-                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[i] || 'bg-gray-100 text-gray-400'}`}>
-                      {i + 1}
-                    </span>
-                  </td>
-                  <td className="py-2.5 pr-3 text-xs font-medium text-gray-700 max-w-0 w-full">
-                    <span className="truncate block" title={p.productName}>{p.productName}</span>
-                    <span className="text-[10px] font-mono text-gray-400">{p.sku}</span>
-                  </td>
-                  <td className="py-2.5 pr-4 text-right font-mono text-xs text-gray-600 whitespace-nowrap">
-                    {p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2)}
-                  </td>
-                  <td className="py-2.5 text-right font-mono text-xs font-semibold text-gray-900 whitespace-nowrap">
-                    {formatCurrency(p.revenue)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+      </Card>
+    );
+  }
+
+  const action = (
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
+        <button onClick={() => setSortBy('revenue')}
+          className={`px-2 py-1 font-medium transition-colors ${sortBy === 'revenue' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+          Amt
+        </button>
+        <button onClick={() => setSortBy('qty')}
+          className={`px-2 py-1 font-medium transition-colors ${sortBy === 'qty' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+          Qty
+        </button>
+      </div>
+      <PeriodToggle period={period} onPeriod={onPeriod} compact />
+    </div>
+  );
+
+  return (
+    <Card title="Top Products" icon={Package} action={action}>
+      {/* Column headers */}
+      <div className="flex items-center gap-3 px-2 mb-1">
+        <div className="w-6 flex-shrink-0" />
+        <div className="flex-1 min-w-0" />
+        <span className="flex-shrink-0 w-12 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Units</span>
+        <span className="flex-shrink-0 w-24 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue</span>
+      </div>
+
+      <div className="space-y-1">
+        {sorted.map((p, i) => {
+          const barPct = sortBy === 'qty'
+            ? (p.qtySold / maxVal) * 100
+            : (p.revenue / maxVal) * 100;
+          const qty = p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2);
+
+          return (
+            <div key={p.sku} className="rounded-lg px-2 py-2 hover:bg-gray-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 w-6 text-center">
+                  {i < 3
+                    ? <span className="text-sm leading-none">{RANK_MEDAL[i]}</span>
+                    : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 mx-auto">{i + 1}</span>
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate" title={p.productName}>{p.productName}</p>
+                </div>
+                <span className="flex-shrink-0 w-12 text-right font-mono text-xs text-gray-400">{qty}</span>
+                <span className="flex-shrink-0 w-24 text-right font-mono text-xs font-bold text-gray-900">{formatCurrency(p.revenue)}</span>
+              </div>
+              <div className="mt-2 ml-9 h-1 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${RANK_BAR_COLORS[i] ?? 'bg-primary-200'}`}
+                  style={{ width: `${barPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }
@@ -406,32 +473,32 @@ function RecentTransactionsCard({ transactions }) {
   }
 
   return (
-    <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2" action={viewAll}>
+    <Card title="Recent Transactions" icon={ShoppingCart} action={viewAll}>
       <div className="overflow-x-auto -mx-5 px-5">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Ref</th>
-              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Customer</th>
-              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cashier</th>
-              <th className="pb-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Branch</th>
-              <th className="pb-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400">Amount</th>
-              <th className="pb-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Method</th>
-              <th className="pb-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400">Status</th>
+              <th className="pb-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 w-32">Ref</th>
+              <th className="pb-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Customer</th>
+              <th className="pb-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Cashier</th>
+              <th className="pb-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Branch</th>
+              <th className="pb-2 pr-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400 w-28">Amount</th>
+              <th className="pb-2 pr-3 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell w-20">Method</th>
+              <th className="pb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-400 w-20">Status</th>
             </tr>
           </thead>
           <tbody>
             {transactions.map((t) => (
               <tr key={t.transactionId} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors">
-                <td className="py-3 pr-4 font-mono text-xs font-medium text-primary-600">{t.transactionNumber}</td>
-                <td className="py-3 pr-4 text-sm text-gray-800 truncate max-w-[110px]">{t.customerName}</td>
-                <td className="py-3 pr-4 text-xs text-gray-500 hidden md:table-cell truncate max-w-[90px]">{t.cashierName}</td>
-                <td className="py-3 pr-4 text-xs text-gray-500 hidden lg:table-cell truncate max-w-[100px]">{t.branchName}</td>
-                <td className="py-3 pr-4 text-right text-sm font-bold text-gray-900">{formatCurrency(t.totalAmount)}</td>
-                <td className="py-3 pr-4 text-center hidden sm:table-cell">
+                <td className="py-2 pr-3 font-mono text-xs font-medium text-primary-600 whitespace-nowrap">{t.transactionNumber}</td>
+                <td className="py-2 pr-3 text-xs text-gray-800 truncate max-w-[100px]">{t.customerName}</td>
+                <td className="py-2 pr-3 text-xs text-gray-500 hidden md:table-cell truncate max-w-[80px]">{t.cashierName}</td>
+                <td className="py-2 pr-3 text-xs text-gray-500 hidden lg:table-cell truncate max-w-[90px]">{t.branchName}</td>
+                <td className="py-2 pr-3 text-right text-xs font-bold text-gray-900 whitespace-nowrap">{formatCurrency(t.totalAmount)}</td>
+                <td className="py-2 pr-3 text-center hidden sm:table-cell">
                   <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">{t.paymentMethod}</span>
                 </td>
-                <td className="py-3 text-center"><StatusBadge status={t.status} /></td>
+                <td className="py-2 text-center"><StatusBadge status={t.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -838,19 +905,17 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Row 3: Top Products ── */}
+      {/* ── Row 3: Top Products (1/2) + Revenue Trend (1/2) ── */}
       {canViewSales && (
-        <TopProductsCard
-          products={data?.topProducts}
-          period={trendPeriod}
-          onPeriod={setTrendPeriod}
-        />
-      )}
-
-      {/* ── Row 4: Revenue Trend + Recent Transactions ── */}
-      {canViewSales && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div>
+            <TopProductsCard
+              products={data?.topProducts}
+              period={trendPeriod}
+              onPeriod={setTrendPeriod}
+            />
+          </div>
+          <div>
             <SalesTrendCard
               trend={data?.salesTrend}
               trendDays={data?.trendDays ?? 6}
@@ -858,10 +923,12 @@ export default function DashboardPage() {
               onPeriod={setTrendPeriod}
             />
           </div>
-          <div className="lg:col-span-1">
-            <RecentTransactionsCard transactions={data?.recentTransactions} />
-          </div>
         </div>
+      )}
+
+      {/* ── Row 4: Recent Transactions (full width) ── */}
+      {canViewSales && (
+        <RecentTransactionsCard transactions={data?.recentTransactions} />
       )}
 
     </div>

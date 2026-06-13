@@ -1962,55 +1962,87 @@ function SecurityTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { id: 'branches',       label: 'Branches',          Icon: GitBranch  },
-  { id: 'categories',     label: 'Product Categories', Icon: Package    },
-  { id: 'cust-groups',    label: 'Customer Groups',    Icon: Users      },
-  { id: 'loyalty',        label: 'Loyalty Points',     Icon: Star       },
-  { id: 'tax',            label: 'Tax Rates',           Icon: Percent    },
-  { id: 'pay-modes',      label: 'Payment Methods',    Icon: CreditCard },
-  { id: 'terminals',      label: 'Terminals',           Icon: Monitor    },
-  { id: 'return-reasons', label: 'Return Reasons',      Icon: RotateCcw  },
-  { id: 'security',       label: 'Security',            Icon: ShieldCheck},
-  { id: 'subscription',   label: 'Subscription',        Icon: Layers     },
+const NAV_GROUPS = [
+  {
+    label: 'POS Setup',
+    items: [
+      { id: 'branches',       label: 'Branches',         Icon: GitBranch  },
+      { id: 'terminals',      label: 'Terminals',         Icon: Monitor    },
+      { id: 'pay-modes',      label: 'Payment Methods',   Icon: CreditCard },
+      { id: 'return-reasons', label: 'Return Reasons',    Icon: RotateCcw  },
+    ],
+  },
+  {
+    label: 'Products',
+    items: [
+      { id: 'categories', label: 'Product Categories', Icon: Package },
+      { id: 'tax',        label: 'Tax Rates',           Icon: Percent },
+    ],
+  },
+  {
+    label: 'Customers',
+    items: [
+      { id: 'cust-groups', label: 'Customer Groups', Icon: Users },
+      { id: 'loyalty',     label: 'Loyalty Points',  Icon: Star  },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { id: 'security',     label: 'Security',     Icon: ShieldCheck },
+      { id: 'subscription', label: 'Subscription', Icon: Layers      },
+    ],
+  },
 ];
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('pay-modes');
 
+  const activeLabel = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === activeTab)?.label ?? '';
+
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-sm text-gray-500 mt-0.5">Configure your POS system</p>
-      </div>
+    <div>
+      <p className="text-sm text-gray-500 mb-4">Configure your POS system</p>
 
-      <div className="flex overflow-x-auto border-b border-gray-200 scrollbar-none">
-        {TABS.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            className={[
-              'flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-              activeTab === id
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-            ].join(' ')}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="flex gap-6 items-start">
+        {/* Sidebar */}
+        <aside className="w-48 flex-shrink-0 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <div className="border-t border-gray-100" />}
+              <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                {group.label}
+              </p>
+              {group.items.map(({ id, label, Icon }) => (
+                <button key={id} onClick={() => setActiveTab(id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left ${
+                    activeTab === id
+                      ? 'bg-primary-50 text-primary-700 font-semibold border-l-2 border-primary-600'
+                      : 'text-gray-600 hover:bg-gray-50 border-l-2 border-transparent'
+                  }`}>
+                  <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                  {label}
+                </button>
+              ))}
+              {gi === NAV_GROUPS.length - 1 && <div className="pb-2" />}
+            </div>
+          ))}
+        </aside>
 
-      <div>
-        {activeTab === 'branches'       && <BranchesTab />}
-        {activeTab === 'categories'     && <CategoriesTab />}
-        {activeTab === 'cust-groups'    && <CustomerGroupsTab />}
-        {activeTab === 'loyalty'        && <LoyaltyTab />}
-        {activeTab === 'tax'            && <TaxTab />}
-        {activeTab === 'pay-modes'      && <PayModesTab />}
-        {activeTab === 'terminals'      && <TerminalsTab />}
-        {activeTab === 'return-reasons' && <ReturnReasonsTab />}
-        {activeTab === 'security'       && <SecurityTab />}
-        {activeTab === 'subscription'   && <SubscriptionTab />}
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">{activeLabel}</h2>
+          {activeTab === 'branches'       && <BranchesTab />}
+          {activeTab === 'categories'     && <CategoriesTab />}
+          {activeTab === 'cust-groups'    && <CustomerGroupsTab />}
+          {activeTab === 'loyalty'        && <LoyaltyTab />}
+          {activeTab === 'tax'            && <TaxTab />}
+          {activeTab === 'pay-modes'      && <PayModesTab />}
+          {activeTab === 'terminals'      && <TerminalsTab />}
+          {activeTab === 'return-reasons' && <ReturnReasonsTab />}
+          {activeTab === 'security'       && <SecurityTab />}
+          {activeTab === 'subscription'   && <SubscriptionTab />}
+        </div>
       </div>
     </div>
   );
