@@ -104,9 +104,14 @@ function ListSkeleton() {
 }
 
 export default function ProductGrid({ branchId, scanResetTrigger }) {
+  const qc = useQueryClient();
+
   const [search,     setSearch]     = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [scanMode,   setScanMode]   = useState(true);   // always start in scan mode
+  const [scanMode,   setScanMode]   = useState(() => {
+    const s = qc.getQueryData(['my-company']);
+    return s?.pos_default_scan_mode !== false;
+  });
   const [barcodeVal, setBarcodeVal] = useState('');
   const [viewMode,        setViewMode]        = useState(
     () => localStorage.getItem('pos-view-mode') || 'grid'
@@ -119,7 +124,6 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
   const addItem    = useCartStore((s) => s.addItem);
   const cartItems  = useCartStore((s) => s.items);
   const isOnline   = useNetworkStatus();
-  const qc         = useQueryClient();
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -131,14 +135,15 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
     localStorage.setItem('pos-hide-oos', hideOutOfStock);
   }, [hideOutOfStock]);
 
-  // Return to scan mode after sale / cancel / clear
+  // Return to company default mode after sale / cancel / clear
   useEffect(() => {
     if (scanResetTrigger == null) return;
-    setScanMode(true);
+    const defaultScan = qc.getQueryData(['my-company'])?.pos_default_scan_mode !== false;
+    setScanMode(defaultScan);
     setBarcodeVal('');
     setSearch('');
-    setTimeout(() => barcodeRef.current?.focus(), 80);
-  }, [scanResetTrigger]);
+    setTimeout(() => (defaultScan ? barcodeRef : searchRef).current?.focus(), 80);
+  }, [scanResetTrigger, qc]);
 
   const { data: liveProducts, isLoading, isError, fetchStatus } = useQuery({
     queryKey: ['pos-products', branchId, debouncedSearch, categoryId],
@@ -274,21 +279,6 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
           {scanMode ? 'Search' : 'Scan'}
         </button>
 
-        {/* Hide out-of-stock toggle */}
-        <button
-          onClick={() => setHideOutOfStock((v) => !v)}
-          title={hideOutOfStock ? 'Show out-of-stock items' : 'Hide out-of-stock items'}
-          className={[
-            'flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all',
-            hideOutOfStock
-              ? 'border-red-400 bg-red-50 text-red-600'
-              : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700',
-          ].join(' ')}
-        >
-          <EyeOff className="h-3.5 w-3.5" />
-          {hideOutOfStock ? 'OOS hidden' : 'OOS'}
-        </button>
-
         {/* Grid / List toggle */}
         <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white">
           <button
@@ -384,15 +374,29 @@ export default function ProductGrid({ branchId, scanResetTrigger }) {
         </div>
       )}
 
-      {/* ── Product count ── */}
+      {/* ── Product count + OOS toggle ── */}
       {!isActuallyLoading && products != null && products.length > 0 && (
-        <div className="border-b border-gray-100 bg-white px-3.5 py-1">
+        <div className="flex items-center justify-between border-b border-gray-100 bg-white px-3.5 py-1.5">
           <p className="text-[11px] text-gray-400">
-            {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
-            {hideOutOfStock && visibleProducts.length < products.length && (
-              <span className="ml-1 text-red-400">({products.length - visibleProducts.length} out-of-stock hidden)</span>
-            )}
+            {visibleProducts.length}{visibleProducts.length < products.length ? ` / ${products.length}` : ''} product{products.length !== 1 ? 's' : ''}
           </p>
+          {(() => {
+            const oosCount = products.length - (hideOutOfStock ? visibleProducts.length : products.filter(p => !(p.track_inventory !== false && parseFloat(p.quantity_available ?? 0) <= 0)).length);
+            if (oosCount === 0 && hideOutOfStock) return null;
+            return (
+              <button
+                onClick={() => setHideOutOfStock((v) => !v)}
+                className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                  hideOutOfStock
+                    ? 'bg-red-50 text-red-500 hover:bg-red-100'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                <EyeOff className="h-3 w-3" />
+                {hideOutOfStock ? `${oosCount} OOS hidden` : 'Hide OOS'}
+              </button>
+            );
+          })()}
         </div>
       )}
 

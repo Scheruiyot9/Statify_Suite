@@ -299,7 +299,7 @@ async function getMyCompany(companyId) {
   const { rows } = await query(
     `SELECT company_id, company_name, logo_url, tax_id,
             lock_timeout_minutes, session_lifetime_days,
-            pos_allow_price_edit, pos_allow_partial_qty
+            pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -337,6 +337,9 @@ async function updateMyProfile(companyId, patch) {
   if ('pos_allow_partial_qty' in patch) {
     setParts.push(`pos_allow_partial_qty = COALESCE(${p(Boolean(patch.pos_allow_partial_qty))}, pos_allow_partial_qty)`);
   }
+  if ('pos_default_scan_mode' in patch) {
+    setParts.push(`pos_default_scan_mode = ${p(Boolean(patch.pos_default_scan_mode))}`);
+  }
 
   if (!setParts.length) throw AppError.badRequest('No fields to update');
 
@@ -346,7 +349,7 @@ async function updateMyProfile(companyId, patch) {
       WHERE company_id = $1
       RETURNING company_id, company_name, logo_url, tax_id,
                 lock_timeout_minutes, session_lifetime_days,
-                pos_allow_price_edit, pos_allow_partial_qty`,
+                pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode`,
     params
   );
   if (!rows.length) throw AppError.notFound('Company');

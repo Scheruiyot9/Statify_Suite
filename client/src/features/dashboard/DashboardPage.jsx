@@ -7,6 +7,7 @@ import {
   GitBranch, UserCheck, Monitor, DollarSign,
   Activity, Settings, PlusCircle, ChevronRight,
   Globe, BarChart3, CreditCard, Layers, ShoppingBag,
+  RefreshCw,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -732,7 +733,7 @@ export default function DashboardPage() {
   const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
   const [trendPeriod, setTrendPeriod] = useState('7d');
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['dashboard', activeCompanyId ?? 'platform', trendPeriod],
     queryFn: () => api.get('/reports/dashboard', { params: { period: trendPeriod } }).then((r) => r.data.data),
     staleTime: 60_000,
@@ -789,8 +790,30 @@ export default function DashboardPage() {
     );
   }
 
+  const today = new Date().toLocaleDateString('en-KE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
   return (
     <div className="space-y-6">
+
+      {/* ── Dashboard header: date + period toggle + refresh ── */}
+      <div className="flex items-center gap-3">
+        <div className="hidden sm:block flex-1">
+          <p className="text-xs text-gray-400">{today}</p>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <PeriodToggle period={trendPeriod} onPeriod={setTrendPeriod} />
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="Refresh dashboard"
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
 
       {/* ── Stat strip ── */}
       {canViewSales && (

@@ -1,0 +1,2 @@
+ALTER TABLE companies
+  ADD COLUMN IF NOT EXISTS pos_default_scan_mode BOOLEAN NOT NULL DEFAULT TRUE;

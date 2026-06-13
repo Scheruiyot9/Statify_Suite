@@ -1724,8 +1724,9 @@ function SecurityTab() {
 
   const [timeoutVal,      setTimeoutVal]      = useState('');
   const [sessionDays,     setSessionDays]     = useState('7');
-  const [allowPriceEdit,  setAllowPriceEdit]  = useState(false);
-  const [allowPartialQty, setAllowPartialQty] = useState(false);
+  const [allowPriceEdit,   setAllowPriceEdit]   = useState(false);
+  const [allowPartialQty,  setAllowPartialQty]  = useState(false);
+  const [defaultScanMode,  setDefaultScanMode]  = useState(true);
 
   // Fetch current company settings (React Query v5: use useEffect, not onSuccess)
   const { data: companyData } = useQuery({
@@ -1744,6 +1745,7 @@ function SecurityTab() {
       );
       setAllowPriceEdit(!!companyData.pos_allow_price_edit);
       setAllowPartialQty(!!companyData.pos_allow_partial_qty);
+      setDefaultScanMode(companyData.pos_default_scan_mode !== false);
     }
   }, [companyData]);
 
@@ -1912,11 +1914,32 @@ function SecurityTab() {
               </div>
             </label>
 
+            {/* Toggle: default scan mode */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <div className="relative mt-0.5 flex-shrink-0">
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={defaultScanMode}
+                  onChange={(e) => setDefaultScanMode(e.target.checked)}
+                />
+                <div className={`h-5 w-9 rounded-full transition-colors ${defaultScanMode ? 'bg-primary-500' : 'bg-gray-200'}`} />
+                <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${defaultScanMode ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Default to barcode scan mode</p>
+                <p className="text-xs text-gray-500">
+                  When enabled, POS terminals open in scan mode. Disable to default to product search instead.
+                </p>
+              </div>
+            </label>
+
             <Button
               loading={savePosBehaviourMut.isPending}
               onClick={() => savePosBehaviourMut.mutate({
-                pos_allow_price_edit:  allowPriceEdit,
-                pos_allow_partial_qty: allowPartialQty,
+                pos_allow_price_edit:   allowPriceEdit,
+                pos_allow_partial_qty:  allowPartialQty,
+                pos_default_scan_mode:  defaultScanMode,
               })}
             >
               Save POS Settings

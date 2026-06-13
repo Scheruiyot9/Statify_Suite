@@ -4,7 +4,7 @@ import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, formatDateTime } from '@/utils/formatters';
 import ProductGrid        from './ProductGrid';
 import Cart               from './Cart';
 import PaymentModal       from './PaymentModal';
@@ -854,10 +854,13 @@ function CloseSessionModal({ session, onClose, onClosed }) {
                 Cash Outs ({cashOuts.length})
                 <span className="ml-auto text-red-600 font-bold">{formatCurrency(totalCashOuts)}</span>
               </h3>
-              <div className="rounded-xl border border-red-100 overflow-hidden">
+
+              {/* Desktop table */}
+              <div className="hidden sm:block rounded-xl border border-red-100 overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-red-50 border-b border-red-100">
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Date</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">Type</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">Mode</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">Notes</th>
@@ -867,18 +870,37 @@ function CloseSessionModal({ session, onClose, onClosed }) {
                   <tbody className="divide-y divide-red-50">
                     {cashOuts.map((co) => (
                       <tr key={co.cash_out_id}>
+                        <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{formatDateTime(co.created_at)}</td>
                         <td className="px-3 py-2 font-medium text-gray-700 capitalize">
                           {co.out_type.replace('_', ' ')}
                           {co.account_name && <span className="block text-gray-400 font-normal">{co.account_name}</span>}
                           {co.supplier_name && <span className="block text-gray-400 font-normal">{co.supplier_name}</span>}
                         </td>
-                        <td className="px-3 py-2 text-xs text-gray-500">{co.payment_method_name || 'Cash'}</td>
+                        <td className="px-3 py-2 text-gray-500">{co.payment_method_name || 'Cash'}</td>
                         <td className="px-3 py-2 text-gray-500">{co.notes || '—'}</td>
                         <td className="px-3 py-2 text-right font-semibold text-red-600">{formatCurrency(co.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="sm:hidden space-y-2">
+                {cashOuts.map((co) => (
+                  <div key={co.cash_out_id} className="rounded-xl border border-red-100 bg-red-50/30 px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700 capitalize">{co.out_type.replace('_', ' ')}</p>
+                        {co.account_name  && <p className="text-xs text-gray-400">{co.account_name}</p>}
+                        {co.supplier_name && <p className="text-xs text-gray-400">{co.supplier_name}</p>}
+                        <p className="mt-0.5 text-xs text-gray-400">{co.payment_method_name || 'Cash'} · {formatDateTime(co.created_at)}</p>
+                        {co.notes && <p className="mt-0.5 text-xs text-gray-500 italic">{co.notes}</p>}
+                      </div>
+                      <p className="shrink-0 text-sm font-bold text-red-600">{formatCurrency(co.amount)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
