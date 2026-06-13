@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -22,7 +22,7 @@ const SOURCE_COLORS = {
 
 // ── Entry Lines Modal ─────────────────────────────────────────────────────────
 
-function EntryLinesModal({ entryId, onClose }) {
+function EntryLinesModal({ entryId, onClose, onReverse }) {
   const { data: j, isLoading, error } = useQuery({
     queryKey: ['journal-entry', entryId],
     queryFn:  () => api.get(`/accounts/entry/${entryId}`).then((r) => r.data.data),
@@ -53,7 +53,17 @@ function EntryLinesModal({ entryId, onClose }) {
           </div>
         )
       }
-      footer={<Button variant="secondary" fullWidth onClick={onClose}>Close</Button>}
+      footer={
+        <div className="flex gap-2">
+          {onReverse && j && j.status !== 'void' && j.source_type !== 'VOID' && (
+            <Button variant="danger" fullWidth
+              onClick={() => onReverse({ entryId, entryNumber: j.journal_number ?? j.entry_number })}>
+              Reverse
+            </Button>
+          )}
+          <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
+        </div>
+      }
     >
       {isLoading ? <PageSpinner /> : j ? (
         <div className="space-y-3">
@@ -246,18 +256,10 @@ export default function SupplierLedgerPage() {
                     {e.credit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-2 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => setViewing(e.entryId)}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
-                      </button>
-                      {e.sourceType !== 'VOID' && e.entryId && (
-                        <button onClick={() => setReversing(e)} title="Reverse entry"
-                          className="rounded-lg border border-red-200 bg-red-50 p-1 text-red-500 hover:bg-red-100 transition-colors">
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    <button onClick={() => setViewing(e.entryId)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -278,7 +280,13 @@ export default function SupplierLedgerPage() {
         </div>
       )}
 
-      {viewingEntryId && <EntryLinesModal entryId={viewingEntryId} onClose={() => setViewing(null)} />}
+      {viewingEntryId && (
+        <EntryLinesModal
+          entryId={viewingEntryId}
+          onClose={() => setViewing(null)}
+          onReverse={(entry) => { setViewing(null); setReversing(entry); }}
+        />
+      )}
       {reversingEntry && (
         <ReverseModal
           entry={reversingEntry}
