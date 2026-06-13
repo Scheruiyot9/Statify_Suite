@@ -487,7 +487,8 @@ function CustomerTypeahead() {
 export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared }) {
   const {
     items, updateQuantity, removeItem, clearCart, totals,
-    orderDiscount, orderDiscountType, defaultTax, notes, setNotes,
+    orderDiscount, orderDiscountType, setOrderDiscount, clearOrderDiscount,
+    defaultTax, notes, setNotes,
   } = useCartStore();
   const { subtotal, tax, itemDiscounts, orderDiscountAmt, total } = totals();
   const branchId = session?.branch_id ?? useAuthStore.getState().user?.branchIds?.[0];
@@ -497,6 +498,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   const companySettings = qc.getQueryData(['my-company']);
   const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
   const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
+  const allowTotalEdit  = companySettings?.pos_allow_total_edit  ?? false;
 
   const holdMut = useMutation({
     mutationFn: ({ label, cartData }) =>
@@ -516,6 +518,8 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   const [holdDialogOpen, setHoldDialogOpen] = useState(false);
   const [showNotes,         setShowNotes]         = useState(false);
   const [cancelConfirm,     setCancelConfirm]     = useState(false);
+  const [editingTotal,      setEditingTotal]      = useState(false);
+  const [totalDraft,        setTotalDraft]        = useState('');
 
   // Auto-reset cancel confirmation after 3 s
   useEffect(() => {
@@ -756,7 +760,39 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
         <div className="flex items-baseline justify-between border-t border-gray-200 pt-1.5">
           <span className="text-sm font-bold text-gray-800">Total</span>
-          <span className="text-2xl font-bold text-secondary-600 leading-none">{formatCurrency(total)}</span>
+          {allowTotalEdit && items.length > 0 && editingTotal ? (
+            <input
+              autoFocus
+              type="number"
+              min="0"
+              step="0.01"
+              value={totalDraft}
+              onChange={(e) => setTotalDraft(e.target.value)}
+              onBlur={() => {
+                const n = parseFloat(totalDraft);
+                if (!isNaN(n) && n >= 0 && n < subtotal) {
+                  setOrderDiscount(subtotal - n, 'fixed');
+                } else if (!isNaN(n) && n >= subtotal) {
+                  clearOrderDiscount();
+                }
+                setEditingTotal(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.target.blur();
+                if (e.key === 'Escape') { setEditingTotal(false); }
+              }}
+              className="w-32 rounded-lg border border-primary-400 bg-white px-2 py-1 text-right text-xl font-bold text-secondary-600 focus:outline-none focus:ring-2 focus:ring-primary-300"
+            />
+          ) : (
+            <button
+              disabled={!allowTotalEdit || !items.length}
+              onClick={() => { setTotalDraft(total.toFixed(2)); setEditingTotal(true); }}
+              title={allowTotalEdit ? 'Click to set a custom total' : undefined}
+              className={`text-2xl font-bold text-secondary-600 leading-none ${allowTotalEdit && items.length ? 'cursor-pointer hover:opacity-75 active:opacity-60 transition-opacity' : 'cursor-default'}`}
+            >
+              {formatCurrency(total)}
+            </button>
+          )}
         </div>
         {tax > 0 && (
           <p className="text-[11px] text-gray-400 text-right">

@@ -1,0 +1,2 @@
+ALTER TABLE companies
+  ADD COLUMN IF NOT EXISTS pos_allow_total_edit BOOLEAN NOT NULL DEFAULT FALSE;

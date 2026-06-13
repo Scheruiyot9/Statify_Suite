@@ -317,6 +317,7 @@ function TerminalsTab() {
   const [allowPriceEdit,  setAllowPriceEdit]  = useState(false);
   const [allowPartialQty, setAllowPartialQty] = useState(false);
   const [defaultScanMode, setDefaultScanMode] = useState(true);
+  const [allowTotalEdit,  setAllowTotalEdit]  = useState(false);
 
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
@@ -329,6 +330,7 @@ function TerminalsTab() {
       setAllowPriceEdit(!!companyData.pos_allow_price_edit);
       setAllowPartialQty(!!companyData.pos_allow_partial_qty);
       setDefaultScanMode(companyData.pos_default_scan_mode !== false);
+      setAllowTotalEdit(!!companyData.pos_allow_total_edit);
     }
   }, [companyData]);
 
@@ -559,6 +561,18 @@ function TerminalsTab() {
 
           <label className="flex items-start gap-3 cursor-pointer">
             <div className="relative mt-0.5 flex-shrink-0">
+              <input type="checkbox" className="sr-only" checked={allowTotalEdit} onChange={(e) => setAllowTotalEdit(e.target.checked)} />
+              <div className={`h-5 w-9 rounded-full transition-colors ${allowTotalEdit ? 'bg-primary-500' : 'bg-gray-200'}`} />
+              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowTotalEdit ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-800">Allow editing the cart total</p>
+              <p className="text-xs text-gray-400 mt-0.5">Cashier can type a custom grand total; the difference is applied as an order discount.</p>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <div className="relative mt-0.5 flex-shrink-0">
               <input type="checkbox" className="sr-only" checked={defaultScanMode} onChange={(e) => setDefaultScanMode(e.target.checked)} />
               <div className={`h-5 w-9 rounded-full transition-colors ${defaultScanMode ? 'bg-primary-500' : 'bg-gray-200'}`} />
               <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${defaultScanMode ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -575,6 +589,7 @@ function TerminalsTab() {
               pos_allow_price_edit:  allowPriceEdit,
               pos_allow_partial_qty: allowPartialQty,
               pos_default_scan_mode: defaultScanMode,
+              pos_allow_total_edit:  allowTotalEdit,
             })}
           >
             Save POS Settings
