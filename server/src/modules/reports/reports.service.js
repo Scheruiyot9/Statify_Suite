@@ -181,15 +181,15 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
               WHERE st.transaction_date::date = CURRENT_DATE
             )              AS today_txns,
             COALESCE(SUM(st.total_amount) FILTER (
-              WHERE st.transaction_date >= DATE_TRUNC('month', CURRENT_DATE)
-            ), 0)::numeric AS month_sales
+              WHERE st.transaction_date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')
+            ), 0)::numeric AS period_sales
           FROM branches b
           LEFT JOIN sales_transactions st
             ON st.branch_id = b.branch_id AND st.status = 'completed'
           WHERE b.company_id = $1 AND b.is_active = TRUE
           GROUP BY b.branch_id, b.branch_name, b.branch_code
-          ORDER BY month_sales DESC
-        `, [companyId])
+          ORDER BY period_sales DESC
+        `, [companyId, trendDays])
       : Promise.resolve({ rows: [] }),
   ]);
 
@@ -234,12 +234,12 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
     })) : [],
 
     branchComparison: branchRes.rows.map((r) => ({
-      branchId:   r.branch_id,
-      branchName: r.branch_name,
-      branchCode: r.branch_code,
-      todaySales: parseFloat(r.today_sales),
-      todayTxns:  parseInt(r.today_txns),
-      monthSales: parseFloat(r.month_sales),
+      branchId:    r.branch_id,
+      branchName:  r.branch_name,
+      branchCode:  r.branch_code,
+      todaySales:  parseFloat(r.today_sales),
+      todayTxns:   parseInt(r.today_txns),
+      periodSales: parseFloat(r.period_sales),
     })),
   };
 }
@@ -1230,7 +1230,8 @@ async function getPurchasesSummary(companyId, { startDate, endDate } = {}) {
 
 // ── Product quantity analysis (dashboard qty card) ────────────────────────────
 async function getProductQty(companyId, role, branchIds, { period = '7d' } = {}) {
-  const days = period === '30d' ? 29 : 6;
+  const DAYS_MAP = { '7d': 6, '30d': 29, '90d': 89, '1y': 364 };
+  const days = DAYS_MAP[period] ?? 6;
   const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
   const dIdx = bParams.length + 1;
 

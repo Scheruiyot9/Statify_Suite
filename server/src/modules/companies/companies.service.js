@@ -307,36 +307,47 @@ async function getMyCompany(companyId) {
   return rows[0];
 }
 
-async function updateMyProfile(companyId, { tax_id, lock_timeout_minutes, session_lifetime_days, pos_allow_price_edit, pos_allow_partial_qty }) {
-  // lock_timeout_minutes: 1-120 minutes, or null to disable
-  const timeout = lock_timeout_minutes != null
-    ? Math.min(120, Math.max(1, parseInt(lock_timeout_minutes, 10))) || null
-    : null;
-
-  // session_lifetime_days: 1-90 days, or null to use server default
+async function updateMyProfile(companyId, patch) {
   const ALLOWED_DAYS = [1, 3, 7, 14, 30, 90];
-  const sessionDays = session_lifetime_days != null
-    ? (ALLOWED_DAYS.includes(parseInt(session_lifetime_days, 10))
-        ? parseInt(session_lifetime_days, 10)
-        : 7)
-    : null;
+  const setParts = [];
+  const params   = [companyId];
+  const p        = (val) => { params.push(val); return `$${params.length}`; };
 
-  const priceEdit  = pos_allow_price_edit  != null ? Boolean(pos_allow_price_edit)  : null;
-  const partialQty = pos_allow_partial_qty != null ? Boolean(pos_allow_partial_qty) : null;
+  // Only update each field when it was explicitly present in the PATCH body
+  if ('tax_id' in patch) {
+    setParts.push(`tax_id = COALESCE(${p(patch.tax_id ?? null)}, tax_id)`);
+  }
+  if ('lock_timeout_minutes' in patch) {
+    const raw     = patch.lock_timeout_minutes;
+    const timeout = raw != null
+      ? Math.min(120, Math.max(1, parseInt(raw, 10))) || null
+      : null;
+    setParts.push(`lock_timeout_minutes = ${p(timeout)}`);
+  }
+  if ('session_lifetime_days' in patch) {
+    const raw  = patch.session_lifetime_days;
+    const days = raw != null
+      ? (ALLOWED_DAYS.includes(parseInt(raw, 10)) ? parseInt(raw, 10) : 7)
+      : null;
+    setParts.push(`session_lifetime_days = COALESCE(${p(days)}, session_lifetime_days)`);
+  }
+  if ('pos_allow_price_edit' in patch) {
+    setParts.push(`pos_allow_price_edit = COALESCE(${p(Boolean(patch.pos_allow_price_edit))}, pos_allow_price_edit)`);
+  }
+  if ('pos_allow_partial_qty' in patch) {
+    setParts.push(`pos_allow_partial_qty = COALESCE(${p(Boolean(patch.pos_allow_partial_qty))}, pos_allow_partial_qty)`);
+  }
+
+  if (!setParts.length) throw AppError.badRequest('No fields to update');
 
   const { rows } = await query(
     `UPDATE companies
-        SET tax_id                = COALESCE($2, tax_id),
-            lock_timeout_minutes  = $3,
-            session_lifetime_days = COALESCE($4, session_lifetime_days),
-            pos_allow_price_edit  = COALESCE($5, pos_allow_price_edit),
-            pos_allow_partial_qty = COALESCE($6, pos_allow_partial_qty),
-            updated_at            = now()
+        SET ${setParts.join(', ')}, updated_at = now()
       WHERE company_id = $1
       RETURNING company_id, company_name, logo_url, tax_id,
                 lock_timeout_minutes, session_lifetime_days,
                 pos_allow_price_edit, pos_allow_partial_qty`,
-    [companyId, tax_id ?? null, timeout, sessionDays, priceEdit, partialQty]
+    params
   );
   if (!rows.length) throw AppError.notFound('Company');
   return rows[0];

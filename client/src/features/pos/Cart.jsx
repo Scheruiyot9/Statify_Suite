@@ -161,8 +161,8 @@ function QtyInput({ item }) {
   );
 }
 
-// ── Editable unit price ───────────────────────────────────────────────────────
-function PriceInput({ item }) {
+// ── Editable rate (unit price) column ────────────────────────────────────────
+function RateCell({ item, editable }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
   const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
@@ -173,27 +173,70 @@ function PriceInput({ item }) {
     setEditing(false);
   };
 
-  if (editing) {
-    return (
-      <input
-        type="number" min="0" step="0.01"
-        value={draft}
-        autoFocus
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-        className="w-20 rounded border border-primary-400 px-1 py-0.5 text-right text-[10px] font-semibold focus:outline-none"
-      />
-    );
-  }
-  return (
+  if (editing) return (
+    <input
+      type="number" min="0" step="0.01"
+      value={draft} autoFocus
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+      className="w-full rounded border border-primary-400 px-1 py-0.5 text-right text-[11px] font-semibold focus:outline-none"
+    />
+  );
+  return editable ? (
     <button
       onClick={() => { setDraft(String(item.unitPrice)); setEditing(true); }}
-      title="Click to edit price"
-      className="text-[10px] text-primary-600 underline decoration-dotted hover:text-primary-800 transition-colors"
+      title="Click to edit rate"
+      className="block w-full text-right text-[11px] font-semibold text-primary-600 underline decoration-dotted hover:text-primary-800 transition-colors"
     >
       {formatCurrency(item.unitPrice)}
     </button>
+  ) : (
+    <span className="block w-full text-right text-[11px] font-semibold text-gray-700">
+      {formatCurrency(item.unitPrice)}
+    </span>
+  );
+}
+
+// ── Editable total column ─────────────────────────────────────────────────────
+function TotalCell({ item, editable }) {
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState('');
+  const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
+  const setItemDiscount = useCartStore((s) => s.setItemDiscount);
+
+  const commit = () => {
+    const n = parseFloat(draft);
+    if (!isNaN(n) && n > 0 && item.quantity > 0) {
+      // Clear discount then back-calculate unit price from the typed total
+      setItemDiscount(item.product.product_id, 0, 'none');
+      updateUnitPrice(item.product.product_id, Math.round((n / item.quantity) * 100) / 100);
+    }
+    setEditing(false);
+  };
+
+  if (editing) return (
+    <input
+      type="number" min="0" step="0.01"
+      value={draft} autoFocus
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+      className="w-full rounded border border-primary-400 px-1 py-0.5 text-right text-xs font-bold focus:outline-none"
+    />
+  );
+  return editable ? (
+    <button
+      onClick={() => { setDraft(String(item.lineTotal)); setEditing(true); }}
+      title="Click to edit total"
+      className="block w-full text-right text-xs font-bold text-gray-900 underline decoration-dotted hover:text-primary-600 transition-colors"
+    >
+      {formatCurrency(item.lineTotal)}
+    </button>
+  ) : (
+    <span className="block w-full text-right text-xs font-bold text-gray-900">
+      {formatCurrency(item.lineTotal)}
+    </span>
   );
 }
 
@@ -537,7 +580,8 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
             {/* Column headings */}
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-100 bg-gray-50/95 px-3 py-1.5">
               <div className="w-9 flex-shrink-0" />
-              <div className="w-[38%] flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Item</div>
+              <div className="w-[28%] flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Item</div>
+              <div className="w-[16%] flex-shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-gray-400">Rate</div>
               <div className="w-[92px] flex-shrink-0 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-400">Qty</div>
               <div className="flex-1 text-right text-[10px] font-semibold uppercase tracking-wide text-gray-400">Total</div>
               <div className="w-[52px] flex-shrink-0" />
@@ -553,18 +597,19 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
                     <ProductThumb product={item.product} size="sm" />
                   </div>
 
-                  {/* Name block — capped width, no flex-grow, controls sit right after */}
-                  <div className="w-[38%] flex-shrink-0 min-w-0">
+                  {/* Name + SKU */}
+                  <div className="w-[28%] flex-shrink-0 min-w-0">
                     <p className="truncate text-xs font-semibold text-gray-800 leading-snug">
                       {item.product.product_name}
                     </p>
-                    <p className="flex items-center gap-1.5 text-[10px] text-gray-400 leading-snug">
-                      {allowPriceEdit
-                        ? <PriceInput item={item} />
-                        : <span>{formatCurrency(item.unitPrice)}</span>
-                      }
-                      <span className="font-mono truncate">{item.product.barcode || item.product.sku || `#${item.product.product_id}`}</span>
+                    <p className="text-[10px] text-gray-400 font-mono truncate leading-snug">
+                      {item.product.barcode || item.product.sku || `#${item.product.product_id}`}
                     </p>
+                  </div>
+
+                  {/* Rate column */}
+                  <div className="w-[16%] flex-shrink-0 min-w-0">
+                    <RateCell item={item} editable={allowPriceEdit} />
                   </div>
 
                   {/* Stepper */}
@@ -605,17 +650,15 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
                     })()}
                   </div>
 
-                  {/* Total */}
-                  <p className="flex-1 text-right text-xs font-bold text-gray-900">
-                    {formatCurrency(item.lineTotal)}
-                  </p>
-
-                  {/* Discount indicator + discount */}
-                  {item.discount > 0 && (
-                    <span className="flex-shrink-0 text-[10px] font-semibold text-green-600">
-                      −{formatCurrency(item.discount)}
-                    </span>
-                  )}
+                  {/* Total (editable) */}
+                  <div className="flex-1 min-w-0">
+                    <TotalCell item={item} editable={allowPriceEdit} />
+                    {item.discount > 0 && (
+                      <span className="block text-right text-[9px] font-semibold text-green-600">
+                        −{formatCurrency(item.discount)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-0.5 flex-shrink-0">

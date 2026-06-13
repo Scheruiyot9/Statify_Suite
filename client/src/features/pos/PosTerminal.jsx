@@ -394,7 +394,7 @@ function OpenSessionScreen({ branchId, onSessionOpened }) {
 
 // ── Shift Summary Modal ───────────────────────────────────────────────────────
 function ShiftSummaryModal({ session, onClose }) {
-  const { data: summary, isLoading } = useQuery({
+  const { data: summary, isLoading, isError } = useQuery({
     queryKey: ['session-summary', session.session_id],
     queryFn:  () => api.get(`/pos/sessions/${session.session_id}/summary`).then((r) => r.data.data),
     refetchInterval: 30_000,
@@ -423,6 +423,8 @@ function ShiftSummaryModal({ session, onClose }) {
         <div className="p-6 space-y-5">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+          ) : isError ? (
+            <div className="py-8 text-center text-sm text-red-500">Could not load shift summary. Please try again.</div>
           ) : (
             <>
               {/* Quick stats */}
@@ -678,7 +680,7 @@ function CashOutModal({ session, methods, onClose }) {
 
 // ── Close Session Modal ───────────────────────────────────────────────────────
 function CloseSessionModal({ session, onClose, onClosed }) {
-  const [closingAmount, setClosingAmount] = useState('');
+  const [closingAmount, setClosingAmount] = useState('0');
   const [notes,         setNotes]         = useState('');
   const [pmClosing,     setPmClosing]     = useState({});
 
@@ -950,6 +952,14 @@ export default function PosTerminal() {
   const clearCart     = useCartStore((s) => s.clearCart);
   const setDefaultTax = useCartStore((s) => s.setDefaultTax);
   const items         = useCartStore((s) => s.items);
+
+  // Populate ['my-company'] cache so Cart.jsx can read pos_allow_partial_qty / pos_allow_price_edit.
+  // PosLayout does not use AppLayout, so this fetch would otherwise never happen on the /pos route.
+  useQuery({
+    queryKey: ['my-company'],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Fetch and apply the default tax rate for this company
   // onSuccess was removed in TanStack Query v5 — use useEffect instead

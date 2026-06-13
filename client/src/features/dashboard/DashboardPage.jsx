@@ -198,11 +198,8 @@ const PERIOD_OPTIONS = [
   { label: 'Year',    value: '1y',  days: 364 },
 ];
 
-function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
-  const grouped     = groupTrend(trend, trendDays ?? 6);
-  const periodTotal = grouped.reduce((s, d) => s + (d.total || 0), 0);
-
-  const periodToggle = (
+function PeriodToggle({ period, onPeriod }) {
+  return (
     <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
       {PERIOD_OPTIONS.map((p) => (
         <button key={p.value} onClick={() => onPeriod(p.value)}
@@ -212,9 +209,14 @@ function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
       ))}
     </div>
   );
+}
+
+function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
+  const grouped     = groupTrend(trend, trendDays ?? 6);
+  const periodTotal = grouped.reduce((s, d) => s + (d.total || 0), 0);
 
   return (
-    <Card title="Revenue Trend" icon={TrendingUp} action={periodToggle}>
+    <Card title="Revenue Trend" icon={TrendingUp} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
       <div className="mb-4">
         <p className="text-2xl font-extrabold text-gray-900">{formatCurrency(periodTotal)}</p>
         <p className="text-xs text-gray-400 mt-0.5">Total revenue for selected period</p>
@@ -225,19 +227,21 @@ function SalesTrendCard({ trend, trendDays, period, onPeriod }) {
 }
 
 // ── Branch comparison card (company admin+) ───────────────────────────────────
-function BranchComparisonCard({ branches }) {
+function BranchComparisonCard({ branches, period, onPeriod }) {
+  const label = PERIOD_LABEL[period] ?? 'This Month';
+
   if (!branches?.length) {
     return (
-      <Card title="Branch Performance" icon={Building2}>
+      <Card title="Branch Performance" icon={Building2} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
         <p className="text-sm text-gray-400">No branch data yet.</p>
       </Card>
     );
   }
 
-  const maxMonth = Math.max(...branches.map((b) => b.monthSales), 1);
+  const maxPeriod = Math.max(...branches.map((b) => b.periodSales), 1);
 
   return (
-    <Card title="Branch Performance (This Month)" icon={Building2}>
+    <Card title={`Branch Performance (${label})`} icon={Building2} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
       <div className="space-y-3">
         {branches.map((b, i) => (
           <div key={b.branchId}>
@@ -246,12 +250,12 @@ function BranchComparisonCard({ branches }) {
                 {i === 0 && <Star className="mr-1 inline h-3 w-3 text-secondary-500" />}
                 {b.branchName}
               </span>
-              <span className="text-gray-500">{formatCurrency(b.monthSales)}</span>
+              <span className="text-gray-500">{formatCurrency(b.periodSales)}</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
               <div
                 className="h-full rounded-full bg-secondary-500 transition-all duration-500"
-                style={{ width: `${(b.monthSales / maxMonth) * 100}%` }}
+                style={{ width: `${(b.periodSales / maxPeriod) * 100}%` }}
               />
             </div>
             <p className="mt-0.5 text-right text-xs text-gray-400">
@@ -269,11 +273,11 @@ const CATEGORY_COLORS = [
   '#024A59','#FFA916','#16a34a','#7c3aed','#0ea5e9','#f43f5e','#f97316','#64748b',
 ];
 
-function CategoryBreakdownCard({ categories, period }) {
+function CategoryBreakdownCard({ categories, period, onPeriod }) {
   const label = PERIOD_LABEL[period] ?? 'This Month';
   if (!categories?.length) {
     return (
-      <Card title={`Sales by Category (${label})`} icon={Layers}>
+      <Card title={`Sales by Category (${label})`} icon={Layers} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
         <p className="text-sm text-gray-400">No sales data yet.</p>
       </Card>
     );
@@ -281,7 +285,7 @@ function CategoryBreakdownCard({ categories, period }) {
   const total = categories.reduce((s, c) => s + c.revenue, 0) || 1;
 
   return (
-    <Card title={`Sales by Category (${label})`} icon={Layers}>
+    <Card title={`Sales by Category (${label})`} icon={Layers} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
       <div className="space-y-2.5">
         {categories.map((c, i) => {
           const pct = Math.round((c.revenue / total) * 100);
@@ -323,11 +327,11 @@ const RANK_STYLES = [
 
 const PERIOD_LABEL = { '7d': 'This Week', '30d': 'This Month', '90d': 'Last Quarter', '1y': 'This Year' };
 
-function TopProductsCard({ products, period }) {
+function TopProductsCard({ products, period, onPeriod }) {
   const label = PERIOD_LABEL[period] ?? 'This Month';
   if (!products?.length) {
     return (
-      <Card title={`Top Products (${label})`} icon={Package}>
+      <Card title={`Top Products (${label})`} icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
         <p className="text-sm text-gray-400">No sales data yet.</p>
       </Card>
     );
@@ -335,7 +339,7 @@ function TopProductsCard({ products, period }) {
   const maxRevenue = Math.max(...products.map((p) => p.revenue), 1);
 
   return (
-    <Card title={`Top Products (${label})`} icon={Package}>
+    <Card title={`Top Products (${label})`} icon={Package} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
       <div className="space-y-3">
         {products.map((p, i) => (
           <div key={p.sku} className="flex items-center gap-3">
@@ -368,7 +372,7 @@ function RecentTransactionsCard({ transactions }) {
 
   if (!transactions?.length) {
     return (
-      <Card title="Recent Transactions" icon={ShoppingCart} className="lg:col-span-2" action={viewAll}>
+      <Card title="Recent Transactions" icon={ShoppingCart} action={viewAll}>
         <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
           <ShoppingCart className="h-8 w-8 text-gray-200" />
           <p className="text-sm text-gray-400">No transactions yet today.</p>
@@ -414,13 +418,8 @@ function RecentTransactionsCard({ transactions }) {
 }
 
 // ── Product quantity analysis card ────────────────────────────────────────────
-const QTY_PERIOD_OPTIONS = [
-  { label: 'Week', value: '7d' },
-  { label: 'Month', value: '30d' },
-];
-
-function ProductQtyCard() {
-  const [period, setPeriod] = useState('7d');
+function ProductQtyCard({ period, onPeriod }) {
+  const [showAll, setShowAll] = useState(false);
   const activeCompanyId = useAuthStore((s) => s.activeCompanyId);
 
   const { data: products = [], isLoading } = useQuery({
@@ -431,19 +430,11 @@ function ProductQtyCard() {
   });
 
   const maxQty = Math.max(...products.map((p) => p.qtySold), 1);
-  const toggle = (
-    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px]">
-      {QTY_PERIOD_OPTIONS.map((o) => (
-        <button key={o.value} onClick={() => setPeriod(o.value)}
-          className={`px-2.5 py-1 font-medium transition-colors ${
-            period === o.value ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50'
-          }`}>{o.label}</button>
-      ))}
-    </div>
-  );
+  const visible = showAll ? products : products.slice(0, 5);
+  const extra   = products.length - 5;
 
   return (
-    <Card title="Units Sold by Product" icon={ShoppingBag} action={toggle}>
+    <Card title="Units Sold by Product" icon={ShoppingBag} action={<PeriodToggle period={period} onPeriod={onPeriod} />}>
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -456,32 +447,42 @@ function ProductQtyCard() {
       ) : products.length === 0 ? (
         <p className="text-sm text-gray-400">No sales data for this period.</p>
       ) : (
-        <div className="space-y-3">
-          {products.map((p, i) => {
-            const displayQty = p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2);
-            return (
-              <div key={p.sku}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-700 truncate max-w-[160px]" title={p.productName}>
-                    {p.productName}
-                  </span>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                    <span className="text-xs font-bold text-gray-900">{displayQty} <span className="font-normal text-gray-400">units</span></span>
+        <>
+          <div className="space-y-3">
+            {visible.map((p, i) => {
+              const displayQty = p.qtySold % 1 === 0 ? p.qtySold : p.qtySold.toFixed(2);
+              return (
+                <div key={p.sku}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-700 truncate max-w-[160px]" title={p.productName}>
+                      {p.productName}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <span className="text-xs font-bold text-gray-900">{displayQty} <span className="font-normal text-gray-400">units</span></span>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${(p.qtySold / maxQty) * 100}%`,
+                        background: `hsl(${200 - i * 15}, 70%, 45%)`,
+                      }}
+                    />
                   </div>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${(p.qtySold / maxQty) * 100}%`,
-                      background: `hsl(${200 - i * 15}, 70%, 45%)`,
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+          {extra > 0 && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-3 w-full text-center text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
+            >
+              {showAll ? 'Show less' : `See ${extra} more`}
+            </button>
+          )}
+        </>
       )}
     </Card>
   );
@@ -843,26 +844,45 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Row 2: Recent Transactions + Branch Performance ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {canViewSales && (
-          <div className="lg:col-span-2">
-            <RecentTransactionsCard transactions={data?.recentTransactions} />
-          </div>
-        )}
-        <div className="lg:col-span-1">
-          {canCompareBranches
-            ? <BranchComparisonCard branches={data?.branchComparison} />
-            : canViewInventory
-            ? <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-            : null
-          }
+      {/* ── Row 2: Sales by Category + Branch Performance ── */}
+      {(canViewSales || canCompareBranches) && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {canViewSales && (
+            <CategoryBreakdownCard
+              categories={data?.categoryBreakdown}
+              period={trendPeriod}
+              onPeriod={setTrendPeriod}
+            />
+          )}
+          {canCompareBranches && (
+            <BranchComparisonCard
+              branches={data?.branchComparison}
+              period={trendPeriod}
+              onPeriod={setTrendPeriod}
+            />
+          )}
         </div>
-      </div>
+      )}
 
-      {/* ── Row 3: Revenue Trend + Top Products ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {canViewSales && (
+      {/* ── Row 3: Top Products + Units Sold by Product ── */}
+      {(canViewSales || canViewProductQty) && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {canViewSales && (
+            <TopProductsCard
+              products={data?.topProducts}
+              period={trendPeriod}
+              onPeriod={setTrendPeriod}
+            />
+          )}
+          {canViewProductQty && (
+            <ProductQtyCard period={trendPeriod} onPeriod={setTrendPeriod} />
+          )}
+        </div>
+      )}
+
+      {/* ── Row 4: Revenue Trend + Recent Transactions ── */}
+      {canViewSales && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <SalesTrendCard
               trend={data?.salesTrend}
@@ -871,30 +891,9 @@ export default function DashboardPage() {
               onPeriod={setTrendPeriod}
             />
           </div>
-        )}
-        <div className="lg:col-span-1">
-          {canViewSales
-            ? <TopProductsCard products={data?.topProducts} period={trendPeriod} />
-            : canViewInventory && <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-          }
-        </div>
-      </div>
-
-      {/* ── Row 4: Category Breakdown + Product Qty ── */}
-      {canViewProductQty && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <CategoryBreakdownCard categories={data?.categoryBreakdown} period={trendPeriod} />
-          <ProductQtyCard />
-        </div>
-      )}
-
-      {/* ── Row 5: Low Stock ── */}
-      {canViewInventory && !canViewSales && (
-        <LowStockAlertCard count={data?.lowStockCount ?? 0} />
-      )}
-      {canViewInventory && canViewSales && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <LowStockAlertCard count={data?.lowStockCount ?? 0} />
+          <div className="lg:col-span-1">
+            <RecentTransactionsCard transactions={data?.recentTransactions} />
+          </div>
         </div>
       )}
 
