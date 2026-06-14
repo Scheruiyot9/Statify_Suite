@@ -417,7 +417,21 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     [companyId]
   )).rows[0]?.payment_method_id;
   const cashOuts       = cashOutsNullTotal + (cashMethodId ? (cashOutByMethod[cashMethodId] || 0) : 0);
-  const expectedCash   = openingFloat + cashReceived - cashOuts;
+
+  // Transfers in/out of Cash mode affect expected cash balance
+  let transferToCash = 0, transferFromCash = 0;
+  if (cashMethodId) {
+    const { rows: xferRows } = await query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN to_method_id   = $2 THEN amount ELSE 0 END), 0)::numeric AS to_cash,
+        COALESCE(SUM(CASE WHEN from_method_id = $2 THEN amount ELSE 0 END), 0)::numeric AS from_cash
+      FROM session_transfers WHERE session_id = $1
+    `, [sessionId, cashMethodId]);
+    transferToCash   = parseFloat(xferRows[0]?.to_cash   || 0);
+    transferFromCash = parseFloat(xferRows[0]?.from_cash || 0);
+  }
+
+  const expectedCash   = openingFloat + cashReceived - cashOuts + transferToCash - transferFromCash;
   const closingCounted = parseFloat(closingCashCounted) || 0;
   const variance       = closingCounted - expectedCash;
 
@@ -798,6 +812,65 @@ async function deleteHold(companyId, holdId) {
   if (!rowCount) throw AppError.notFound('Hold');
 }
 
+// ── Pay Mode Transfers ────────────────────────────────────────────────────────
+
+async function createTransfer(companyId, sessionId, userId, { transferType, fromMethodId, toMethodId, amount, notes, referenceTxnId }) {
+  const { rows: sessionRows } = await query(
+    `SELECT session_id, branch_id FROM pos_sessions
+     WHERE session_id = $1 AND company_id = $2 AND status = 'open'`,
+    [sessionId, companyId]
+  );
+  if (!sessionRows.length) throw AppError.notFound('Active session');
+
+  if (fromMethodId === toMethodId) throw AppError.badRequest('From and To payment modes must be different');
+
+  const amt = parseFloat(amount);
+  if (!amt || amt <= 0) throw AppError.badRequest('Amount must be positive');
+
+  const allowed = ['sweep', 'float_topup', 'correction'];
+  if (!allowed.includes(transferType)) throw AppError.badRequest('Invalid transfer type');
+
+  const { branch_id } = sessionRows[0];
+
+  const { rows } = await query(`
+    INSERT INTO session_transfers
+      (company_id, session_id, branch_id, transfer_type, from_method_id, to_method_id,
+       amount, notes, reference_txn_id, created_by_user_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    RETURNING *
+  `, [companyId, sessionId, branch_id, transferType, fromMethodId, toMethodId,
+      amt, notes || null, referenceTxnId || null, userId]);
+
+  // Enrich the response with method names
+  const { rows: methods } = await query(`
+    SELECT payment_method_id, method_name FROM payment_methods
+    WHERE payment_method_id IN ($1,$2)
+  `, [fromMethodId, toMethodId]);
+  const methodMap = Object.fromEntries(methods.map((m) => [m.payment_method_id, m.method_name]));
+
+  return {
+    ...rows[0],
+    from_method_name: methodMap[fromMethodId] || null,
+    to_method_name:   methodMap[toMethodId]   || null,
+  };
+}
+
+async function listTransfers(companyId, sessionId) {
+  const { rows } = await query(`
+    SELECT t.*,
+           fm.method_name AS from_method_name,
+           tm.method_name AS to_method_name,
+           u.first_name || ' ' || u.last_name AS created_by_name
+    FROM session_transfers t
+    LEFT JOIN payment_methods fm ON fm.payment_method_id = t.from_method_id
+    LEFT JOIN payment_methods tm ON tm.payment_method_id = t.to_method_id
+    LEFT JOIN users           u  ON u.user_id            = t.created_by_user_id
+    WHERE t.session_id = $1 AND t.company_id = $2
+    ORDER BY t.created_at
+  `, [sessionId, companyId]);
+  return rows;
+}
+
 module.exports = {
   listSellableProducts,
   listPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
@@ -805,5 +878,6 @@ module.exports = {
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
   recordCashOut, listCashOuts, listAllCashOuts,
+  createTransfer, listTransfers,
   createHold, listHolds, deleteHold,
 };

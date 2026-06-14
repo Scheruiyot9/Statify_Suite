@@ -3,12 +3,13 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CreditCard, Smartphone, Banknote, CheckCircle, Plus, Trash2,
   Gift, WifiOff, Loader2, XCircle, Send, Search, UserCircle2, UserPlus,
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
 import CustomerSelectModal from './CustomerSelectModal';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, applyRounding } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import useNetworkStatus from '@/hooks/useNetworkStatus';
@@ -66,7 +67,7 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
 
   const handleSelect = (txn) => {
     // Use the existing transaction — skip /manual creation entirely
-    onReferenceResolved(line.methodId, txn.mpesa_receipt_number, txn.mpesa_txn_id);
+    onReferenceResolved(line.lineId, txn.mpesa_receipt_number, txn.mpesa_txn_id);
     setShowLookup(false);
   };
 
@@ -110,30 +111,13 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
   }
 
   return (
-    <div className="space-y-2">
-      <div>
-        <label className="text-xs text-gray-600 mb-1 block">M-Pesa Receipt Code *</label>
+    <div className="space-y-1.5">
+      {lookupError && <p className="text-xs text-red-600">{lookupError}</p>}
+      {/* Row 1: receipt code + Find */}
+      <div className="flex gap-1.5">
         <input type="text" value={manualCode} onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-          placeholder="e.g. QGH7XXXXXX"
-          className={`${inputCls} font-mono uppercase tracking-wider`} />
-      </div>
-      <div>
-        <label className="text-xs text-gray-600 mb-1 block">Customer Phone (optional)</label>
-        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-          placeholder="07XX XXX XXX"
-          className={inputCls} />
-      </div>
-      {lookupError && (
-        <p className="text-xs text-red-600">{lookupError}</p>
-      )}
-      <div className="flex gap-2">
-        <Button size="sm" fullWidth
-          onClick={handleManual}
-          disabled={isSubmitting || manualCode.trim().length < 3}
-          loading={isSubmitting}
-          className="!bg-green-600 !text-white hover:!bg-green-700">
-          Process
-        </Button>
+          placeholder="Receipt code e.g. QGH7XXXXXX"
+          className={`${inputCls} flex-1 font-mono uppercase tracking-wider`} />
         <button
           onClick={fetchUnlinked}
           disabled={lookupLoading}
@@ -142,6 +126,19 @@ function ManualPanel({ line, phone, setPhone, manualCode, setManualCode, isSubmi
           {lookupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
           Find
         </button>
+      </div>
+      {/* Row 2: phone + Process */}
+      <div className="flex gap-1.5">
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+          placeholder="07XX XXX XXX (optional)"
+          className={`${inputCls} flex-1`} />
+        <Button size="sm"
+          onClick={handleManual}
+          disabled={isSubmitting || manualCode.trim().length < 3}
+          loading={isSubmitting}
+          className="!bg-green-600 !text-white hover:!bg-green-700 flex-shrink-0">
+          Process
+        </Button>
       </div>
     </div>
   );
@@ -158,7 +155,7 @@ function formatElapsed(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
+function MpesaPanel({ line, remaining, methods, onReferenceResolved, onUpdate, onRemove, roundingUnit }) {
   const method        = methods.find((m) => m.payment_method_id === line.methodId);
   const customerPhone = useAuthStore((s) => s.user)?.phone || '';
 
@@ -176,6 +173,8 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const sessionStartRef = useRef(null);  // timestamp of first STK push this session
 
   const amount = line.amount;
+  const unit   = roundingUnit || 1;
+  const nudge  = (delta) => onUpdate({ ...line, amount: Math.max(0, line.amount + delta) });
 
   // Clear intervals on unmount
   useEffect(() => () => {
@@ -225,7 +224,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const { mutate: submitManual, isPending: isSubmitting } = useMutation({
     mutationFn: (body) => api.post('/mpesa/manual', body).then((r) => r.data.data),
     onSuccess: (data) => {
-      onReferenceResolved(line.methodId, data.mpesaReceiptNumber, data.mpesaTxnId);
+      onReferenceResolved(line.lineId, data.mpesaReceiptNumber, data.mpesaTxnId);
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to record receipt'),
   });
@@ -239,7 +238,7 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
         clearInterval(pollRef.current);
         stopSession();
         setStkState('done');
-        onReferenceResolved(line.methodId, result.mpesaReceiptNumber, result.mpesaTxnId);
+        onReferenceResolved(line.lineId, result.mpesaReceiptNumber, result.mpesaTxnId);
         toast.success('M-Pesa payment confirmed!');
 
       } else if (result.status === 'timeout') {
@@ -304,62 +303,81 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
   const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-green-500 focus:outline-none';
 
   return (
-    <div className="rounded-xl border border-green-200 bg-green-50 p-3 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Smartphone className="h-4 w-4 text-green-600" />
-          <span className="text-sm font-semibold text-green-800">{method?.method_name}</span>
-          <span className="rounded-full bg-green-200 px-2 py-0.5 text-xs font-medium text-green-800">
+    <div className="rounded-xl border border-green-200 bg-green-50 p-3 space-y-2">
+      {/* Single header row: icon · name · amount · STK/Manual toggle · timer · remove */}
+      <div className="flex items-center gap-2">
+        <Smartphone className="h-4 w-4 text-green-600 flex-shrink-0" />
+        <span className="text-sm font-semibold text-green-800 flex-shrink-0">{method?.method_name}</span>
+
+        {stkState === 'idle' ? (
+          <>
+            <input
+              type="number" step="0.01" min="0"
+              value={line.amount}
+              onChange={(e) => onUpdate({ ...line, amount: parseFloat(e.target.value) || 0 })}
+              className="w-24 rounded-lg border border-green-300 bg-white px-2 py-1 text-sm font-bold text-green-800 text-right focus:outline-none focus:border-green-500"
+            />
+            <div className="flex flex-col gap-0 flex-shrink-0">
+              <button onClick={() => nudge(+unit)} title={`+${unit}`}
+                className="text-green-400 hover:text-green-700 transition-colors leading-none">
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={() => nudge(-unit)} title={`-${unit}`}
+                className="text-green-400 hover:text-green-700 transition-colors leading-none">
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {remaining > 0 && (
+              <button
+                onClick={() => onUpdate({ ...line, amount: line.amount + remaining })}
+                className="text-xs text-green-600 hover:text-green-800 font-medium whitespace-nowrap flex-shrink-0">
+                +{formatCurrency(remaining)}
+              </button>
+            )}
+            <div className="flex rounded-lg border border-green-200 bg-white overflow-hidden text-xs font-medium flex-1">
+              <button
+                className={`flex-1 py-1 transition-colors ${mpesaMode === 'stk' ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-green-50'}`}
+                onClick={() => setMpesaMode('stk')}>
+                STK
+              </button>
+              <button
+                className={`flex-1 py-1 transition-colors ${mpesaMode === 'manual' ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-green-50'}`}
+                onClick={() => setMpesaMode('manual')}>
+                Manual
+              </button>
+            </div>
+          </>
+        ) : (
+          <span className="rounded-full bg-green-200 px-2 py-0.5 text-xs font-semibold text-green-800">
             {formatCurrency(amount)}
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {sessionActive && stkState === 'waiting' && (
-            <span className="text-xs text-gray-400 font-mono">
-              {formatElapsed(SESSION_LIMIT_MS - elapsed)} left
-            </span>
-          )}
-          <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors">
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+        )}
 
-      {/* Mode toggle — only shown before session starts */}
-      {stkState === 'idle' && (
-        <div className="flex rounded-lg border border-green-200 bg-white overflow-hidden text-xs font-medium">
-          <button
-            className={`flex-1 py-1.5 transition-colors ${mpesaMode === 'stk' ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-green-50'}`}
-            onClick={() => setMpesaMode('stk')}>
-            STK Push
-          </button>
-          <button
-            className={`flex-1 py-1.5 transition-colors ${mpesaMode === 'manual' ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-green-50'}`}
-            onClick={() => setMpesaMode('manual')}>
-            Manual Code
-          </button>
-        </div>
-      )}
+        {sessionActive && stkState === 'waiting' && (
+          <span className="text-xs text-gray-400 font-mono flex-shrink-0 ml-auto">
+            {formatElapsed(SESSION_LIMIT_MS - elapsed)} left
+          </span>
+        )}
+        <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0 ml-auto">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
 
       {/* ── STK Push flow ── */}
       {mpesaMode === 'stk' && (
         <>
           {stkState === 'idle' && (
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">Customer Phone *</label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-                  placeholder="07XX XXX XXX"
-                  className={inputCls} />
-              </div>
-              <Button size="sm" fullWidth
+            <div className="flex gap-1.5">
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                placeholder="07XX XXX XXX"
+                className={`${inputCls} flex-1`} />
+              <Button size="sm"
                 icon={<Send className="h-3.5 w-3.5" />}
                 onClick={handleSendSTK}
                 disabled={isSending || !phone.trim()}
                 loading={isSending}
-                className="!bg-green-600 !text-white hover:!bg-green-700">
-                Send STK Push — {formatCurrency(amount)}
+                className="!bg-green-600 !text-white hover:!bg-green-700 flex-shrink-0">
+                Send STK
               </Button>
             </div>
           )}
@@ -454,49 +472,63 @@ function MpesaPanel({ line, methods, onReferenceResolved, onRemove }) {
 
 // ── Regular (non-M-Pesa) payment line ─────────────────────────────────────────
 
-function PaymentLine({ line, remaining, methods, onRemove, onUpdate }) {
+function PaymentLine({ line, remaining, methods, onRemove, onUpdate, roundingUnit }) {
   const method = methods.find((m) => m.payment_method_id === line.methodId);
   const isCash = method?.method_name === 'Cash';
   const change = isCash ? Math.max(0, parseFloat(line.tendered || 0) - line.amount) : 0;
+  const unit   = roundingUnit || 1;
 
+  const nudge = (delta) => {
+    const next = Math.max(0, line.amount + delta);
+    onUpdate({ ...line, amount: next, tendered: isCash ? next : line.tendered });
+  };
+
+  const Icon = METHOD_ICONS[method?.method_name] ?? CreditCard;
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-700">{method?.method_name}</span>
-        <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors">
+      {/* Row 1: method icon · name · amount · ↑↓ · fill · remove */}
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-gray-500 flex-shrink-0" />
+        <span className="text-sm font-medium text-gray-700 flex-shrink-0">{method?.method_name}</span>
+        <input
+          type="number" step="0.01" min="0"
+          value={line.amount}
+          onChange={(e) => onUpdate({ ...line, amount: parseFloat(e.target.value) || 0, tendered: isCash ? parseFloat(e.target.value) || 0 : line.tendered })}
+          className="flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
+        />
+        <div className="flex flex-col gap-0 flex-shrink-0">
+          <button onClick={() => nudge(+unit)} title={`+${unit}`}
+            className="text-gray-400 hover:text-primary-600 transition-colors leading-none">
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => nudge(-unit)} title={`-${unit}`}
+            className="text-gray-400 hover:text-primary-600 transition-colors leading-none">
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {remaining > 0 && (
+          <button
+            onClick={() => onUpdate({ ...line, amount: remaining + line.amount, tendered: remaining + line.amount })}
+            className="text-xs text-primary-500 hover:text-primary-700 font-medium whitespace-nowrap flex-shrink-0">
+            +{formatCurrency(remaining)}
+          </button>
+        )}
+        <button onClick={onRemove} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-500 w-16 flex-shrink-0">Amount</label>
-        <input
-          type="number" step="0.01" min="0"
-          value={line.amount}
-          onChange={(e) => onUpdate({ ...line, amount: parseFloat(e.target.value) || 0 })}
-          className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
-        />
-        {remaining > 0 && (
-          <button
-            onClick={() => onUpdate({ ...line, amount: remaining + line.amount, tendered: remaining + line.amount })}
-            className="text-xs text-primary-500 hover:text-primary-700 font-medium whitespace-nowrap">
-            Fill {formatCurrency(remaining)}
-          </button>
-        )}
-      </div>
-
       {isCash && (
         <>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500 w-16 flex-shrink-0">Tendered</label>
+          {/* Row 2: tendered + quick amounts + exact */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <input
               type="number" step="0.01" min={line.amount}
               value={line.tendered}
               onChange={(e) => onUpdate({ ...line, tendered: parseFloat(e.target.value) || 0 })}
-              className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
+              placeholder="Tendered"
+              className="w-28 rounded-lg border border-gray-200 px-2 py-1 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
             />
-          </div>
-          <div className="flex gap-1.5 flex-wrap">
             {quickAmounts(line.amount).map((v) => (
               <button key={v} onClick={() => onUpdate({ ...line, tendered: v })}
                 className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium hover:border-primary-300 hover:bg-primary-50 transition-colors">
@@ -518,14 +550,11 @@ function PaymentLine({ line, remaining, methods, onRemove, onUpdate }) {
       )}
 
       {!isCash && method?.requires_reference && (
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 w-16 flex-shrink-0">Ref #</label>
-          <input type="text" value={line.reference}
-            onChange={(e) => onUpdate({ ...line, reference: e.target.value })}
-            placeholder="Reference number"
-            className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
-          />
-        </div>
+        <input type="text" value={line.reference}
+          onChange={(e) => onUpdate({ ...line, reference: e.target.value })}
+          placeholder="Reference number"
+          className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+        />
       )}
     </div>
   );
@@ -536,6 +565,7 @@ function PaymentLine({ line, remaining, methods, onRemove, onUpdate }) {
 export default function PaymentModal({ open, onClose, onSuccess }) {
   const { items, customer, session, notes, totals, clearCart, orderDiscount, orderDiscountType } = useCartStore();
   const branchId           = useAuthStore((s) => s.user?.branchIds?.[0]);
+  const companyId          = useAuthStore((s) => s.user?.companyId);
   const enqueueTransaction = usePosDataStore((s) => s.enqueueTransaction);
   const isOnline           = useNetworkStatus();
 
@@ -550,16 +580,28 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   });
   const redeemRate = loyaltySettings?.points_redeem_rate ?? 0.10;
 
-  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const { data: companyData } = useQuery({
+    queryKey: ['company-mine', companyId],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    staleTime: 5 * 60 * 1000,
+    enabled:  !!companyId,
+  });
+  const roundingMode = companyData?.pos_rounding_mode || 'none';
+  const roundingUnit = parseFloat(companyData?.pos_rounding_unit ?? 1);
+
+  const [pointsToRedeem, setPointsToRedeem]     = useState(0);
+  const [payableOverride, setPayableOverride]   = useState(null);
   const loyaltyDiscount = pointsToRedeem * redeemRate;
   const netTotal        = Math.max(0, cartTotal - loyaltyDiscount);
+  const autoRounded     = applyRounding(netTotal, roundingMode, roundingUnit);
+  const effectiveTotal  = payableOverride ?? autoRounded;
 
   // Each line: { methodId, amount, tendered, reference, mpesaTxnId }
   const [paymentLines, setPaymentLines] = useState([]);
 
   const totalCovered   = paymentLines.reduce((s, l) => s + (l.amount || 0), 0);
-  const remaining      = Math.max(0, netTotal - totalCovered);
-  const isFullyCovered = totalCovered >= netTotal && netTotal > 0;
+  const remaining      = Math.max(0, effectiveTotal - totalCovered);
+  const isFullyCovered = totalCovered >= effectiveTotal && effectiveTotal > 0;
 
   const { data: liveMethods, isError: methodsError } = useQuery({
     queryKey: ['payment-methods'],
@@ -576,18 +618,20 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const methods = liveMethods ?? ((!isOnline || methodsError) ? loadMethodsCache() : []);
 
   useEffect(() => {
-    if (open) { setPaymentLines([]); setPointsToRedeem(0); }
+    if (open) { setPaymentLines([]); setPointsToRedeem(0); setPayableOverride(null); }
   }, [open]);
 
   const setCustomer = useCartStore((s) => s.setCustomer);
   const [custModalOpen, setCustModalOpen] = useState(false);
 
   const addPaymentLine = (method) => {
-    if (paymentLines.some((l) => l.methodId === method.payment_method_id)) return;
+    const isMpesaMethod = isMpesa(method.method_name);
+    if (!isMpesaMethod && paymentLines.some((l) => l.methodId === method.payment_method_id)) return;
     const isCash = method.method_name === 'Cash';
     setPaymentLines((prev) => [
       ...prev,
       {
+        lineId:    `${method.payment_method_id}-${Date.now()}`,
         methodId:  method.payment_method_id,
         amount:    Math.max(0, remaining),
         tendered:  isCash ? Math.max(0, remaining) : 0,
@@ -597,11 +641,11 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     ]);
   };
 
-  const updateLine = (idx, updated) =>
-    setPaymentLines((prev) => prev.map((l, i) => (i === idx ? updated : l)));
+  const updateLine = (lineId, updated) =>
+    setPaymentLines((prev) => prev.map((l) => (l.lineId === lineId ? updated : l)));
 
-  const removeLine = (idx) =>
-    setPaymentLines((prev) => prev.filter((_, i) => i !== idx));
+  const removeLine = (lineId) =>
+    setPaymentLines((prev) => prev.filter((l) => l.lineId !== lineId));
 
   const maxRedeemPoints = Math.min(
     loyaltyBalance,
@@ -657,11 +701,11 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const autoSubmitTimerRef = useRef(null);
 
   // Called by MpesaPanel when STK or manual entry resolves with a confirmed receipt
-  const handleMpesaResolved = (methodId, receiptNumber, mpesaTxnId) => {
+  const handleMpesaResolved = (lineId, receiptNumber, mpesaTxnId) => {
     autoSubmitRef.current = true;
     setPaymentLines((prev) =>
       prev.map((l) =>
-        l.methodId === methodId
+        l.lineId === lineId
           ? { ...l, reference: receiptNumber || '', mpesaTxnId }
           : l
       )
@@ -730,7 +774,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
             disabled={!canProcess}
             loading={isPending}
             onClick={handleCharge}>
-            Process {formatCurrency(netTotal)}
+            Process {formatCurrency(effectiveTotal)}
           </Button>
         </div>
       }
@@ -782,20 +826,38 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
         </button>
 
         {/* Amount summary */}
-        <div className="rounded-xl bg-secondary-50 border border-secondary-200 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Cart Total</p>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(cartTotal)}</p>
+        <div className="rounded-xl bg-secondary-50 border border-secondary-200 px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-500">Amount Due</p>
+            {loyaltyDiscount > 0 && (
+              <p className="text-xs text-amber-600 mt-0.5">
+                {formatCurrency(cartTotal)} − {formatCurrency(loyaltyDiscount)} pts
+              </p>
+            )}
+            {roundingMode !== 'none' && effectiveTotal !== netTotal && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {formatCurrency(netTotal)} → rounded {roundingMode}
+              </p>
+            )}
           </div>
-          {loyaltyDiscount > 0 && (
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-xs text-amber-600">Loyalty discount ({pointsToRedeem} pts)</p>
-              <p className="text-xs font-semibold text-amber-600">-{formatCurrency(loyaltyDiscount)}</p>
-            </div>
-          )}
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-secondary-200">
-            <p className="text-sm font-semibold text-gray-700">Amount Due</p>
-            <p className="text-2xl font-bold text-secondary-700">{formatCurrency(netTotal)}</p>
+          <div className="flex items-center gap-2">
+            {roundingMode !== 'none' && (
+              <div className="flex flex-col gap-0">
+                <button
+                  onClick={() => setPayableOverride(applyRounding(netTotal, 'up', roundingUnit))}
+                  title="Round up"
+                  className="text-gray-400 hover:text-secondary-700 transition-colors leading-none">
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setPayableOverride(applyRounding(netTotal, 'down', roundingUnit))}
+                  title="Round down"
+                  className="text-gray-400 hover:text-secondary-700 transition-colors leading-none">
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <p className="text-2xl font-bold text-secondary-700">{formatCurrency(effectiveTotal)}</p>
           </div>
         </div>
 
@@ -831,33 +893,34 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
 
         {/* Method selector */}
         <div>
-          <p className="mb-2 text-sm font-medium text-gray-700">Add Payment Method</p>
+          <p className="mb-2 text-sm font-medium text-gray-700">Payment Method</p>
           <div className="flex flex-wrap gap-2">
             {methods.map((m) => {
-              const Icon  = isMpesa(m.method_name) ? Smartphone : (METHOD_ICONS[m.method_name] ?? CreditCard);
-              const inUse = paymentLines.some((l) => l.methodId === m.payment_method_id);
+              const isMpesaMethod = isMpesa(m.method_name);
+              const Icon          = isMpesaMethod ? Smartphone : (METHOD_ICONS[m.method_name] ?? CreditCard);
+              const usedCount     = paymentLines.filter((l) => l.methodId === m.payment_method_id).length;
+              const inUse         = usedCount > 0 && !isMpesaMethod;
+              const disabled      = inUse || remaining <= 0;
               return (
                 <button
                   key={m.payment_method_id}
                   onClick={() => addPaymentLine(m)}
-                  disabled={inUse || remaining <= 0}
+                  disabled={disabled}
                   className={[
                     'flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all',
-                    isMpesa(m.method_name)
-                      ? 'border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50'
-                      : '',
-                    inUse
+                    isMpesaMethod && !disabled
+                      ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+                      : inUse
                       ? 'border-primary-300 bg-primary-50 text-primary-600 opacity-60 cursor-default'
-                      : remaining <= 0
+                      : disabled
                       ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                      : !isMpesa(m.method_name)
-                      ? 'border-gray-200 text-gray-600 hover:border-primary-300 hover:bg-primary-50'
-                      : '',
+                      : 'border-gray-200 text-gray-600 hover:border-primary-300 hover:bg-primary-50',
                   ].join(' ')}
                 >
                   <Icon className="h-4 w-4" />
                   {m.method_name}
                   {inUse && <CheckCircle className="h-3.5 w-3.5 text-primary-500" />}
+                  {isMpesaMethod && usedCount > 0 && <Plus className="h-3 w-3 text-green-600" />}
                 </button>
               );
             })}
@@ -867,24 +930,28 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
         {/* Payment lines */}
         {paymentLines.length > 0 && (
           <div className="space-y-2">
-            {paymentLines.map((line, idx) => {
+            {paymentLines.map((line) => {
               const method = methods.find((m) => m.payment_method_id === line.methodId);
               return isMpesa(method?.method_name) ? (
                 <MpesaPanel
-                  key={line.methodId}
+                  key={line.lineId}
                   line={line}
+                  remaining={remaining}
                   methods={methods}
                   onReferenceResolved={handleMpesaResolved}
-                  onRemove={() => removeLine(idx)}
+                  onUpdate={(updated) => updateLine(line.lineId, updated)}
+                  onRemove={() => removeLine(line.lineId)}
+                  roundingUnit={roundingUnit}
                 />
               ) : (
                 <PaymentLine
-                  key={line.methodId}
+                  key={line.lineId}
                   line={line}
                   remaining={remaining + line.amount}
                   methods={methods}
-                  onRemove={() => removeLine(idx)}
-                  onUpdate={(updated) => updateLine(idx, updated)}
+                  onRemove={() => removeLine(line.lineId)}
+                  onUpdate={(updated) => updateLine(line.lineId, updated)}
+                  roundingUnit={roundingUnit}
                 />
               );
             })}

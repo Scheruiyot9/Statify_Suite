@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCartStore, useAuthStore } from '@/app/store';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, applyRounding } from '@/utils/formatters';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 import { ProductThumb } from './ProductGrid';
@@ -199,7 +199,7 @@ function RateCell({ item, editable }) {
 }
 
 // ── Editable total column ─────────────────────────────────────────────────────
-function TotalCell({ item, editable }) {
+function TotalCell({ item, editable, roundingMode, roundingUnit }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
   const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
@@ -208,12 +208,13 @@ function TotalCell({ item, editable }) {
   const commit = () => {
     const n = parseFloat(draft);
     if (!isNaN(n) && n > 0 && item.quantity > 0) {
-      // Clear discount then back-calculate unit price from the typed total
       setItemDiscount(item.product.product_id, 0, 'none');
       updateUnitPrice(item.product.product_id, Math.round((n / item.quantity) * 100) / 100);
     }
     setEditing(false);
   };
+
+  const displayed = applyRounding(item.lineTotal, roundingMode, roundingUnit);
 
   if (editing) return (
     <input
@@ -231,11 +232,11 @@ function TotalCell({ item, editable }) {
       title="Click to edit total"
       className="block w-full text-right text-xs font-bold text-gray-900 underline decoration-dotted hover:text-primary-600 transition-colors"
     >
-      {formatCurrency(item.lineTotal)}
+      {formatCurrency(displayed)}
     </button>
   ) : (
     <span className="block w-full text-right text-xs font-bold text-gray-900">
-      {formatCurrency(item.lineTotal)}
+      {formatCurrency(displayed)}
     </span>
   );
 }
@@ -499,6 +500,9 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
   const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
   const allowTotalEdit  = companySettings?.pos_allow_total_edit  ?? false;
+  const roundingMode    = companySettings?.pos_rounding_mode     || 'none';
+  const roundingUnit    = parseFloat(companySettings?.pos_rounding_unit ?? 1);
+  const displayTotal    = applyRounding(total, roundingMode, roundingUnit);
 
   const holdMut = useMutation({
     mutationFn: ({ label, cartData }) =>
@@ -656,7 +660,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
                   {/* Total (editable) */}
                   <div className="flex-1 min-w-0">
-                    <TotalCell item={item} editable={allowPriceEdit} />
+                    <TotalCell item={item} editable={allowPriceEdit} roundingMode={roundingMode} roundingUnit={roundingUnit} />
                     {item.discount > 0 && (
                       <span className="block text-right text-[9px] font-semibold text-green-600">
                         −{formatCurrency(item.discount)}
@@ -790,7 +794,10 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
               title={allowTotalEdit ? 'Click to set a custom total' : undefined}
               className={`text-2xl font-bold text-secondary-600 leading-none ${allowTotalEdit && items.length ? 'cursor-pointer hover:opacity-75 active:opacity-60 transition-opacity' : 'cursor-default'}`}
             >
-              {formatCurrency(total)}
+              {formatCurrency(displayTotal)}
+              {displayTotal !== total && (
+                <span className="block text-[11px] font-normal text-gray-400 text-right">{formatCurrency(total)}</span>
+              )}
             </button>
           )}
         </div>
@@ -846,7 +853,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
           className="h-14 !text-base !font-bold !rounded-xl shadow-md"
         >
           <span className="flex items-center gap-2">
-            Pay {formatCurrency(total)}
+            Pay {formatCurrency(displayTotal)}
             <kbd className="rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-mono">F2</kbd>
           </span>
         </Button>

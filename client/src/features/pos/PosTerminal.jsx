@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft, UserCog } from 'lucide-react';
+import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft, ArrowLeftRight, UserCog } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
@@ -733,6 +733,178 @@ function CashOutModal({ session, methods, onClose }) {
   );
 }
 
+// ── Pay Mode Transfer Modal ───────────────────────────────────────────────────
+const TRANSFER_TYPES = [
+  {
+    value:     'sweep',
+    label:     'Sweep',
+    hint:      'Move collected funds between modes — e.g. M-Pesa receipts swept to bank',
+    fromLabel: 'Collected in',
+    toLabel:   'Transfer to',
+  },
+  {
+    value:     'float_topup',
+    label:     'Float Top-up',
+    hint:      'Load funds into another mode — e.g. cash moved to mobile wallet float',
+    fromLabel: 'Take from',
+    toLabel:   'Add to',
+  },
+  {
+    value:     'correction',
+    label:     'Payment Correction',
+    hint:      'Fix a sale recorded with the wrong payment method',
+    fromLabel: 'Was recorded as',
+    toLabel:   'Correct to',
+  },
+];
+
+function TransferModal({ session, methods, onClose }) {
+  const qc = useQueryClient();
+
+  const [transferType,   setTransferType]   = useState('sweep');
+  const [fromMethodId,   setFromMethodId]   = useState(methods[0]?.payment_method_id ?? '');
+  const [toMethodId,     setToMethodId]     = useState(methods[1]?.payment_method_id ?? '');
+  const [amount,         setAmount]         = useState('');
+  const [notes,          setNotes]          = useState('');
+  const [referenceTxnId, setReferenceTxnId] = useState('');
+
+  const typeInfo = TRANSFER_TYPES.find((t) => t.value === transferType);
+  const amt = parseFloat(amount);
+  const canSubmit = amount !== '' && !isNaN(amt) && amt > 0 && fromMethodId && toMethodId && fromMethodId !== toMethodId;
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (body) => api.post(`/pos/sessions/${session.session_id}/transfers`, body),
+    onSuccess: () => {
+      toast.success('Transfer recorded');
+      qc.invalidateQueries({ queryKey: ['session-summary', session.session_id] });
+      qc.invalidateQueries({ queryKey: ['session-transfers', session.session_id] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to record transfer'),
+  });
+
+  const handleSubmit = () => mutate({
+    transferType,
+    fromMethodId,
+    toMethodId,
+    amount:         amt,
+    notes:          notes || undefined,
+    referenceTxnId: referenceTxnId.trim() || undefined,
+  });
+
+  const inpCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+
+  const MethodPicker = ({ label, value, onChange }) => (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-gray-700">{label} *</label>
+      <div className="flex flex-wrap gap-2">
+        {methods.map((m) => (
+          <button
+            key={m.payment_method_id}
+            onClick={() => onChange(m.payment_method_id)}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              value === m.payment_method_id
+                ? 'border-primary-400 bg-primary-50 text-primary-800'
+                : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {m.method_name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl max-h-[90vh] flex flex-col">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Pay Mode Transfer</h2>
+            <p className="text-xs text-gray-500">{session.terminal_name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          <div className="space-y-4 p-6">
+            {/* Type selector */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700">Transfer Type *</label>
+              <div className="space-y-1.5">
+                {TRANSFER_TYPES.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setTransferType(t.value)}
+                    className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      transferType === t.value
+                        ? 'border-primary-400 bg-primary-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className={`text-sm font-medium ${transferType === t.value ? 'text-primary-800' : 'text-gray-800'}`}>{t.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t.hint}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* From / To pickers */}
+            <MethodPicker label={typeInfo.fromLabel} value={fromMethodId} onChange={setFromMethodId} />
+
+            <div className="flex items-center gap-2 text-gray-400">
+              <div className="flex-1 h-px bg-gray-100" />
+              <ArrowLeftRight className="h-4 w-4" />
+              <div className="flex-1 h-px bg-gray-100" />
+            </div>
+
+            <MethodPicker label={typeInfo.toLabel} value={toMethodId} onChange={setToMethodId} />
+
+            {fromMethodId === toMethodId && fromMethodId && (
+              <p className="text-xs text-red-500">From and To modes must be different.</p>
+            )}
+
+            {/* Amount */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Amount *</label>
+              <input type="number" min="0.01" step="0.01" value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00" className={inpCls} />
+            </div>
+
+            {/* Correction: optional transaction reference */}
+            {transferType === 'correction' && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">Transaction ID <span className="text-gray-400">(optional)</span></label>
+                <input type="text" value={referenceTxnId}
+                  onChange={(e) => setReferenceTxnId(e.target.value)}
+                  placeholder="Paste transaction ID to link this correction"
+                  className={inpCls} />
+                <p className="mt-1 text-xs text-gray-400">Find the ID in the shift summary or on the receipt.</p>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Notes</label>
+              <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Brief description…"
+                className={inpCls} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4 flex-shrink-0">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button fullWidth disabled={!canSubmit} loading={isPending} onClick={handleSubmit}>
+            <ArrowLeftRight className="h-4 w-4 mr-1" />Record Transfer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Close Session Modal ───────────────────────────────────────────────────────
 function CloseSessionModal({ session, onClose, onClosed }) {
   const [closingAmount, setClosingAmount] = useState('0');
@@ -1073,6 +1245,7 @@ export default function PosTerminal() {
   const [checkoutOpen,     setCheckoutOpen]     = useState(false);
   const [closeOpen,        setCloseOpen]        = useState(false);
   const [cashOutOpen,      setCashOutOpen]      = useState(false);
+  const [transferOpen,     setTransferOpen]     = useState(false);
   const [shiftOpen,        setShiftOpen]        = useState(false);
   const [holdsOpen,        setHoldsOpen]        = useState(false);
   const [queueOpen,        setQueueOpen]        = useState(false);
@@ -1364,6 +1537,13 @@ export default function PosTerminal() {
                 sub="Record withdrawal, expense or stock payment"
                 onClick={() => { setCashOutOpen(true); setMenuOpen(false); }}
               />
+              <MenuAction
+                icon={ArrowLeftRight}
+                iconBg="bg-violet-100 text-violet-600"
+                label="Pay Mode Transfer"
+                sub="Sweep, float top-up or payment correction"
+                onClick={() => { setTransferOpen(true); setMenuOpen(false); }}
+              />
               <div className="my-1 h-px bg-gray-100" />
               <MenuAction
                 icon={LogOut}
@@ -1460,6 +1640,14 @@ export default function PosTerminal() {
           session={session}
           methods={posMethods}
           onClose={() => setCashOutOpen(false)}
+        />
+      )}
+
+      {transferOpen && (
+        <TransferModal
+          session={session}
+          methods={posMethods}
+          onClose={() => setTransferOpen(false)}
         />
       )}
 

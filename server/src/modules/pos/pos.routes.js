@@ -34,6 +34,8 @@ router.get('/sessions/:id/summary',      requireRole('cashier'),        controll
 router.patch('/sessions/:id/close',      requireRole('cashier'),        controller.closeSession);
 router.post('/sessions/:id/cash-outs',   requireRole('cashier'),        controller.cashOut);
 router.get('/sessions/:id/cash-outs',    requireRole('cashier'),        controller.cashOuts);
+router.post('/sessions/:id/transfers',   requireRole('cashier'),        controller.createTransfer);
+router.get('/sessions/:id/transfers',    requireRole('cashier'),        controller.listTransfers);
 
 // ── Company-wide cash-outs listing ───────────────────────────────────────────
 router.get('/cash-outs',                 requireRole('branch_manager'), controller.allCashOuts);

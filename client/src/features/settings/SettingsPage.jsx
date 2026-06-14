@@ -318,6 +318,8 @@ function TerminalsTab() {
   const [allowPartialQty, setAllowPartialQty] = useState(false);
   const [defaultScanMode, setDefaultScanMode] = useState(true);
   const [allowTotalEdit,  setAllowTotalEdit]  = useState(false);
+  const [roundingMode,    setRoundingMode]    = useState('none');
+  const [roundingUnit,    setRoundingUnit]    = useState(1);
 
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
@@ -331,6 +333,8 @@ function TerminalsTab() {
       setAllowPartialQty(!!companyData.pos_allow_partial_qty);
       setDefaultScanMode(companyData.pos_default_scan_mode !== false);
       setAllowTotalEdit(!!companyData.pos_allow_total_edit);
+      setRoundingMode(companyData.pos_rounding_mode  || 'none');
+      setRoundingUnit(parseFloat(companyData.pos_rounding_unit) || 1);
     }
   }, [companyData]);
 
@@ -583,6 +587,41 @@ function TerminalsTab() {
             </div>
           </label>
 
+          {/* ── Price Rounding ── */}
+          <div className="pt-3 border-t border-gray-100 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-800">Price rounding</p>
+              <p className="text-xs text-gray-500 mt-0.5">Auto-round the Amount Due at checkout. Cashiers can nudge amounts with ↑↓ buttons.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-10 flex-shrink-0">Mode</span>
+              <select
+                value={roundingMode}
+                onChange={(e) => setRoundingMode(e.target.value)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+              >
+                <option value="none">None</option>
+                <option value="nearest">Nearest</option>
+                <option value="up">↑ Round Up</option>
+                <option value="down">↓ Round Down</option>
+              </select>
+            </div>
+            {roundingMode !== 'none' && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 w-10 flex-shrink-0">Unit</span>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="0.01"
+                  value={roundingUnit}
+                  onChange={(e) => setRoundingUnit(parseFloat(e.target.value) || 1)}
+                  className="w-28 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-right focus:border-primary-500 focus:outline-none"
+                />
+                <span className="text-xs text-gray-400">e.g. 0.05, 0.50, 1.00, 5.00</span>
+              </div>
+            )}
+          </div>
+
           <Button
             loading={savePosBehaviourMut.isPending}
             onClick={() => savePosBehaviourMut.mutate({
@@ -590,6 +629,8 @@ function TerminalsTab() {
               pos_allow_partial_qty: allowPartialQty,
               pos_default_scan_mode: defaultScanMode,
               pos_allow_total_edit:  allowTotalEdit,
+              pos_rounding_mode:     roundingMode,
+              pos_rounding_unit:     roundingUnit,
             })}
           >
             Save POS Settings

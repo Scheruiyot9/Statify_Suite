@@ -157,6 +157,18 @@ const allCashOuts = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+// ── Pay Mode Transfers ────────────────────────────────────────────────────────
+
+const createTransfer = async (req, res) => {
+  const result = await svc.createTransfer(req.tenantId, req.params.id, req.user.userId, req.body);
+  res.status(201).json({ success: true, data: result });
+};
+
+const listTransfers = async (req, res) => {
+  const result = await svc.listTransfers(req.tenantId, req.params.id);
+  res.json({ success: true, data: result });
+};
+
 // ── Hold Carts ────────────────────────────────────────────────────────────────
 
 const createHold = async (req, res) => {
@@ -183,5 +195,6 @@ module.exports = {
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession,
   cashOut, cashOuts, allCashOuts, expenseAccounts,
+  createTransfer, listTransfers,
   createHold, listHolds, deleteHold,
 };

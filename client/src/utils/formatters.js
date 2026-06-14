@@ -30,3 +30,11 @@ export const formatNumber = (n) =>
 
 export const truncate = (str, len = 40) =>
   str?.length > len ? `${str.slice(0, len)}…` : str;
+
+export function applyRounding(value, mode, unit) {
+  if (!mode || mode === 'none' || !unit || unit <= 0) return value;
+  if (mode === 'up')      return Math.ceil(value  / unit) * unit;
+  if (mode === 'down')    return Math.floor(value / unit) * unit;
+  if (mode === 'nearest') return Math.round(value / unit) * unit;
+  return value;
+}
