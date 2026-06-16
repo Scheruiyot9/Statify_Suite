@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, Plus, Edit2, Star, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight, CheckSquare } from 'lucide-react';
+import { Landmark, Plus, Edit2, Star, BookOpen, Calendar, ArrowDownLeft, ArrowUpRight, CheckSquare, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -472,7 +472,7 @@ export default function BankAccountsPage() {
   const [createOpen,       setCreateOpen]       = useState(false);
   const [reconcileTarget,  setReconcileTarget]  = useState(null);
 
-  const { data: accounts = [], isLoading } = useQuery({
+  const { data: accounts = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: () => api.get('/bank-accounts').then((r) => r.data.data),
   });
@@ -486,7 +486,12 @@ export default function BankAccountsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
           Add Bank Account
         </Button>

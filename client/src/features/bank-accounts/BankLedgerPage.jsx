@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Calendar, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { ArrowLeft, Calendar, ArrowUpRight, ArrowDownLeft, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -174,7 +174,7 @@ export default function BankLedgerPage() {
     enabled:  !!bankAccountId,
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['bank-ledger', bankAccountId, startDate, endDate, page],
     queryFn:  () => api.get(`/bank-accounts/${bankAccountId}/ledger`, {
       params: { startDate, endDate, page, limit: 30 },
@@ -226,15 +226,22 @@ export default function BankLedgerPage() {
       )}
 
       {/* Date filter */}
-      <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 w-fit">
-        <Calendar className="h-3.5 w-3.5 text-gray-400" />
-        <input type="date" value={startDate} max={endDate}
-          onChange={(e) => { setStart(e.target.value); setPage(1); }}
-          className="text-xs border-none outline-none bg-transparent" />
-        <span className="text-gray-400 text-xs">—</span>
-        <input type="date" value={endDate} min={startDate} max={todayISO}
-          onChange={(e) => { setEnd(e.target.value); setPage(1); }}
-          className="text-xs border-none outline-none bg-transparent" />
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+          <Calendar className="h-3.5 w-3.5 text-gray-400" />
+          <input type="date" value={startDate} max={endDate}
+            onChange={(e) => { setStart(e.target.value); setPage(1); }}
+            className="text-xs border-none outline-none bg-transparent" />
+          <span className="text-gray-400 text-xs">—</span>
+          <input type="date" value={endDate} min={startDate} max={todayISO}
+            onChange={(e) => { setEnd(e.target.value); setPage(1); }}
+            className="text-xs border-none outline-none bg-transparent" />
+        </div>
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
       </div>
 
       {/* Ledger table */}

@@ -4,7 +4,7 @@ import {
   ShoppingCart, Plus, Search, ChevronRight, ChevronDown,
   CheckCircle, XCircle, Clock, Send, Package, FileText,
   TrendingUp, BarChart2, AlertTriangle, Truck, ClipboardList,
-  CheckSquare, Calendar, Printer, Trash2,
+  CheckSquare, Calendar, Printer, Trash2, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -790,7 +790,7 @@ export default function PurchasesPage() {
   const products  = Array.isArray(productsRaw)  ? productsRaw  : (productsRaw?.products  ?? []);
 
   // ── POs ──
-  const { data: poData, isLoading: poLoading } = useQuery({
+  const { data: poData, isLoading: poLoading, refetch: refetchPO, isFetching: isFetchingPO } = useQuery({
     queryKey: ['purchases', statusFilt],
     queryFn:  () => api.get(`/purchases?limit=100${statusFilt ? `&status=${statusFilt}` : ''}`).then((r) => r.data),
   });
@@ -800,7 +800,7 @@ export default function PurchasesPage() {
     : pos;
 
   // ── GRNs ──
-  const { data: grnData, isLoading: grnLoading } = useQuery({
+  const { data: grnData, isLoading: grnLoading, refetch: refetchGRN, isFetching: isFetchingGRN } = useQuery({
     queryKey: ['grns'],
     queryFn:  () => api.get('/grns?limit=100').then((r) => r.data),
     enabled: tab === 'grn',
@@ -851,10 +851,22 @@ export default function PurchasesPage() {
                 <option value="">All statuses</option>
                 {PO_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s]?.label ?? s}</option>)}
               </select>
+              <Button variant="secondary" size="sm"
+                icon={<RefreshCw className={`h-4 w-4 ${isFetchingPO ? 'animate-spin' : ''}`} />}
+                onClick={() => refetchPO()}>
+                Refresh
+              </Button>
               <Button onClick={() => setShowPOModal(true)} size="sm">
                 <Plus className="h-4 w-4 mr-1" />New PO
               </Button>
             </>
+          )}
+          {tab === 'grn' && (
+            <Button variant="secondary" size="sm"
+              icon={<RefreshCw className={`h-4 w-4 ${isFetchingGRN ? 'animate-spin' : ''}`} />}
+              onClick={() => refetchGRN()}>
+              Refresh
+            </Button>
           )}
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Plus, ChevronRight, ChevronDown, Edit2, Trash2, Sparkles, Layers, Calendar, Scale, AlertTriangle, BarChart2, Printer, Download } from 'lucide-react';
+import { BookOpen, Plus, ChevronRight, ChevronDown, Edit2, Trash2, Sparkles, Layers, Calendar, Scale, AlertTriangle, BarChart2, Printer, Download, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -513,7 +513,7 @@ export default function AccountsPage() {
   const [activeTab,       setActiveTab]       = useState('accounts');
   const [openingBalOpen,  setOpeningBalOpen]  = useState(false);
 
-  const { data: accounts = [], isLoading } = useQuery({
+  const { data: accounts = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.get('/accounts').then((r) => r.data.data),
   });
@@ -596,6 +596,11 @@ export default function AccountsPage() {
                 Opening Balances
               </Button>
             )}
+            <Button variant="secondary" size="sm"
+              icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+              onClick={() => refetch()}>
+              Refresh
+            </Button>
             <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
               Add Account
             </Button>

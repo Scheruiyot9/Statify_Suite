@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy, ShieldOff, Trash2 } from 'lucide-react';
+import { Plus, Edit2, UserCheck, UserX, KeyRound, Search, ShieldCheck, Copy, ShieldOff, Trash2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Button      from '@/components/ui/Button';
@@ -581,7 +581,7 @@ function UsersListTab({ canManageUsers }) {
   const [clearPinUser, setClearPinUser] = useState(null);
   const [deleteUser,   setDeleteUser]   = useState(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['users', search],
     queryFn:  () => api.get('/users', { params: { search, limit: 50 } }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
@@ -607,6 +607,11 @@ function UsersListTab({ canManageUsers }) {
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         {canManageUsers && (
           <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setFormUser(false)}>
             New User

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -265,7 +265,7 @@ export default function InventoryPage() {
   const branches   = Array.isArray(branchesData)   ? branchesData   : [];
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['inventory', search, branchFilter, categoryFilter, statusFilter, page],
     queryFn: () =>
       api.get('/inventory', {
@@ -377,6 +377,11 @@ export default function InventoryPage() {
           </button>
         )}
 
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         {/* Bulk adjust */}
         {canAdjustStock && selected.size > 0 && (
           <Button size="sm" onClick={() => setBulkOpen(true)}>

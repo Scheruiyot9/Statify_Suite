@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -354,7 +354,7 @@ export default function ProductsPage() {
   const [showImport, setShowImport] = useState(false);
   const [ledgerProduct, setLedgerProduct] = useState(null); // { product_id, product_name }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['products-mgmt', search, catFilter, statusFilter, page],
     queryFn: () => api.get('/products', { params: { search, categoryId: catFilter, isActive: statusFilter, page, limit: 25 } }).then((r) => r.data.data),
     keepPreviousData: true,
@@ -417,6 +417,11 @@ export default function ProductsPage() {
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </select>
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
           onClick={() => exportToExcel('products', products, [
             'product_name','sku','barcode','category_name','base_price','is_active',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -487,7 +487,7 @@ export default function PaymentsPage() {
   });
   const suppliers = Array.isArray(suppliersRaw2) ? suppliersRaw2 : (suppliersRaw2?.suppliers ?? []);
 
-  const { data: paymentsRaw, isLoading } = useQuery({
+  const { data: paymentsRaw, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['supplier-payments', supplierFilt],
     queryFn:  () => api.get(`/supplier-payments?limit=100${supplierFilt ? `&supplierId=${supplierFilt}` : ''}`).then((r) => r.data.data ?? r.data),
   });
@@ -535,6 +535,11 @@ export default function PaymentsPage() {
           <option value="supplier">Supplier</option>
           <option value="direct">Direct Expense</option>
         </select>
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button size="sm" onClick={() => setShowModal(true)}>
           <Plus className="h-4 w-4 mr-1" />Record Payment
         </Button>

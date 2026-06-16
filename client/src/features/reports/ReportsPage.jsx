@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   TrendingUp, ShoppingCart, Users, BarChart2, Calendar,
   FileText, Scale, AlertTriangle, Package, Truck,
-  ArrowDownLeft, ArrowUpRight, Droplets, CreditCard, Printer,
+  ArrowDownLeft, ArrowUpRight, Droplets, CreditCard, Printer, RefreshCw,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
@@ -218,7 +218,7 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
   const endpoint = isSuperAdmin ? '/platform/reports/sales' : '/reports/sales';
   const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchSales, isFetching: isFetchingSales } = useQuery({
     queryKey: ['reports-sales', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -267,6 +267,10 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={() => refetchSales()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingSales ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
@@ -383,7 +387,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
   const endpoint = isSuperAdmin ? '/platform/reports/pl' : '/reports/pl';
   const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch: refetchPL, isFetching: isFetchingPL } = useQuery({
     queryKey: ['reports-pl', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -428,6 +432,10 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={() => refetchPL()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingPL ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
@@ -556,7 +564,7 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
   const endpoint = isSuperAdmin ? '/platform/reports/ap-aging' : '/reports/ap-aging';
   const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch: refetchAP, isFetching: isFetchingAP } = useQuery({
     queryKey: ['reports-ap-aging', isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -591,6 +599,10 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={() => refetchAP()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingAP ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
@@ -673,7 +685,7 @@ function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, co
   const endpoint = isSuperAdmin ? '/platform/reports/balance-sheet' : '/reports/balance-sheet';
   const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch: refetchBS, isFetching: isFetchingBS } = useQuery({
     queryKey: ['reports-balance-sheet', isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -716,6 +728,10 @@ function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, co
           {isSuperAdmin && (
             <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
           )}
+          <button onClick={() => refetchBS()}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetchingBS ? 'animate-spin' : ''}`} />Refresh
+          </button>
           <button onClick={handlePrint} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             <Printer className="h-3.5 w-3.5" />Print / PDF
           </button>
@@ -795,7 +811,7 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
   const endpoint = isSuperAdmin ? '/platform/reports/cash-flow' : '/reports/cash-flow';
   const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch: refetchCF, isFetching: isFetchingCF } = useQuery({
     queryKey: ['reports-cashflow', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -845,6 +861,10 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={() => refetchCF()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingCF ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
@@ -908,7 +928,7 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
   const endpoint = isSuperAdmin ? '/platform/reports/ar-aging' : '/journal/ar-aging';
   const params   = isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {};
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch, isFetching: isFetchingAR } = useQuery({
     queryKey: ['ar-aging', isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
@@ -967,6 +987,10 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
+        <button onClick={() => refetch()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingAR ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
@@ -1074,7 +1098,7 @@ function StockTab() {
 
   const { data: branches = [] } = useQuery({ queryKey: ['branches'], queryFn: () => api.get('/branches').then((r) => r.data.data ?? []) });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchStock, isFetching: isFetchingStock } = useQuery({
     queryKey: ['reports-stock', branchId],
     queryFn:  () => api.get('/reports/stock-valuation', { params: branchId ? { branchId } : {} }).then((r) => r.data.data),
   });
@@ -1110,6 +1134,10 @@ function StockTab() {
           <option value="">All branches</option>
           {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
         </select>
+        <button onClick={() => refetchStock()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetchingStock ? 'animate-spin' : ''}`} />Refresh
+        </button>
         <button onClick={handlePrint} className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>

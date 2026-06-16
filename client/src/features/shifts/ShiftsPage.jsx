@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, XCircle, Receipt, CheckCircle,
-  AlertTriangle, ChevronLeft, ChevronRight,
+  AlertTriangle, ChevronLeft, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -297,7 +297,7 @@ export default function ShiftsPage() {
 
   const filters = { startDate, endDate, status, page, limit: 20 };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['sessions', filters],
     queryFn:  () => api.get('/pos/sessions', { params: filters }).then((r) => r.data.data),
     keepPreviousData: true,
@@ -332,6 +332,11 @@ export default function ShiftsPage() {
         {(startDate || endDate || status) && (
           <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
         )}
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
       </div>
 
       {/* Master-detail layout */}

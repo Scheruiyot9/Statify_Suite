@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, XCircle, Receipt, Printer, Download } from 'lucide-react';
+import { Search, XCircle, Receipt, Printer, Download, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -145,7 +145,7 @@ export default function SalesPage() {
 
   const filters = { search, startDate, endDate, paymentMethod, minAmount, maxAmount, page, limit: 25 };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['transactions', filters],
     queryFn: () => api.get('/sales/transactions', { params: filters }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
@@ -227,6 +227,11 @@ export default function SalesPage() {
           <button onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setPaymentMethod(''); setMinAmount(''); setMaxAmount(''); setPage(1); }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
         )}
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
           loading={exporting} onClick={handleExport}>
           Export All

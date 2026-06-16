@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Star, Phone, Mail, Download } from 'lucide-react';
+import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -124,7 +124,7 @@ export default function CustomersPage() {
   const [modal, setModal]   = useState(null);
   const [detail, setDetail] = useState(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['customers', search, page],
     queryFn: () => api.get('/customers', { params: { search, page, limit: 25 } }).then((r) => r.data.data),
     keepPreviousData: true,
@@ -166,6 +166,11 @@ export default function CustomersPage() {
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
           onClick={() => exportToExcel('customers', customers, [
             'customer_name','phone','email','loyalty_points_balance','total_spent','created_at',

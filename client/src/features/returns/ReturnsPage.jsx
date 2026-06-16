@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, RotateCcw, CheckCircle, XCircle, Plus, Banknote, Printer } from 'lucide-react';
+import { Search, RotateCcw, CheckCircle, XCircle, Plus, Banknote, Printer, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -202,7 +202,7 @@ export default function ReturnsPage() {
 
   const filters = { search, status, startDate, endDate, page, limit: 25 };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['returns', filters],
     queryFn: () => api.get('/returns', { params: filters }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
@@ -283,6 +283,11 @@ export default function ReturnsPage() {
           <button onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); setPage(1); }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2">Clear</button>
         )}
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         {canProcess && (
           <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
             New Return

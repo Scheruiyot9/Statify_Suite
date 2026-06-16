@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, Plus, Search, Trash2, Phone, Mail } from 'lucide-react';
+import { Truck, Plus, Search, Trash2, Phone, Mail, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -233,7 +233,7 @@ export default function SuppliersPage() {
 
   const filters = { search: submitted, page, limit: 25 };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['suppliers', filters],
     queryFn: () => api.get('/suppliers', { params: filters }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
@@ -273,6 +273,11 @@ export default function SuppliersPage() {
         {submitted && (
           <Button variant="secondary" size="sm" onClick={() => { setSearch(''); setSubmitted(''); setPage(1); }}>Clear</Button>
         )}
+        <Button variant="secondary" size="sm"
+          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+          onClick={() => refetch()}>
+          Refresh
+        </Button>
         <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
           Add Supplier
         </Button>
