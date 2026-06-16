@@ -235,6 +235,12 @@ async function listTransactions(companyId, role, branchIds, filters = {}) {
        JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
        WHERE tp.transaction_id = st.transaction_id
        ORDER BY tp.sequence_no LIMIT 1) AS payment_method,
+      COALESCE((
+        SELECT SUM(sti.quantity * COALESCE(p.cost_price, 0))
+        FROM sales_transaction_items sti
+        JOIN products p ON p.product_id = sti.product_id
+        WHERE sti.transaction_id = st.transaction_id
+      ), 0)::numeric AS cogs,
       COUNT(*) OVER() AS total_count
     FROM sales_transactions st
     LEFT JOIN customers c ON c.customer_id = st.customer_id
@@ -265,6 +271,8 @@ async function listTransactions(companyId, role, branchIds, filters = {}) {
       cashier_name:       r.cashier_name,
       branch_name:        r.branch_name,
       payment_method:     r.payment_method || 'Cash',
+      cogs:               parseFloat(r.cogs),
+      profit:             parseFloat(r.total_amount) - parseFloat(r.tax_amount) - parseFloat(r.cogs),
     })),
     total, page: pg, limit: lm, pages: Math.ceil(total / lm),
   };

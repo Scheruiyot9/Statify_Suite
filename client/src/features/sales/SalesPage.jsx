@@ -181,9 +181,9 @@ export default function SalesPage() {
       if (!all.length) { toast('No records to export'); return; }
       exportToExcel('sales-transactions', all, [
         'transaction_number','transaction_date','customer_name','cashier_name',
-        'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','status',
+        'branch_name','payment_method','subtotal','tax_amount','discount_amount','total_amount','cogs','profit','status',
       ], [
-        'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','Status',
+        'TXN #','Date','Customer','Cashier','Branch','Payment','Subtotal','Tax','Discount','Total','COGS','Profit','Status',
       ]);
     } catch {
       toast.error('Export failed');
@@ -229,7 +229,7 @@ export default function SalesPage() {
         )}
         <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
           loading={exporting} onClick={handleExport}>
-          Export
+          Export All
         </Button>
       </div>
 
@@ -248,6 +248,7 @@ export default function SalesPage() {
                 <th className="px-3 py-2.5 text-right font-medium text-green-600 hidden lg:table-cell" title="CR Revenue — ex-VAT">Cr Rev</th>
                 <th className="px-3 py-2.5 text-right font-medium text-purple-600 hidden lg:table-cell" title="CR Tax Payable — VAT collected">Cr VAT</th>
                 <th className="px-3 py-2.5 text-right font-medium text-gray-600">Total</th>
+                <th className="px-3 py-2.5 text-right font-medium text-emerald-600 hidden lg:table-cell">Profit</th>
                 <th className="px-3 py-2.5 text-center font-medium text-gray-600 hidden sm:table-cell">Status</th>
                 <th className="px-3 py-2.5 text-center font-medium text-gray-600">Action</th>
               </tr>
@@ -284,6 +285,12 @@ export default function SalesPage() {
                       {formatCurrency(t.total_amount)}
                     </span>
                   </td>
+                  {/* Profit = revenue ex-VAT minus COGS */}
+                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
+                    {t.status === 'void'
+                      ? <span className="text-gray-300">—</span>
+                      : <span className={`font-semibold ${t.profit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(t.profit)}</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-center hidden sm:table-cell">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {t.status}
@@ -298,7 +305,7 @@ export default function SalesPage() {
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr><td colSpan={11} className="py-12 text-center text-gray-400">
+                <tr><td colSpan={12} className="py-12 text-center text-gray-400">
                   <Receipt className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions found
                 </td></tr>
               )}
