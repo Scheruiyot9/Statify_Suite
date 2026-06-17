@@ -51,10 +51,8 @@ function printReport(title, period, html) {
   style.media = 'print';
   style.textContent = `
     @page { size: A4 portrait; margin: 15mm; }
-    body * { visibility: hidden !important; }
-    #${OID} { display: block !important; visibility: visible !important;
-               position: absolute; left: 0; top: 0; width: 100%; }
-    #${OID} * { visibility: visible !important; }
+    body > *:not(#${OID}) { display: none !important; }
+    #${OID} { display: block !important; width: 100%; }
     ${baseCSS}
   `;
   document.head.appendChild(style);

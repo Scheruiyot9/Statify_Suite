@@ -10,17 +10,14 @@
 
 const RECEIPT_STYLES = `
   @page { size: 58mm auto; margin: 2mm; }
-  body * { visibility: hidden !important; }
+  body > *:not(#__rpo) { display: none !important; }
   #__rpo {
     display: block !important;
-    visibility: visible !important;
-    position: fixed; left: 0; top: 0;
     width: 54mm;
     font-family: 'Courier New', monospace;
     font-size: 11px;
     color: #000;
   }
-  #__rpo * { visibility: visible !important; }
   #__rpo .flex { display: flex; }
   #__rpo .justify-between { justify-content: space-between; }
   #__rpo .font-bold { font-weight: bold; }
