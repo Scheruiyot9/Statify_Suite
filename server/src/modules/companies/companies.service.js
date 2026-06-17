@@ -300,7 +300,8 @@ async function getMyCompany(companyId) {
     `SELECT company_id, company_name, logo_url, tax_id,
             lock_timeout_minutes, session_lifetime_days,
             pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode,
-            pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit
+            pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit,
+            pos_prevent_sales_below_cost
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -354,6 +355,9 @@ async function updateMyProfile(companyId, patch) {
     const unit = (isFinite(raw) && raw > 0) ? raw : 1;
     setParts.push(`pos_rounding_unit = ${p(unit)}`);
   }
+  if ('pos_prevent_sales_below_cost' in patch) {
+    setParts.push(`pos_prevent_sales_below_cost = ${p(Boolean(patch.pos_prevent_sales_below_cost))}`);
+  }
 
   if (!setParts.length) throw AppError.badRequest('No fields to update');
 
@@ -364,7 +368,8 @@ async function updateMyProfile(companyId, patch) {
       RETURNING company_id, company_name, logo_url, tax_id,
                 lock_timeout_minutes, session_lifetime_days,
                 pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode,
-                pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit`,
+                pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit,
+                pos_prevent_sales_below_cost`,
     params
   );
   if (!rows.length) throw AppError.notFound('Company');

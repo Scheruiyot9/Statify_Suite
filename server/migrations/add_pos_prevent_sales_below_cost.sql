@@ -1,0 +1,2 @@
+ALTER TABLE companies
+  ADD COLUMN IF NOT EXISTS pos_prevent_sales_below_cost BOOLEAN NOT NULL DEFAULT FALSE;

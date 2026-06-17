@@ -314,12 +314,13 @@ function TerminalsTab() {
   const [confirmDel, setConfirmDel] = useState(null);
 
   // POS Behaviour state
-  const [allowPriceEdit,  setAllowPriceEdit]  = useState(false);
-  const [allowPartialQty, setAllowPartialQty] = useState(false);
-  const [defaultScanMode, setDefaultScanMode] = useState(true);
-  const [allowTotalEdit,  setAllowTotalEdit]  = useState(false);
-  const [roundingMode,    setRoundingMode]    = useState('none');
-  const [roundingUnit,    setRoundingUnit]    = useState(1);
+  const [allowPriceEdit,         setAllowPriceEdit]         = useState(false);
+  const [allowPartialQty,        setAllowPartialQty]        = useState(false);
+  const [defaultScanMode,        setDefaultScanMode]        = useState(true);
+  const [allowTotalEdit,         setAllowTotalEdit]         = useState(false);
+  const [preventSalesBelowCost,  setPreventSalesBelowCost]  = useState(false);
+  const [roundingMode,           setRoundingMode]           = useState('none');
+  const [roundingUnit,           setRoundingUnit]           = useState(1);
 
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
@@ -331,6 +332,7 @@ function TerminalsTab() {
     if (companyData) {
       setAllowPriceEdit(!!companyData.pos_allow_price_edit);
       setAllowPartialQty(!!companyData.pos_allow_partial_qty);
+      setPreventSalesBelowCost(!!companyData.pos_prevent_sales_below_cost);
       setDefaultScanMode(companyData.pos_default_scan_mode !== false);
       setAllowTotalEdit(!!companyData.pos_allow_total_edit);
       setRoundingMode(companyData.pos_rounding_mode  || 'none');
@@ -587,6 +589,18 @@ function TerminalsTab() {
             </div>
           </label>
 
+          <label className="flex items-start gap-3 cursor-pointer">
+            <div className="relative mt-0.5 flex-shrink-0">
+              <input type="checkbox" className="sr-only" checked={preventSalesBelowCost} onChange={(e) => setPreventSalesBelowCost(e.target.checked)} />
+              <div className={`h-5 w-9 rounded-full transition-colors ${preventSalesBelowCost ? 'bg-red-500' : 'bg-gray-200'}`} />
+              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${preventSalesBelowCost ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-800">Prevent sales below purchase cost</p>
+              <p className="text-xs text-gray-500">Cashiers cannot sell an item below its cost price. The POS will block checkout and warn when a price is set too low.</p>
+            </div>
+          </label>
+
           {/* ── Price Rounding ── */}
           <div className="pt-3 border-t border-gray-100 space-y-3">
             <div>
@@ -625,12 +639,13 @@ function TerminalsTab() {
           <Button
             loading={savePosBehaviourMut.isPending}
             onClick={() => savePosBehaviourMut.mutate({
-              pos_allow_price_edit:  allowPriceEdit,
-              pos_allow_partial_qty: allowPartialQty,
-              pos_default_scan_mode: defaultScanMode,
-              pos_allow_total_edit:  allowTotalEdit,
-              pos_rounding_mode:     roundingMode,
-              pos_rounding_unit:     roundingUnit,
+              pos_allow_price_edit:          allowPriceEdit,
+              pos_allow_partial_qty:         allowPartialQty,
+              pos_default_scan_mode:         defaultScanMode,
+              pos_allow_total_edit:          allowTotalEdit,
+              pos_prevent_sales_below_cost:  preventSalesBelowCost,
+              pos_rounding_mode:             roundingMode,
+              pos_rounding_unit:             roundingUnit,
             })}
           >
             Save POS Settings

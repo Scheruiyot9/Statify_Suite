@@ -27,6 +27,28 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
   if (!payments?.length) throw AppError.badRequest('At least one payment is required');
   if (!branchId)         throw AppError.badRequest('Branch context is required');
 
+  // Enforce "no sale below cost" when enabled for this company
+  const { rows: coRows } = await query(
+    `SELECT pos_prevent_sales_below_cost FROM companies WHERE company_id = $1`,
+    [companyId]
+  );
+  if (coRows[0]?.pos_prevent_sales_below_cost) {
+    const productIds = items.map((i) => i.productId);
+    const { rows: costRows } = await query(
+      `SELECT product_id, cost_price FROM products WHERE product_id = ANY($1::uuid[])`,
+      [productIds]
+    );
+    const costMap = Object.fromEntries(costRows.map((r) => [r.product_id, parseFloat(r.cost_price ?? 0)]));
+    for (const item of items) {
+      const cost = costMap[item.productId] ?? 0;
+      if (cost > 0 && parseFloat(item.unitPrice) < cost) {
+        throw AppError.badRequest(
+          `Unit price for one or more items is below purchase cost. Sales below cost are not allowed.`
+        );
+      }
+    }
+  }
+
   // Offline idempotency: return existing transaction if key already committed
   if (idempotencyKey) {
     const { rows: existing } = await query(

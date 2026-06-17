@@ -162,30 +162,49 @@ function QtyInput({ item }) {
 }
 
 // ── Editable rate (unit price) column ────────────────────────────────────────
-function RateCell({ item, editable }) {
+function RateCell({ item, editable, preventBelowCost }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
+  const [costErr, setCostErr] = useState(false);
   const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
 
   const commit = () => {
-    const n = parseFloat(draft);
-    if (!isNaN(n) && n >= 0) updateUnitPrice(item.product.product_id, Math.round(n * 100) / 100);
+    const n    = parseFloat(draft);
+    const cost = parseFloat(item.product.cost_price ?? 0);
+    if (!isNaN(n) && n >= 0) {
+      if (preventBelowCost && cost > 0 && n < cost) {
+        setCostErr(true);
+        return;
+      }
+      setCostErr(false);
+      updateUnitPrice(item.product.product_id, Math.round(n * 100) / 100);
+    }
     setEditing(false);
   };
 
   if (editing) return (
-    <input
-      type="number" min="0" step="0.01"
-      value={draft} autoFocus
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-      className="w-full rounded border border-primary-400 px-1 py-0.5 text-right text-[11px] font-semibold focus:outline-none"
-    />
+    <div>
+      <input
+        type="number" min="0" step="0.01"
+        value={draft} autoFocus
+        onChange={(e) => { setDraft(e.target.value); setCostErr(false); }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setCostErr(false); setEditing(false); }
+        }}
+        className={`w-full rounded border px-1 py-0.5 text-right text-[11px] font-semibold focus:outline-none ${costErr ? 'border-red-500 bg-red-50' : 'border-primary-400'}`}
+      />
+      {costErr && (
+        <p className="text-[9px] text-red-600 mt-0.5 leading-tight">
+          Below cost ({formatCurrency(item.product.cost_price)})
+        </p>
+      )}
+    </div>
   );
   return editable ? (
     <button
-      onClick={() => { setDraft(String(item.unitPrice)); setEditing(true); }}
+      onClick={() => { setDraft(String(item.unitPrice)); setCostErr(false); setEditing(true); }}
       title="Click to edit rate"
       className="block w-full text-right text-[11px] font-semibold text-primary-600 underline decoration-dotted hover:text-primary-800 transition-colors"
     >
@@ -199,17 +218,25 @@ function RateCell({ item, editable }) {
 }
 
 // ── Editable total column ─────────────────────────────────────────────────────
-function TotalCell({ item, editable, roundingMode, roundingUnit }) {
+function TotalCell({ item, editable, preventBelowCost, roundingMode, roundingUnit }) {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
+  const [costErr, setCostErr] = useState(false);
   const updateUnitPrice = useCartStore((s) => s.updateUnitPrice);
   const setItemDiscount = useCartStore((s) => s.setItemDiscount);
 
   const commit = () => {
     const n = parseFloat(draft);
     if (!isNaN(n) && n > 0 && item.quantity > 0) {
+      const derivedUnit = n / item.quantity;
+      const cost        = parseFloat(item.product.cost_price ?? 0);
+      if (preventBelowCost && cost > 0 && derivedUnit < cost) {
+        setCostErr(true);
+        return;
+      }
+      setCostErr(false);
       setItemDiscount(item.product.product_id, 0, 'none');
-      updateUnitPrice(item.product.product_id, Math.round((n / item.quantity) * 100) / 100);
+      updateUnitPrice(item.product.product_id, Math.round(derivedUnit * 100) / 100);
     }
     setEditing(false);
   };
@@ -217,18 +244,28 @@ function TotalCell({ item, editable, roundingMode, roundingUnit }) {
   const displayed = applyRounding(item.lineTotal, roundingMode, roundingUnit);
 
   if (editing) return (
-    <input
-      type="number" min="0" step="0.01"
-      value={draft} autoFocus
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-      className="w-full rounded border border-primary-400 px-1 py-0.5 text-right text-xs font-bold focus:outline-none"
-    />
+    <div>
+      <input
+        type="number" min="0" step="0.01"
+        value={draft} autoFocus
+        onChange={(e) => { setDraft(e.target.value); setCostErr(false); }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setCostErr(false); setEditing(false); }
+        }}
+        className={`w-full rounded border px-1 py-0.5 text-right text-xs font-bold focus:outline-none ${costErr ? 'border-red-500 bg-red-50' : 'border-primary-400'}`}
+      />
+      {costErr && (
+        <p className="text-[9px] text-red-600 mt-0.5 leading-tight">
+          Below cost ({formatCurrency(item.product.cost_price)})
+        </p>
+      )}
+    </div>
   );
   return editable ? (
     <button
-      onClick={() => { setDraft(String(item.lineTotal)); setEditing(true); }}
+      onClick={() => { setDraft(String(item.lineTotal)); setCostErr(false); setEditing(true); }}
       title="Click to edit total"
       className="block w-full text-right text-xs font-bold text-gray-900 underline decoration-dotted hover:text-primary-600 transition-colors"
     >
@@ -497,11 +534,12 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   // Read company POS settings from the cached query (AppLayout already fetches this)
   const qc = useQueryClient();
   const companySettings = qc.getQueryData(['my-company']);
-  const allowPriceEdit  = companySettings?.pos_allow_price_edit  ?? false;
-  const allowPartialQty = companySettings?.pos_allow_partial_qty ?? false;
-  const allowTotalEdit  = companySettings?.pos_allow_total_edit  ?? false;
-  const roundingMode    = companySettings?.pos_rounding_mode     || 'none';
-  const roundingUnit    = parseFloat(companySettings?.pos_rounding_unit ?? 1);
+  const allowPriceEdit          = companySettings?.pos_allow_price_edit          ?? false;
+  const allowPartialQty         = companySettings?.pos_allow_partial_qty         ?? false;
+  const allowTotalEdit          = companySettings?.pos_allow_total_edit          ?? false;
+  const preventSalesBelowCost   = companySettings?.pos_prevent_sales_below_cost  ?? false;
+  const roundingMode            = companySettings?.pos_rounding_mode             || 'none';
+  const roundingUnit            = parseFloat(companySettings?.pos_rounding_unit  ?? 1);
   const displayTotal    = applyRounding(total, roundingMode, roundingUnit);
 
   const holdMut = useMutation({
@@ -617,7 +655,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
                   {/* Rate column */}
                   <div className="w-[16%] flex-shrink-0 min-w-0">
-                    <RateCell item={item} editable={allowPriceEdit} />
+                    <RateCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} />
                   </div>
 
                   {/* Stepper */}
@@ -660,7 +698,7 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
                   {/* Total (editable) */}
                   <div className="flex-1 min-w-0">
-                    <TotalCell item={item} editable={allowPriceEdit} roundingMode={roundingMode} roundingUnit={roundingUnit} />
+                    <TotalCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} roundingMode={roundingMode} roundingUnit={roundingUnit} />
                     {item.discount > 0 && (
                       <span className="block text-right text-[9px] font-semibold text-green-600">
                         −{formatCurrency(item.discount)}
