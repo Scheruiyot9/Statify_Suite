@@ -1,28 +1,20 @@
 /**
- * Prints receipt HTML via a hidden iframe so it works on Android POS devices
+ * Prints receipt HTML via a hidden iframe — works on Android POS devices
  * (CS30 and similar) where window.open() is blocked by the WebView.
- * Also sets @page size to 58 mm so thermal printers use the correct paper width.
+ *
+ * Key fixes vs the original 1px/opacity:0 approach:
+ *  - iframe is off-screen (left:-9999px) but full-sized so the WebView
+ *    actually lays out and renders the content before printing.
+ *  - srcdoc attribute is used instead of document.write() — more reliable
+ *    inside Android WebView and avoids same-origin quirks.
+ *  - print() fires on the iframe's onload event, not a fixed timeout, so
+ *    it waits until the document is actually ready.
+ *  - A "printed" flag prevents the fallback setTimeout from double-firing
+ *    if onload also triggers.
  */
-export function printReceiptHtml(title, contentHtml) {
-  const FRAME_ID = '__receipt_print_frame';
-  const stale = document.getElementById(FRAME_ID);
-  if (stale) stale.remove();
 
-  const iframe = document.createElement('iframe');
-  iframe.id = FRAME_ID;
-  iframe.style.cssText =
-    'position:fixed;right:0;bottom:0;width:1px;height:1px;border:none;opacity:0;pointer-events:none;';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-  if (!doc) return;
-
-  doc.open();
-  doc.write(`<!DOCTYPE html><html><head>
-<title>${title}</title>
-<meta charset="utf-8">
-<style>
-  @page { size: 58mm auto; margin: 2mm 2mm; }
+const STYLES = `
+  @page { size: 58mm auto; margin: 2mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Courier New', monospace;
@@ -61,19 +53,60 @@ export function printReceiptHtml(title, contentHtml) {
   .max-w-xs { max-width: 100%; }
   .mx-auto { margin-left: auto; margin-right: auto; }
   img { max-height: 40px; display: block; margin: 0 auto 4px; }
-</style>
-</head><body>${contentHtml}</body></html>`);
-  doc.close();
+`;
 
-  setTimeout(() => {
-    try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    } catch (e) {
-      console.error('Print failed:', e);
-    }
+export function printReceiptHtml(title, contentHtml) {
+  const FRAME_ID = '__receipt_print_frame';
+  const stale = document.getElementById(FRAME_ID);
+  if (stale) stale.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = FRAME_ID;
+  // Off-screen with real dimensions so the WebView renders the content.
+  // 1px / opacity:0 causes Android Chrome to skip layout → empty print job.
+  iframe.style.cssText =
+    'position:fixed;left:-9999px;top:0;width:300px;height:600px;border:none;';
+
+  const fullHtml =
+    `<!DOCTYPE html><html><head>` +
+    `<title>${title}</title>` +
+    `<meta charset="utf-8">` +
+    `<style>${STYLES}</style>` +
+    `</head><body>${contentHtml}</body></html>`;
+
+  let printed = false;
+  const doPrint = () => {
+    if (printed) return;
+    printed = true;
+    // Small delay after load lets fonts/images settle before the print path runs.
     setTimeout(() => {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe);
-    }, 2000);
-  }, 300);
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.error('[printReceipt] print() failed:', e);
+      }
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 3000);
+    }, 250);
+  };
+
+  iframe.onload = doPrint;
+  document.body.appendChild(iframe);
+
+  if ('srcdoc' in iframe) {
+    // srcdoc triggers onload reliably in modern WebViews
+    iframe.srcdoc = fullHtml;
+  } else {
+    // Older WebView fallback: document.write + manual timeout
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(fullHtml);
+      doc.close();
+    }
+    // document.write may not trigger onload in all WebViews — fire manually
+    setTimeout(doPrint, 600);
+  }
 }
