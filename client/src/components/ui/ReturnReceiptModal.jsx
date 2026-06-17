@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Printer } from 'lucide-react';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
+import { printReceiptHtml } from '@/utils/printReceipt';
 import Modal from './Modal';
 import Button from './Button';
 
@@ -97,44 +98,7 @@ export default function ReturnReceiptModal({ open, onClose, ret }) {
   const handlePrint = () => {
     const content = document.getElementById('return-receipt-content');
     if (!content) return;
-    const win = window.open('', '_blank', 'width=400,height=700');
-    win.document.write(`
-      <html><head><title>Return Receipt — ${ret?.return_number}</title>
-      <style>
-        body { font-family: 'Courier New', monospace; font-size: 12px; margin: 16px; color: #111; }
-        * { box-sizing: border-box; }
-        .flex { display: flex; }
-        .justify-between { justify-content: space-between; }
-        .font-bold { font-weight: bold; }
-        .font-semibold { font-weight: 600; }
-        .text-center { text-align: center; }
-        .text-gray-500 { color: #6b7280; }
-        .text-gray-600 { color: #4b5563; }
-        .text-sm { font-size: 13px; }
-        .text-xs { font-size: 11px; }
-        .uppercase { text-transform: uppercase; }
-        .tracking-wide { letter-spacing: 0.05em; }
-        .capitalize { text-transform: capitalize; }
-        .border-t { border-top: 1px dashed #aaa; }
-        .my-2 { margin: 8px 0; }
-        .mb-2 { margin-bottom: 8px; }
-        .mb-3 { margin-bottom: 12px; }
-        .mt-1 { margin-top: 4px; }
-        .mt-2 { margin-top: 8px; }
-        .pl-2 { padding-left: 8px; }
-        .pr-2 { padding-right: 8px; }
-        .flex-1 { flex: 1; }
-        .truncate { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 180px; }
-        .space-y-0\\.5 > * + * { margin-top: 2px; }
-        .space-y-1 > * + * { margin-top: 4px; }
-        img { max-height: 40px; display: block; margin: 0 auto 4px; }
-      </style></head><body>
-      ${content.innerHTML}
-      </body></html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 400);
+    printReceiptHtml(`Return Receipt — ${ret?.return_number}`, content.innerHTML);
   };
 
   return (
