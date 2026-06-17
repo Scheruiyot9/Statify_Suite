@@ -32,15 +32,44 @@ const PRINT_CSS = `
 `;
 
 function printReport(title, period, html) {
-  const w = window.open('', '_blank', 'width=900,height=650');
-  if (!w) return;
-  w.document.write(
-    `<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head>` +
-    `<body><h1>${title}</h1><p class="period">${period}</p>${html}</body></html>`
-  );
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 300);
+  // window.open() is blocked on Android WebView (CS30 POS). Instead inject an
+  // overlay div and use window.print() with @media print CSS to isolate it.
+  const OID = '__rpt_ov';
+  const SID = '__rpt_st';
+  document.getElementById(OID)?.remove();
+  document.getElementById(SID)?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = OID;
+  overlay.style.display = 'none';
+  overlay.innerHTML = `<h1>${title}</h1><p class="period">${period}</p>${html}`;
+  document.body.appendChild(overlay);
+
+  const baseCSS = PRINT_CSS.replace('@media print{@page{margin:15mm}}', '');
+  const style = document.createElement('style');
+  style.id = SID;
+  style.media = 'print';
+  style.textContent = `
+    @page { size: A4 portrait; margin: 15mm; }
+    body * { visibility: hidden !important; }
+    #${OID} { display: block !important; visibility: visible !important;
+               position: absolute; left: 0; top: 0; width: 100%; }
+    #${OID} * { visibility: visible !important; }
+    ${baseCSS}
+  `;
+  document.head.appendChild(style);
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.getElementById(OID)?.remove();
+    document.getElementById(SID)?.remove();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 60_000);
+
+  setTimeout(() => window.print(), 100);
 }
 
 const PRESETS = [
