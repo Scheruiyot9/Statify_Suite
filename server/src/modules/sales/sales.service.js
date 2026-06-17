@@ -341,8 +341,9 @@ async function getTransaction(companyId, transactionId, role, branchIds = []) {
       WHERE sti.transaction_id = $1
     `, [transactionId]),
     query(`
-      SELECT tp.payment_id, tp.amount_tendered::numeric, tp.amount_applied::numeric,
-        tp.change_given::numeric, tp.reference_number, tp.sequence_no, pm.method_name
+      SELECT tp.payment_id, tp.payment_method_id, tp.amount_tendered::numeric, tp.amount_applied::numeric,
+        tp.change_given::numeric, tp.reference_number, tp.sequence_no, pm.method_name,
+        pm.requires_reference
       FROM transaction_payments tp
       JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
       WHERE tp.transaction_id = $1 ORDER BY tp.sequence_no
@@ -434,4 +435,190 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
   });
 }
 
-module.exports = { createTransaction, listTransactions, getTransaction, voidTransaction };
+async function editTransaction(companyId, transactionId, userId, data, role, branchIds = []) {
+  const { items, payments, customerId, notes, editReason, orderDiscount = 0 } = data;
+
+  if (!items?.length)       throw AppError.badRequest('At least one item is required');
+  if (!payments?.length)    throw AppError.badRequest('At least one payment is required');
+  if (!editReason?.trim())  throw AppError.badRequest('Edit reason is required');
+
+  // Fetch transaction with branch-scope access check
+  const accessParams = [companyId, transactionId];
+  const accessConds  = ['company_id = $1', 'transaction_id = $2'];
+  if (!isCompanyWide(role)) {
+    accessParams.push(branchIds?.length ? branchIds : ['00000000-0000-0000-0000-000000000000']);
+    accessConds.push(`branch_id = ANY($${accessParams.length})`);
+  }
+  const { rows } = await query(
+    `SELECT branch_id, transaction_number, transaction_date, cashier_user_id, status
+     FROM sales_transactions WHERE ${accessConds.join(' AND ')}`,
+    accessParams
+  );
+  if (!rows.length) throw AppError.notFound('Transaction');
+  if (rows[0].status !== 'completed') throw AppError.conflict('Only completed transactions can be edited');
+
+  const branchId          = rows[0].branch_id;
+  const transactionNumber = rows[0].transaction_number;
+  const transactionDate   = rows[0].transaction_date;
+  const cashierUserId     = rows[0].cashier_user_id;
+
+  // Enforce prevent-sales-below-cost policy
+  const { rows: coRows } = await query(
+    `SELECT pos_prevent_sales_below_cost FROM companies WHERE company_id = $1`, [companyId]
+  );
+  if (coRows[0]?.pos_prevent_sales_below_cost) {
+    const productIds = items.map((i) => i.productId);
+    const { rows: costRows } = await query(
+      `SELECT product_id, cost_price FROM products WHERE product_id = ANY($1::uuid[])`, [productIds]
+    );
+    const costMap = Object.fromEntries(costRows.map((r) => [r.product_id, parseFloat(r.cost_price ?? 0)]));
+    for (const item of items) {
+      const cost = costMap[item.productId] ?? 0;
+      if (cost > 0 && parseFloat(item.lineTotal) / parseFloat(item.quantity) < cost) {
+        throw AppError.badRequest('One or more items are priced below purchase cost. Sales below cost are not allowed.');
+      }
+    }
+  }
+
+  return transaction(async (client) => {
+    // 1. Restore old inventory
+    const { rows: oldItems } = await client.query(
+      `SELECT product_id, quantity FROM sales_transaction_items WHERE transaction_id = $1`,
+      [transactionId]
+    );
+    for (const oi of oldItems) {
+      const { rows: inv } = await client.query(
+        `SELECT quantity_available FROM product_branch_inventory
+         WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
+        [oi.product_id, branchId]
+      );
+      const qtyBefore = inv.length ? parseFloat(inv[0].quantity_available) : 0;
+      const qtyAfter  = qtyBefore + parseFloat(oi.quantity);
+      await client.query(
+        `UPDATE product_branch_inventory SET quantity_available = $1, last_updated = now()
+         WHERE product_id = $2 AND branch_id = $3`,
+        [qtyAfter, oi.product_id, branchId]
+      );
+      await recordMovement(client, {
+        companyId, branchId, productId: oi.product_id,
+        movementType: 'return', qtyIn: parseFloat(oi.quantity), qtyOut: 0,
+        qtyBefore, qtyAfter,
+        referenceType: 'SALE_EDIT', referenceId: transactionId,
+        referenceNo: transactionNumber, notes: `Edit: ${editReason}`, userId,
+      });
+    }
+
+    // 2. Reverse existing journal entry for this sale
+    await jrn.postSaleEditReversal(client, companyId, {
+      transaction_id: transactionId, transaction_number: transactionNumber,
+      edited_by_user_id: userId,
+    });
+
+    // 3. Recompute totals from new items
+    const subtotal      = items.reduce((s, i) => s + parseFloat(i.lineTotal), 0);
+    const taxAmount     = items.reduce((s, i) => s + parseFloat(i.taxAmount  || 0), 0);
+    const itemDiscounts = items.reduce((s, i) => s + parseFloat(i.discount   || 0), 0);
+    const discountAmt   = itemDiscounts + parseFloat(orderDiscount);
+    const totalAmount   = Math.max(0, subtotal - parseFloat(orderDiscount));
+    const totalPaid     = payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
+    const paymentStatus = totalPaid >= totalAmount ? 'paid' : 'partial';
+
+    // 4. Update transaction header
+    await client.query(`
+      UPDATE sales_transactions
+         SET customer_id    = $3,
+             subtotal       = $4,
+             tax_amount     = $5,
+             discount_amount= $6,
+             total_amount   = $7,
+             payment_status = $8,
+             notes          = $9,
+             last_edited_by = $10,
+             last_edited_at = now(),
+             edit_reason    = $11,
+             updated_at     = now()
+       WHERE company_id = $1 AND transaction_id = $2
+    `, [companyId, transactionId, customerId || null,
+        subtotal, taxAmount, discountAmt, totalAmount, paymentStatus,
+        notes || null, userId, editReason]);
+
+    // 5. Replace items + deduct new inventory
+    await client.query(`DELETE FROM sales_transaction_items WHERE transaction_id = $1`, [transactionId]);
+
+    for (const item of items) {
+      const { rows: stock } = await client.query(
+        `SELECT quantity_available FROM product_branch_inventory
+         WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
+        [item.productId, branchId]
+      );
+      if (!stock.length) throw AppError.unprocessable('Product not found in branch inventory');
+      const available = parseFloat(stock[0].quantity_available);
+      if (available < parseFloat(item.quantity)) {
+        throw AppError.unprocessable(`Insufficient stock (available: ${available})`);
+      }
+      await client.query(`
+        INSERT INTO sales_transaction_items
+          (transaction_id, product_id, quantity, unit_price, discount, tax_amount, line_total)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [transactionId, item.productId, parseFloat(item.quantity),
+          parseFloat(item.unitPrice), parseFloat(item.discount || 0),
+          parseFloat(item.taxAmount || 0), parseFloat(item.lineTotal)]);
+
+      await client.query(
+        `UPDATE product_branch_inventory SET quantity_available = quantity_available - $1, last_updated = now()
+         WHERE product_id = $2 AND branch_id = $3`,
+        [parseFloat(item.quantity), item.productId, branchId]
+      );
+      await recordMovement(client, {
+        companyId, branchId, productId: item.productId,
+        movementType: 'sale', qtyIn: 0, qtyOut: parseFloat(item.quantity),
+        qtyBefore: available, qtyAfter: available - parseFloat(item.quantity),
+        referenceType: 'SALE_EDIT', referenceId: transactionId,
+        referenceNo: transactionNumber, userId,
+      });
+    }
+
+    // 6. Replace payments
+    await client.query(`DELETE FROM transaction_payments WHERE transaction_id = $1`, [transactionId]);
+    for (let i = 0; i < payments.length; i++) {
+      const p = payments[i];
+      await client.query(`
+        INSERT INTO transaction_payments
+          (transaction_id, payment_method_id, amount_tendered, amount_applied,
+           change_given, reference_number, sequence_no)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [transactionId, p.paymentMethodId,
+          parseFloat(p.amountTendered || p.amountApplied),
+          parseFloat(p.amountApplied),
+          parseFloat(p.changeGiven || 0),
+          p.referenceNumber || null, i + 1]);
+    }
+
+    // 7. Re-post journal with new figures
+    await jrn.postSaleEntry(client, companyId, {
+      transaction_id:     transactionId,
+      transaction_number: transactionNumber,
+      transaction_date:   transactionDate,
+      total_amount:       totalAmount,
+      tax_amount:         taxAmount,
+      cashier_user_id:    cashierUserId,
+      customer_id:        customerId || null,
+    },
+    items.map((i) => ({
+      productId:  i.productId,
+      product_id: i.productId,
+      quantity:   parseFloat(i.quantity),
+      lineTotal:  parseFloat(i.lineTotal),
+    })),
+    payments.map((p) => ({
+      paymentMethodId:   p.paymentMethodId,
+      payment_method_id: p.paymentMethodId,
+      amountApplied:     parseFloat(p.amountApplied || 0),
+      amount_applied:    parseFloat(p.amountApplied || 0),
+    })));
+
+    return { transaction_id: transactionId, transaction_number: transactionNumber };
+  });
+}
+
+module.exports = { createTransaction, listTransactions, getTransaction, voidTransaction, editTransaction };

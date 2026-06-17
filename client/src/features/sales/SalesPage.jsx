@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, XCircle, Receipt, Printer, Download, RefreshCw } from 'lucide-react';
+import { Search, XCircle, Receipt, Printer, Download, RefreshCw, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
@@ -10,6 +10,7 @@ import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import ReceiptModal from '@/components/ui/ReceiptModal';
 import { exportToExcel } from '@/utils/exportExcel';
+import EditTransactionModal from './EditTransactionModal';
 
 const STATUS_STYLES = {
   completed: 'bg-green-100 text-green-700',
@@ -17,7 +18,7 @@ const STATUS_STYLES = {
   pending:   'bg-yellow-100 text-yellow-700',
 };
 
-function TransactionDetail({ txn, onVoid, canVoid, onPrint }) {
+function TransactionDetail({ txn, onVoid, canVoid, onEdit, canEdit, onPrint }) {
   if (!txn) return null;
   return (
     <div className="space-y-4">
@@ -87,11 +88,22 @@ function TransactionDetail({ txn, onVoid, canVoid, onPrint }) {
           ))}
         </div>
       )}
-      <div className="border-t border-gray-100 pt-3 flex gap-2">
+      {txn.edit_reason && (
+        <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+          <span className="font-semibold">Edited: </span>{txn.edit_reason}
+        </div>
+      )}
+      <div className="border-t border-gray-100 pt-3 flex gap-2 flex-wrap">
         <Button variant="secondary" size="sm" fullWidth icon={<Printer className="h-4 w-4" />}
           onClick={() => onPrint(txn)}>
           Print Receipt
         </Button>
+        {canEdit && txn.status === 'completed' && (
+          <Button variant="secondary" size="sm" fullWidth icon={<Pencil className="h-4 w-4 text-primary-500" />}
+            onClick={() => onEdit(txn)}>
+            Edit
+          </Button>
+        )}
         {canVoid && txn.status === 'completed' && (
           <Button variant="secondary" size="sm" fullWidth icon={<XCircle className="h-4 w-4 text-red-500" />}
             onClick={() => onVoid(txn.transaction_id)}>
@@ -126,6 +138,7 @@ export default function SalesPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
   const canVoidSales  = hasCapability('sales.void');
+  const canEditSales  = hasCapability('sales.void'); // edit requires same manager-level access
   const [search,        setSearch]        = useState('');
   const [startDate,     setStartDate]     = useState('');
   const [endDate,       setEndDate]       = useState('');
@@ -135,6 +148,7 @@ export default function SalesPage() {
   const [page,          setPage]          = useState(1);
   const [selected,      setSelected]      = useState(null);
   const [voidTarget,    setVoidTarget]    = useState(null);
+  const [editTarget,    setEditTarget]    = useState(null);
   const [receiptTxn,    setReceiptTxn]    = useState(null);
   const [exporting,     setExporting]     = useState(false);
 
@@ -329,11 +343,13 @@ export default function SalesPage() {
         )}
       </div>
 
-      <Modal open={!!selected && !voidTarget} onClose={() => setSelected(null)} title="Transaction Details" size="lg">
+      <Modal open={!!selected && !voidTarget && !editTarget} onClose={() => setSelected(null)} title="Transaction Details" size="lg">
         <TransactionDetail
           txn={txnDetail}
           canVoid={canVoidSales}
           onVoid={(id) => { setVoidTarget(id); }}
+          canEdit={canEditSales}
+          onEdit={(txn) => setEditTarget(txn)}
           onPrint={(txn) => setReceiptTxn(txn)}
         />
       </Modal>
@@ -343,6 +359,16 @@ export default function SalesPage() {
       </Modal>
 
       <ReceiptModal open={!!receiptTxn} onClose={() => setReceiptTxn(null)} txn={receiptTxn} />
+
+      <EditTransactionModal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        txn={editTarget}
+        onSaved={() => {
+          setEditTarget(null);
+          qc.invalidateQueries({ queryKey: ['transaction-detail', editTarget?.transaction_id] });
+        }}
+      />
     </div>
   );
 }

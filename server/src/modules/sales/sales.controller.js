@@ -30,4 +30,10 @@ const voidOne = async (req, res) => {
   res.json({ success: true, message: 'Transaction voided' });
 };
 
-module.exports = { list, getOne, create, voidOne };
+const editOne = async (req, res) => {
+  const { userId, role, branchIds = [] } = req.user;
+  const result = await svc.editTransaction(req.tenantId, req.params.id, userId, req.body, role, branchIds);
+  res.json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, create, voidOne, editOne };

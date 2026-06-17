@@ -181,7 +181,7 @@ async function postSaleVoidEntry(client, companyId, txn) {
     const { rows: jeRows } = await client.query(
       `SELECT journal_entry_id FROM journal_entries
        WHERE company_id = $1 AND source_type = 'SALE' AND source_id = $2 AND status = 'posted'
-       LIMIT 1`,
+       ORDER BY created_at DESC LIMIT 1`,
       [companyId, txn.transaction_id]
     );
     if (!jeRows.length) return; // CoA not seeded or entry was skipped
@@ -210,6 +210,47 @@ async function postSaleVoidEntry(client, companyId, txn) {
     });
   } catch (err) {
     console.error('[ledger] postSaleVoidEntry skipped:', err.message);
+  }
+}
+
+// ── Sale Edit Reversal ────────────────────────────────────────────────────────
+// Same pattern as postSaleVoidEntry but used when a sale is being corrected
+// (not fully voided). Always targets the LATEST posted SALE entry so repeated
+// edits each reverse the previous corrected entry, not the original.
+async function postSaleEditReversal(client, companyId, txn) {
+  try {
+    const { rows: jeRows } = await client.query(
+      `SELECT journal_entry_id FROM journal_entries
+       WHERE company_id = $1 AND source_type = 'SALE' AND source_id = $2 AND status = 'posted'
+       ORDER BY created_at DESC LIMIT 1`,
+      [companyId, txn.transaction_id]
+    );
+    if (!jeRows.length) return;
+
+    const { rows: origLines } = await client.query(
+      `SELECT account_id, debit, credit, description, entity_type, entity_id
+       FROM ledger_entry_lines WHERE journal_entry_id = $1`,
+      [jeRows[0].journal_entry_id]
+    );
+    if (!origLines.length) return;
+
+    await _post(client, companyId, {
+      entryDate:   new Date().toISOString().slice(0, 10),
+      description: `Edit reversal — ${txn.transaction_number}`,
+      sourceType:  'SALE_EDIT',
+      sourceId:    txn.transaction_id,
+      userId:      txn.edited_by_user_id || null,
+      lines: origLines.map((l) => ({
+        accountId:   l.account_id,
+        debit:       parseFloat(l.credit),
+        credit:      parseFloat(l.debit),
+        description: l.description,
+        entityType:  l.entity_type,
+        entityId:    l.entity_id,
+      })),
+    });
+  } catch (err) {
+    console.error('[ledger] postSaleEditReversal skipped:', err.message);
   }
 }
 
@@ -1048,7 +1089,7 @@ async function getJournalEntry(companyId, jeId) {
 
 module.exports = {
   findAccIds, _post,
-  postSaleEntry, postSaleVoidEntry, postGrnEntry,
+  postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
   postPaymentEntry, postVoidPaymentEntry,
   postDirectExpenseEntry, postVoidDirectExpenseEntry,
   postReturnEntry, postOpeningBalanceEntry,

@@ -18,4 +18,7 @@ router.post('/transactions',          requireRole('cashier'),         controller
 // ── Void requires branch_manager approval ────────────────────────────────────
 router.post('/transactions/:id/void', requireRole('branch_manager'), controller.voidOne);
 
+// ── Edit (correct) a posted transaction — branch_manager+ ────────────────────
+router.put('/transactions/:id', requireRole('branch_manager'), controller.editOne);
+
 module.exports = router;
