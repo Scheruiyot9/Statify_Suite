@@ -172,9 +172,23 @@ function RateCell({ item, editable, preventBelowCost }) {
     const n    = parseFloat(draft);
     const cost = parseFloat(item.product.cost_price ?? 0);
     if (!isNaN(n) && n >= 0) {
-      if (preventBelowCost && cost > 0 && n < cost) {
-        setCostErr(true);
-        return;
+      if (preventBelowCost && cost > 0) {
+        // Mirror what the store's updateUnitPrice will compute: recalculate discount
+        // from the item's discountType/discountValue using the new price, then derive
+        // the effective per-unit revenue. This matters for qty < 1 where a fixed
+        // discount consumes a larger share of the line total.
+        const dv  = parseFloat(item.discountValue ?? 0);
+        const newDiscount =
+          item.discountType === 'percent'
+            ? Math.min((item.quantity * n * dv) / 100, item.quantity * n)
+            : item.discountType === 'fixed'
+              ? Math.min(dv, item.quantity * n)
+              : 0;
+        const effectiveUnit = (n * item.quantity - newDiscount) / item.quantity;
+        if (effectiveUnit < cost) {
+          setCostErr(true);
+          return;
+        }
       }
       setCostErr(false);
       updateUnitPrice(item.product.product_id, Math.round(n * 100) / 100);
@@ -258,7 +272,7 @@ function TotalCell({ item, editable, preventBelowCost, roundingMode, roundingUni
       />
       {costErr && (
         <p className="text-[9px] text-red-600 mt-0.5 leading-tight">
-          Below cost ({formatCurrency(item.product.cost_price)})
+          Min: {formatCurrency(parseFloat(item.product.cost_price ?? 0) * item.quantity)}
         </p>
       )}
     </div>

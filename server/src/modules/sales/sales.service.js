@@ -41,10 +41,15 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     const costMap = Object.fromEntries(costRows.map((r) => [r.product_id, parseFloat(r.cost_price ?? 0)]));
     for (const item of items) {
       const cost = costMap[item.productId] ?? 0;
-      if (cost > 0 && parseFloat(item.unitPrice) < cost) {
-        throw AppError.badRequest(
-          `Unit price for one or more items is below purchase cost. Sales below cost are not allowed.`
-        );
+      if (cost > 0) {
+        // Use lineTotal/quantity (effective revenue per unit after discount) so that a
+        // discount on a partial-quantity line cannot silently push the price below cost.
+        const effectiveUnit = parseFloat(item.lineTotal) / parseFloat(item.quantity);
+        if (effectiveUnit < cost) {
+          throw AppError.badRequest(
+            `One or more items are priced below purchase cost after discounts. Sales below cost are not allowed.`
+          );
+        }
       }
     }
   }
