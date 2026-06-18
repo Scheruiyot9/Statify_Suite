@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, XCircle, Receipt, CheckCircle,
-  AlertTriangle, ChevronLeft, ChevronRight, RefreshCw,
+  AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Edit2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -10,6 +10,7 @@ import { formatCurrency, formatDateTime, formatDate } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
+import { usePermission } from '@/hooks/usePermission';
 
 const STATUS_STYLES = {
   open:        'bg-green-100 text-green-700',
@@ -28,6 +29,10 @@ const STATUS_ICONS = {
 // ── Shift Detail Modal ────────────────────────────────────────────────────────
 
 function ShiftDetail({ sessionId, onForceClose }) {
+  const [correcting, setCorrecting] = useState(false);
+  const { hasRole } = usePermission();
+  const canCorrect  = hasRole('company_admin');
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['session-detail', sessionId],
     queryFn:  () => api.get(`/pos/sessions/${sessionId}/detail`).then((r) => r.data.data),
@@ -126,6 +131,19 @@ function ShiftDetail({ sessionId, onForceClose }) {
         </div>
       )}
 
+      {/* Correction notice */}
+      {data.corrected_at && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 flex items-start gap-2">
+          <Edit2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="font-semibold">Values corrected</span>
+            {data.corrected_by_name && <span> by {data.corrected_by_name}</span>}
+            {data.corrected_at && <span> on {formatDateTime(data.corrected_at)}</span>}
+            {data.correction_reason && <div className="mt-0.5 text-amber-700">{data.correction_reason}</div>}
+          </div>
+        </div>
+      )}
+
       {/* Notes */}
       {(data.opening_notes || data.closing_notes) && (
         <div className="space-y-2">
@@ -184,17 +202,39 @@ function ShiftDetail({ sessionId, onForceClose }) {
         </div>
       </div>
 
-      {/* Force close */}
-      {data.status === 'open' && (
-        <div className="border-t border-gray-100 pt-4">
-          <Button
-            variant="secondary" fullWidth
-            icon={<XCircle className="h-4 w-4 text-red-500" />}
-            onClick={() => onForceClose(sessionId)}
-          >
-            Force Close Shift
-          </Button>
+      {/* Footer actions */}
+      {(data.status === 'open' || canCorrect) && (
+        <div className="border-t border-gray-100 pt-4 flex flex-col gap-2">
+          {data.status === 'open' && (
+            <Button
+              variant="secondary" fullWidth
+              icon={<XCircle className="h-4 w-4 text-red-500" />}
+              onClick={() => onForceClose(sessionId)}
+            >
+              Force Close Shift
+            </Button>
+          )}
+          {canCorrect && (
+            <Button
+              variant="secondary" fullWidth
+              icon={<Edit2 className="h-4 w-4 text-amber-500" />}
+              onClick={() => setCorrecting(true)}
+            >
+              Correct Values
+            </Button>
+          )}
         </div>
+      )}
+
+      {correcting && (
+        <Modal open title="Correct Shift Values" onClose={() => setCorrecting(false)} size="sm">
+          <CorrectSessionModal
+            sessionId={sessionId}
+            session={data}
+            onClose={() => setCorrecting(false)}
+            onSaved={() => setCorrecting(false)}
+          />
+        </Modal>
       )}
     </div>
   );
@@ -231,6 +271,79 @@ function RecRow({ label, value, bold, className }) {
       <td className="px-4 py-2.5 text-gray-600">{label}</td>
       <td className={`px-4 py-2.5 text-right ${bold ? 'font-bold text-gray-900' : ''} ${className ?? 'text-gray-700'}`}>{value}</td>
     </tr>
+  );
+}
+
+// ── Correct Session Modal ─────────────────────────────────────────────────────
+
+function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
+  const [opening, setOpening] = useState(String(session.opening_cash_amount ?? ''));
+  const [closing, setClosing] = useState(String(session.closing_cash_counted ?? ''));
+  const [reason,  setReason]  = useState('');
+  const qc = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (body) => api.patch(`/pos/sessions/${sessionId}/correct`, body),
+    onSuccess: () => {
+      toast.success('Shift values corrected');
+      qc.invalidateQueries({ queryKey: ['sessions'] });
+      qc.invalidateQueries({ queryKey: ['session-detail', sessionId] });
+      onSaved();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save correction'),
+  });
+
+  const isOpen = session.status === 'open';
+
+  const handleSave = () => {
+    const body = { correctionReason: reason };
+    if (opening !== '') body.openingCashAmount  = parseFloat(opening) || 0;
+    if (!isOpen && closing !== '') body.closingCashCounted = parseFloat(closing) || 0;
+    mutate(body);
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-500">
+        Only change the values that are wrong. Variance will be recalculated automatically.
+      </p>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Opening Float</label>
+        <input
+          type="number" step="0.01" min="0"
+          value={opening} onChange={(e) => setOpening(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+      </div>
+
+      {!isOpen && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Closing Count</label>
+          <input
+            type="number" step="0.01" min="0"
+            value={closing} onChange={(e) => setClosing(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+          />
+        </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+        <textarea
+          rows={2} value={reason} onChange={(e) => setReason(e.target.value)}
+          placeholder="Why are these values being corrected?"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none resize-none"
+        />
+      </div>
+
+      <div className="flex gap-3">
+        <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+        <Button fullWidth loading={isPending} disabled={!reason.trim()} onClick={handleSave}>
+          Save Correction
+        </Button>
+      </div>
+    </div>
   );
 }
 

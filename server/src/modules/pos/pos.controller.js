@@ -124,6 +124,11 @@ const forceCloseSession = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const correctSession = async (req, res) => {
+  const result = await svc.correctSession(req.tenantId, req.params.id, req.user.userId, req.body);
+  res.json({ success: true, data: result });
+};
+
 const expenseAccounts = async (req, res) => {
   const { rows } = await require('../../config/database').query(
     `SELECT account_id, account_code, account_name, account_type
@@ -193,7 +198,7 @@ module.exports = {
   paymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   terminals, allTerminals, createTerminal, updateTerminal, deleteTerminal,
   activeSession, openSession, sessionSummary, closeSession,
-  listSessions, sessionDetail, forceCloseSession,
+  listSessions, sessionDetail, forceCloseSession, correctSession,
   cashOut, cashOuts, allCashOuts, expenseAccounts,
   createTransfer, listTransfers,
   createHold, listHolds, deleteHold,

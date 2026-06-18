@@ -545,15 +545,18 @@ async function getSessionDetail(companyId, sessionId) {
            ps.expected_cash_amount::numeric,
            ps.cash_variance::numeric,
            ps.opening_notes, ps.closing_notes,
+           ps.corrected_at, ps.correction_reason,
            pt.terminal_name, pt.terminal_code,
            b.branch_name,
-           u.first_name || ' ' || u.last_name AS cashier_name,
-           cu.first_name || ' ' || cu.last_name AS closed_by_name
+           u.first_name  || ' ' || u.last_name  AS cashier_name,
+           cu.first_name || ' ' || cu.last_name AS closed_by_name,
+           cr.first_name || ' ' || cr.last_name AS corrected_by_name
     FROM pos_sessions ps
     JOIN pos_terminals pt ON pt.terminal_id = ps.terminal_id
     JOIN branches b ON b.branch_id = ps.branch_id
     JOIN users u ON u.user_id = ps.cashier_user_id
     LEFT JOIN users cu ON cu.user_id = ps.closed_by_user_id
+    LEFT JOIN users cr ON cr.user_id = ps.corrected_by
     WHERE ps.session_id = $1 AND ps.company_id = $2
   `, [sessionId, companyId]);
   if (!sessionRows.length) throw AppError.notFound('Session');
@@ -610,6 +613,9 @@ async function getSessionDetail(companyId, sessionId) {
     closed_by_name:       s.closed_by_name,
     opening_notes:        s.opening_notes,
     closing_notes:        s.closing_notes,
+    corrected_at:         s.corrected_at    ?? null,
+    corrected_by_name:    s.corrected_by_name ?? null,
+    correction_reason:    s.correction_reason ?? null,
     opening_cash_amount:  parseFloat(s.opening_cash_amount  ?? 0),
     closing_cash_counted: parseFloat(s.closing_cash_counted ?? 0),
     expected_cash_amount: parseFloat(s.expected_cash_amount ?? 0),
@@ -871,12 +877,92 @@ async function listTransfers(companyId, sessionId) {
   return rows;
 }
 
+// ── Shift Correction (company_admin only) ─────────────────────────────────────
+
+async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason }) {
+  if (!correctionReason?.trim()) throw AppError.badRequest('Correction reason is required');
+
+  const { rows: [sess] } = await query(
+    `SELECT session_id, status,
+            opening_cash_amount::numeric,
+            closing_cash_counted::numeric,
+            expected_cash_amount::numeric
+     FROM pos_sessions WHERE session_id = $1 AND company_id = $2`,
+    [sessionId, companyId]
+  );
+  if (!sess) throw AppError.notFound('Session');
+
+  const hasOpening = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
+  const hasClosing = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
+
+  if (!hasOpening && !hasClosing) throw AppError.badRequest('Provide at least one value to correct');
+  if (hasClosing && sess.status === 'open')
+    throw AppError.badRequest('Closing balance can only be corrected on a closed shift');
+
+  const newOpening = hasOpening ? parseFloat(openingCashAmount) : null;
+  const newClosing = hasClosing ? parseFloat(closingCashCounted) : null;
+
+  const qb = new QueryBuilder([sessionId, companyId]);
+  const sets = [];
+
+  if (hasOpening) {
+    sets.push(`opening_cash_amount = $${qb.add(newOpening)}`);
+    // Only recalculate expected/variance on closed sessions
+    // (open sessions recalculate at close time)
+    if (sess.status !== 'open') {
+      const oldOpening  = parseFloat(sess.opening_cash_amount  || 0);
+      const oldExpected = parseFloat(sess.expected_cash_amount || 0);
+      const newExpected = +(oldExpected - oldOpening + newOpening).toFixed(2);
+      const effectiveClosing = newClosing !== null
+        ? newClosing
+        : parseFloat(sess.closing_cash_counted || 0);
+      sets.push(`expected_cash_amount = $${qb.add(newExpected)}`);
+      sets.push(`cash_variance = $${qb.add(+(effectiveClosing - newExpected).toFixed(2))}`);
+    }
+  }
+
+  if (hasClosing) {
+    sets.push(`closing_cash_counted = $${qb.add(newClosing)}`);
+    if (!hasOpening) {
+      // Opening unchanged → expected unchanged → just re-derive variance
+      const expected = parseFloat(sess.expected_cash_amount || 0);
+      sets.push(`cash_variance = $${qb.add(+(newClosing - expected).toFixed(2))}`);
+    }
+  }
+
+  sets.push(`corrected_by     = $${qb.add(userId)}`);
+  sets.push(`corrected_at     = now()`);
+  sets.push(`correction_reason = $${qb.add(correctionReason.trim())}`);
+  sets.push(`updated_at       = now()`);
+
+  const { rows } = await query(`
+    UPDATE pos_sessions SET ${sets.join(', ')}
+    WHERE session_id = $1 AND company_id = $2
+    RETURNING session_id,
+              opening_cash_amount::numeric,
+              closing_cash_counted::numeric,
+              expected_cash_amount::numeric,
+              cash_variance::numeric,
+              corrected_by, corrected_at, correction_reason
+  `, qb.params);
+
+  const r = rows[0];
+  return {
+    ...r,
+    opening_cash_amount:  parseFloat(r.opening_cash_amount  ?? 0),
+    closing_cash_counted: parseFloat(r.closing_cash_counted ?? 0),
+    expected_cash_amount: parseFloat(r.expected_cash_amount ?? 0),
+    cash_variance:        parseFloat(r.cash_variance        ?? 0),
+  };
+}
+
 module.exports = {
   listSellableProducts,
   listPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   listTerminals, listAllTerminals, createTerminal, updateTerminal, deleteTerminal,
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
+  correctSession,
   recordCashOut, listCashOuts, listAllCashOuts,
   createTransfer, listTransfers,
   createHold, listHolds, deleteHold,

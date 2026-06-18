@@ -44,6 +44,7 @@ router.get('/cash-outs',                 requireRole('branch_manager'), controll
 router.get('/sessions',                  requireRole('branch_manager'), controller.listSessions);
 router.get('/sessions/:id/detail',       requireRole('branch_manager'), controller.sessionDetail);
 router.patch('/sessions/:id/force-close',requireRole('branch_manager'), controller.forceCloseSession);
+router.patch('/sessions/:id/correct',    requireRole('company_admin'),  controller.correctSession);
 
 // ── Hold Carts ────────────────────────────────────────────────────────────────
 router.get('/holds',                     requirePermission('open_pos_session'), controller.listHolds);
