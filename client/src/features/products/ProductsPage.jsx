@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen, RefreshCw, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -397,10 +397,21 @@ export default function ProductsPage() {
   const total    = data?.total    ?? 0;
   const pages    = data?.pages    ?? 1;
 
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    function handler(e) { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="relative flex-1">
+      {/* Toolbar */}
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-3 flex flex-wrap gap-2 items-center">
+
+        {/* Filters — grow to fill available space */}
+        <div className="relative min-w-[160px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search by name, SKU or barcode…"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -417,29 +428,52 @@ export default function ProductsPage() {
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </select>
-        <Button variant="secondary" size="sm"
-          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
-          onClick={() => refetch()}>
-          Refresh
-        </Button>
-        <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />}
-          onClick={() => exportToExcel('products', products, [
-            'product_name','sku','barcode','category_name','base_price','is_active',
-          ], ['Product Name','SKU','Barcode','Category','Price','Active'])}>
-          Export
-        </Button>
+
+        {/* Divider */}
+        <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+
+        {/* Actions — always visible */}
+        <button onClick={() => refetch()}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
+
+        {/* More dropdown — Export, Import, Add Category */}
+        <div className="relative" ref={moreRef}>
+          <button onClick={() => setMoreOpen((o) => !o)}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+            More <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          {moreOpen && (
+            <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-gray-100 bg-white shadow-lg py-1">
+              <button onClick={() => { setMoreOpen(false); exportToExcel('products', products,
+                ['product_name','sku','barcode','category_name','base_price','is_active'],
+                ['Product Name','SKU','Barcode','Category','Price','Active']); }}
+                className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <Download className="h-4 w-4 text-gray-400" /> Export
+              </button>
+              {canManageProducts && (
+                <>
+                  <button onClick={() => { setMoreOpen(false); setShowImport(true); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <Upload className="h-4 w-4 text-gray-400" /> Import CSV
+                  </button>
+                  <div className="my-1 border-t border-gray-100" />
+                  <button onClick={() => { setMoreOpen(false); setModal('category'); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <Plus className="h-4 w-4 text-gray-400" /> Add Category
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {canManageProducts && (
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setShowImport(true)} icon={<Upload className="h-4 w-4" />}>
-              Import CSV
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setModal('category')} icon={<Plus className="h-4 w-4" />}>
-              Category
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setModal('create')} icon={<Plus className="h-4 w-4" />}>
-              Add Product
-            </Button>
-          </>
+          <Button variant="primary" size="sm" onClick={() => setModal('create')} icon={<Plus className="h-4 w-4" />}>
+            Add Product
+          </Button>
         )}
       </div>
 
