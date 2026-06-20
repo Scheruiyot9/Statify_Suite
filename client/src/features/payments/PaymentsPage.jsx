@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { CreditCard, Plus, Search, AlertCircle, CheckCircle, XCircle, Trash2, RefreshCw, PlusCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
@@ -44,25 +44,30 @@ function MethodBadge({ method }) {
 
 // ── Payment Modal ─────────────────────────────────────────────────────────────
 
-const emptyLine = () => ({ accountId: '', payeeName: '', amount: '' });
+const emptyLine    = () => ({ accountId: '', payeeName: '', amount: '' });
+const emptyAlloc   = () => ({ po_id: '', amount: '' });
 
 function PaymentModal({ onClose }) {
   const qc = useQueryClient();
 
   const [paymentType, setPaymentType] = useState('supplier');
-  const [expenseLines, setExpenseLines] = useState([emptyLine()]);
+  const [expenseLines,   setExpenseLines]   = useState([emptyLine()]);
+  const [poAllocations,  setPoAllocations]  = useState([emptyAlloc()]);
   const [form, setForm] = useState({
     supplier_id:     '',
     branch_id:       '',
     bank_account_id: '',
-    po_id:           '',
     payment_date:    new Date().toISOString().slice(0, 10),
-    amount:          '',
     payment_method:  'bank_transfer',
     reference_number:'',
     notes:           '',
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const updateAlloc = (i, field, val) =>
+    setPoAllocations((ls) => ls.map((l, idx) => idx === i ? { ...l, [field]: val } : l));
+  const addAlloc    = () => setPoAllocations((ls) => [...ls, emptyAlloc()]);
+  const removeAlloc = (i) => setPoAllocations((ls) => ls.filter((_, idx) => idx !== i));
 
   const updateLine = (i, field, val) =>
     setExpenseLines((ls) => ls.map((l, idx) => idx === i ? { ...l, [field]: val } : l));
@@ -91,11 +96,20 @@ function PaymentModal({ onClose }) {
     enabled:  !!form.supplier_id && paymentType === 'supplier',
   });
 
-  const suppliers      = Array.isArray(suppliersRaw) ? suppliersRaw : (suppliersRaw?.suppliers ?? []);
-  const pos            = Array.isArray(posRaw) ? posRaw : (posRaw?.orders ?? []);
+  const suppliers       = Array.isArray(suppliersRaw) ? suppliersRaw : (suppliersRaw?.suppliers ?? []);
+  const allPos          = Array.isArray(posRaw) ? posRaw : (posRaw?.orders ?? []);
+  // Only show POs that have a remaining balance
+  const openPos         = allPos.filter((po) =>
+    po.status !== 'cancelled' && po.status !== 'draft' &&
+    parseFloat(po.total_amount) - parseFloat(po.paid_amount || 0) > 0.005
+  );
   const expenseAccounts = accounts.filter((a) => a.account_type === 'expense' && a.is_active);
   const selectedSupplier = suppliers.find((s) => s.supplier_id === form.supplier_id);
-  const linesTotal = expenseLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+  const linesTotal    = expenseLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+  const allocTotal    = poAllocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+
+  // POs already picked in other rows (to avoid duplicates)
+  const usedPoIds = new Set(poAllocations.map((a) => a.po_id).filter(Boolean));
 
   const { mutate, isPending } = useMutation({
     mutationFn: (data) => api.post('/supplier-payments', data),
@@ -113,18 +127,18 @@ function PaymentModal({ onClose }) {
     if (!form.branch_id) return toast.error('Select a branch');
     if (paymentType === 'supplier') {
       if (!form.supplier_id) return toast.error('Select a supplier');
-      if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Enter a valid amount');
+      if (allocTotal <= 0) return toast.error('Enter at least one allocation amount');
     } else {
       if (expenseLines.some((l) => !l.accountId || !parseFloat(l.amount)))
         return toast.error('Each expense line needs an account and amount');
     }
+    const validAllocs = poAllocations.filter((a) => parseFloat(a.amount) > 0);
     mutate({
       ...form,
       payment_type:    paymentType,
-      amount:          paymentType === 'supplier' ? parseFloat(form.amount) : undefined,
+      po_allocations:  paymentType === 'supplier' ? validAllocs.map((a) => ({ po_id: a.po_id || null, amount: parseFloat(a.amount) })) : [],
       expense_lines:   paymentType === 'direct' ? expenseLines.map((l) => ({ ...l, amount: parseFloat(l.amount) })) : [],
       supplier_id:     paymentType === 'supplier' ? form.supplier_id : undefined,
-      po_id:           paymentType === 'supplier' ? (form.po_id || undefined) : undefined,
       bank_account_id: form.bank_account_id || undefined,
       reference_number:form.reference_number || undefined,
       notes:           form.notes || undefined,
@@ -139,7 +153,7 @@ function PaymentModal({ onClose }) {
         <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
           {[['supplier', 'Supplier Payment'], ['direct', 'Direct Expense']].map(([val, label]) => (
             <button key={val} type="button"
-              onClick={() => { setPaymentType(val); set('supplier_id', ''); set('po_id', ''); setExpenseLines([emptyLine()]); }}
+              onClick={() => { setPaymentType(val); set('supplier_id', ''); setPoAllocations([emptyAlloc()]); setExpenseLines([emptyLine()]); }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 paymentType === val ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}>
@@ -153,7 +167,7 @@ function PaymentModal({ onClose }) {
           <>
             <Field label="Supplier *">
               <select className={sel} value={form.supplier_id}
-                onChange={(e) => { set('supplier_id', e.target.value); set('po_id', ''); }}>
+                onChange={(e) => { set('supplier_id', e.target.value); setPoAllocations([emptyAlloc()]); }}>
                 <option value="">— Select supplier —</option>
                 {suppliers.map((s) => (
                   <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
@@ -170,17 +184,87 @@ function PaymentModal({ onClose }) {
               </div>
             )}
 
+            {/* Multi-PO allocation */}
             {form.supplier_id && (
-              <Field label="Against PO" hint="Optional — link to a specific purchase order">
-                <select className={sel} value={form.po_id} onChange={(e) => set('po_id', e.target.value)}>
-                  <option value="">— General payment —</option>
-                  {pos.filter((po) => po.status !== 'cancelled' && po.status !== 'draft').map((po) => (
-                    <option key={po.po_id} value={po.po_id}>
-                      {po.po_number} · {po.status} — {formatCurrency(po.total_amount)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700">PO Allocations</label>
+                <div className="rounded-lg border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Purchase Order</th>
+                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-32">Amount (KES)</th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {poAllocations.map((alloc, i) => {
+                        const selectedPo = openPos.find((p) => p.po_id === alloc.po_id);
+                        const balance = selectedPo
+                          ? parseFloat(selectedPo.total_amount) - parseFloat(selectedPo.paid_amount || 0)
+                          : null;
+                        return (
+                          <tr key={i}>
+                            <td className="px-3 py-2">
+                              <select className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                                value={alloc.po_id}
+                                onChange={(e) => {
+                                  const po = openPos.find((p) => p.po_id === e.target.value);
+                                  const remaining = po
+                                    ? (parseFloat(po.total_amount) - parseFloat(po.paid_amount || 0)).toFixed(2)
+                                    : '';
+                                  updateAlloc(i, 'po_id', e.target.value);
+                                  if (po) updateAlloc(i, 'amount', remaining);
+                                }}>
+                                <option value="">— General / unallocated —</option>
+                                {openPos.map((po) => {
+                                  const rem = parseFloat(po.total_amount) - parseFloat(po.paid_amount || 0);
+                                  const taken = usedPoIds.has(po.po_id) && po.po_id !== alloc.po_id;
+                                  if (taken) return null;
+                                  return (
+                                    <option key={po.po_id} value={po.po_id}>
+                                      {po.po_number} · balance {formatCurrency(rem)}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              {balance !== null && (
+                                <p className="mt-0.5 text-xs text-gray-400">
+                                  Remaining: {formatCurrency(balance)}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <input type="number" min="0.01" step="0.01" placeholder="0.00"
+                                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right"
+                                value={alloc.amount}
+                                onChange={(e) => updateAlloc(i, 'amount', e.target.value)} />
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              {poAllocations.length > 1 && (
+                                <button onClick={() => removeAlloc(i)} className="text-gray-300 hover:text-red-500">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t border-gray-100 bg-gray-50">
+                      <tr>
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-600">Total</td>
+                        <td className="px-3 py-2 text-right text-xs font-bold text-gray-900">{formatCurrency(allocTotal)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <button onClick={addAlloc}
+                  className="mt-1.5 flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700">
+                  <PlusCircle className="h-3.5 w-3.5" /> Add another PO
+                </button>
+              </div>
             )}
           </>
         )}
@@ -261,13 +345,6 @@ function PaymentModal({ onClose }) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {paymentType === 'supplier' && (
-            <Field label="Amount (KES) *">
-              <input type="number" min="0.01" step="0.01" className={inp}
-                value={form.amount} onChange={(e) => set('amount', e.target.value)}
-                placeholder="0.00" />
-            </Field>
-          )}
           <Field label="Payment Method">
             <select className={sel} value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
               {Object.entries(METHOD_LABELS).map(([k, v]) => (
@@ -378,9 +455,23 @@ function PaymentDetail({ payment, onClose }) {
 
         {/* Supplier / payee info */}
         {!isDirect && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
             <RO label="Supplier" value={payment.supplier_name} />
-            <RO label="PO Reference" value={payment.po_number} />
+            {Array.isArray(payment.po_allocations) && payment.po_allocations.length > 0 ? (
+              <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                <p className="text-xs text-gray-400 mb-1.5">PO Allocations</p>
+                <div className="space-y-1">
+                  {payment.po_allocations.map((a, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-700 font-mono">{a.po_id ? `PO #${a.po_id}` : 'General'}</span>
+                      <span className="font-semibold text-gray-900">{formatCurrency(a.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <RO label="PO Reference" value={payment.po_number} />
+            )}
           </div>
         )}
 

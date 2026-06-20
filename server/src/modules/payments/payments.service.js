@@ -74,7 +74,8 @@ async function getPayment(companyId, paymentId) {
 async function createPayment(companyId, userId, data) {
   const {
     branch_id, payment_type = 'supplier',
-    supplier_id, bank_account_id, po_id,
+    supplier_id, bank_account_id,
+    po_allocations = [],   // [{ po_id, amount }]
     expense_lines = [],
     payment_date, payment_method, reference_number, notes,
   } = data;
@@ -83,8 +84,13 @@ async function createPayment(companyId, userId, data) {
 
   if (payment_type === 'supplier') {
     if (!supplier_id) throw AppError.badRequest('supplier_id is required for supplier payments');
-    const amt = parseFloat(data.amount);
-    if (!amt || amt <= 0) throw AppError.badRequest('Amount must be greater than zero');
+
+    // Derive total from allocations when provided; fall back to legacy data.amount
+    const allocations = po_allocations.filter((a) => parseFloat(a.amount) > 0);
+    const totalAmount = allocations.length
+      ? allocations.reduce((s, a) => s + parseFloat(a.amount), 0)
+      : parseFloat(data.amount);
+    if (!totalAmount || totalAmount <= 0) throw AppError.badRequest('Amount must be greater than zero');
 
     const { rows: [supplier] } = await query(
       `SELECT supplier_id FROM suppliers WHERE supplier_id=$1 AND company_id=$2`,
@@ -92,12 +98,13 @@ async function createPayment(companyId, userId, data) {
     );
     if (!supplier) throw AppError.notFound('Supplier');
 
-    if (po_id) {
+    for (const alloc of allocations) {
+      if (!alloc.po_id) continue;
       const { rows: [po] } = await query(
         `SELECT po_id FROM purchase_orders WHERE po_id=$1 AND company_id=$2 AND supplier_id=$3`,
-        [po_id, companyId, supplier_id]
+        [alloc.po_id, companyId, supplier_id]
       );
-      if (!po) throw AppError.badRequest('PO not found or does not belong to this supplier');
+      if (!po) throw AppError.badRequest(`PO not found or does not belong to this supplier: ${alloc.po_id}`);
     }
   } else {
     if (!expense_lines.length) throw AppError.badRequest('At least one expense line is required');
@@ -124,20 +131,27 @@ async function createPayment(companyId, userId, data) {
   return transaction(async (client) => {
     const paymentNumber = await nextPaymentNumber(client, companyId);
 
+    const validAllocs = po_allocations.filter((a) => parseFloat(a.amount) > 0);
     const totalAmount = payment_type === 'supplier'
-      ? parseFloat(data.amount)
+      ? (validAllocs.length
+          ? validAllocs.reduce((s, a) => s + parseFloat(a.amount), 0)
+          : parseFloat(data.amount))
       : expense_lines.reduce((s, l) => s + parseFloat(l.amount), 0);
+
+    // Primary po_id = first allocated PO (for display / backward compat)
+    const primaryPoId = validAllocs.find((a) => a.po_id)?.po_id || null;
 
     const { rows: [payment] } = await client.query(`
       INSERT INTO supplier_payments
         (company_id, branch_id, supplier_id, bank_account_id, po_id,
-         expense_lines, payment_type, payment_number,
+         expense_lines, po_allocations, payment_type, payment_number,
          payment_date, amount, payment_method, reference_number, notes, created_by_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       RETURNING *
     `, [companyId, branch_id,
-        supplier_id || null, bank_account_id || null, po_id || null,
+        supplier_id || null, bank_account_id || null, primaryPoId,
         JSON.stringify(expense_lines),
+        validAllocs.length ? JSON.stringify(validAllocs) : null,
         payment_type, paymentNumber,
         payment_date || new Date().toISOString().slice(0, 10),
         totalAmount, payment_method || 'bank_transfer',
