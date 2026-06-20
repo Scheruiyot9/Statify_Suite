@@ -353,21 +353,28 @@ async function postGRN(companyId, grnId) {
       `, [item.product_id, grn.branch_id, qtyAfter]);
 
       // ── Costing method update ──────────────────────────────────────────────
-      if (costingMethod === 'weighted_average') {
-        const oldCost  = invRows.length ? parseFloat(invRows[0].cost_price) : 0;
-        const newCost  = qtyAfter > 0
-          ? +((qtyBefore * oldCost + qtyReceived * unitCost) / qtyAfter).toFixed(4)
-          : unitCost;
-        await client.query(
-          `UPDATE products SET cost_price = $1 WHERE product_id = $2`,
-          [newCost, item.product_id]
-        );
-      } else if (costingMethod === 'fifo') {
+      if (costingMethod === 'fifo') {
         await client.query(`
           INSERT INTO inventory_cost_layers
             (company_id, branch_id, product_id, grn_id, unit_cost, qty_original, qty_remaining, received_at)
           VALUES ($1, $2, $3, $4, $5, $6, $6, now())
         `, [companyId, grn.branch_id, item.product_id, grnId, unitCost, qtyReceived]);
+        // Update cost_price as "latest received cost" — used as display value and
+        // as consumeFifoLayers fallback for pre-FIFO stock
+        await client.query(
+          `UPDATE products SET cost_price = $1 WHERE product_id = $2 AND company_id = $3`,
+          [unitCost, item.product_id, companyId]
+        );
+      } else {
+        // Weighted average cost
+        const oldCost = invRows.length ? parseFloat(invRows[0].cost_price) : 0;
+        const newCost = qtyAfter > 0
+          ? +((qtyBefore * oldCost + qtyReceived * unitCost) / qtyAfter).toFixed(4)
+          : unitCost;
+        await client.query(
+          `UPDATE products SET cost_price = $1 WHERE product_id = $2 AND company_id = $3`,
+          [newCost, item.product_id, companyId]
+        );
       }
       // ──────────────────────────────────────────────────────────────────────
 
