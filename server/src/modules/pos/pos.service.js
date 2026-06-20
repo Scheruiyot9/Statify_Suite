@@ -487,24 +487,16 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     cash_variance:        parseFloat(rows[0].cash_variance),
   };
 
-  // Post journal summary if company uses session or daily summary mode
-  const { rows: [co] } = await query(
-    `SELECT journal_posting_mode, branch_id FROM companies c
-     JOIN pos_sessions ps ON ps.company_id = c.company_id
-     WHERE ps.session_id = $1`, [sessionId]
+  // Always post a session summary at close — postSessionSummaryEntry's NOT_YET_POSTED
+  // filter skips individually-posted transactions (per_transaction mode) and exits
+  // early if the session was already summarised. This also mops up any transactions
+  // that were made while posting mode was session_summary or daily_summary and then
+  // the mode was switched to per_transaction before the session closed.
+  // Note: daily_summary is intentionally NOT triggered here — it is admin-run manually
+  // via POST /journal/daily-summaries so one JE covers the full day across all sessions.
+  await jrn.postSessionSummaryEntry(companyId, sessionId, userId).catch((e) =>
+    console.error('[ledger] session summary at close failed:', e.message)
   );
-  const postingMode = co?.journal_posting_mode || 'per_transaction';
-
-  if (postingMode === 'session_summary') {
-    await jrn.postSessionSummaryEntry(companyId, sessionId, userId).catch((e) =>
-      console.error('[ledger] session summary failed:', e.message)
-    );
-  } else if (postingMode === 'daily_summary') {
-    const today = new Date().toISOString().slice(0, 10);
-    await jrn.postDailySummaryEntry(companyId, co.branch_id, today, userId).catch((e) =>
-      console.error('[ledger] daily summary skipped (may already be posted):', e.message)
-    );
-  }
 
   return result;
 }

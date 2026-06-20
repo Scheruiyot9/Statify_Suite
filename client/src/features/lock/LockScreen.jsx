@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { Lock, Delete, LogOut, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/app/store';
 import { computePinHash } from '@/lib/pinHash';
@@ -82,6 +81,7 @@ export default function LockScreen() {
   const [attempts, setAttempts] = useState(0);
   const [shake,    setShake]    = useState(false);
   const [error,    setError]    = useState('');
+  const [pending,  setPending]  = useState(false);
 
   // Reset state whenever the screen appears
   useEffect(() => {
@@ -91,11 +91,6 @@ export default function LockScreen() {
       setError('');
     }
   }, [isLocked]);
-
-  // Online verify-pin mutation
-  const verifyMut = useMutation({
-    mutationFn: (hash) => api.post('/auth/verify-pin', { pinHash: hash }).then((r) => r.data.data),
-  });
 
   const triggerShake = () => {
     setShake(true);
@@ -119,13 +114,16 @@ export default function LockScreen() {
     const newAttempts = attempts + 1;
     setAttempts(newAttempts);
     setError('');
+    setPending(true);
 
     const hash = await computePinHash(enteredPin, user?.userId);
 
     if (isOnline) {
-      // Prefer server-side verification (authoritative)
+      // Use api directly (not useMutation) so the global queryClient onError
+      // handler never fires — a 401 here is expected when the JWT has expired
+      // and we fall back to the local hash silently.
       try {
-        const result = await verifyMut.mutateAsync(hash);
+        const result = await api.post('/auth/verify-pin', { pinHash: hash }).then((r) => r.data.data);
         if (result?.valid) {
           unlock();
           setPin('');
@@ -133,16 +131,19 @@ export default function LockScreen() {
           handleWrongPin(newAttempts);
         }
       } catch {
-        // Server error — fall back to local check
+        // Server error (including expired JWT) — fall back to local check
         if (pinHash && hash === pinHash) {
           unlock();
           setPin('');
         } else {
           handleWrongPin(newAttempts);
         }
+      } finally {
+        setPending(false);
       }
     } else {
       // Offline — compare against locally cached hash
+      setPending(false);
       if (pinHash && hash === pinHash) {
         unlock();
         setPin('');
@@ -150,7 +151,7 @@ export default function LockScreen() {
         handleWrongPin(newAttempts);
       }
     }
-  }, [attempts, user?.userId, isOnline, pinHash, unlock, handleWrongPin, verifyMut]);
+  }, [attempts, user?.userId, isOnline, pinHash, unlock, handleWrongPin]);
 
   const handleKey = useCallback((key) => {
     if (key === '⌫') {
@@ -210,7 +211,7 @@ export default function LockScreen() {
                 key={i}
                 label={k}
                 onClick={() => handleKey(k)}
-                disabled={locked || verifyMut.isPending}
+                disabled={locked || pending}
               />
             ))}
           </div>
