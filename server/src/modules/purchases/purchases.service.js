@@ -255,6 +255,13 @@ async function createGRN(companyId, userId, data) {
   if (!['approved','partially_received'].includes(po.status))
     throw AppError.conflict('PO must be approved before receiving goods');
 
+  const { rows: openGrns } = await query(
+    `SELECT grn_id FROM grns WHERE po_id = $1 AND company_id = $2 AND status = 'draft'`,
+    [po_id, companyId]
+  );
+  if (openGrns.length)
+    throw AppError.conflict('This PO already has a draft GRN open. Post or delete it before creating another.');
+
   // Validate items against PO items
   for (const item of items) {
     const { rows: [poi] } = await query(
