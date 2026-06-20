@@ -455,6 +455,68 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
   });
 }
 
+// ── Retroactive per-transaction posting ──────────────────────────────────────
+// Posts individual SALE journal entries for every completed transaction in a
+// given date/branch that has not yet been posted (no SALE, SESSION_SALE_SUMMARY,
+// or DAILY_SALE_SUMMARY JE exists for it).
+async function postUnpostedPerTransaction(companyId, branchId, date, userId) {
+  const UNPOSTED = `
+    AND NOT EXISTS (
+      SELECT 1 FROM journal_entries je
+      WHERE je.company_id = $1 AND je.status = 'posted'
+        AND (
+          (je.source_type = 'SALE'                AND je.source_id  = st.transaction_id)
+          OR (je.source_type = 'SESSION_SALE_SUMMARY' AND je.source_id = st.pos_session_id)
+          OR (je.source_type = 'DAILY_SALE_SUMMARY'   AND je.source_id = $2::uuid
+              AND je.entry_date = $3::date)
+        )
+    )
+  `;
+
+  const { rows: txns } = await query(`
+    SELECT st.transaction_id, st.transaction_number,
+           st.total_amount::numeric, st.tax_amount::numeric,
+           st.transaction_date, st.cashier_user_id, st.customer_id
+    FROM sales_transactions st
+    WHERE st.company_id = $1 AND st.branch_id = $2
+      AND st.transaction_date::date = $3 AND st.status = 'completed'
+      ${UNPOSTED}
+    ORDER BY st.transaction_date ASC
+  `, [companyId, branchId, date]);
+
+  if (!txns.length) return { posted: 0, skipped: 0 };
+
+  const { rows: allItems } = await query(`
+    SELECT sti.transaction_id, sti.product_id, sti.quantity::numeric AS quantity
+    FROM sales_transaction_items sti
+    WHERE sti.transaction_id = ANY($1)
+  `, [txns.map((t) => t.transaction_id)]);
+
+  const { rows: allPayments } = await query(`
+    SELECT tp.transaction_id, tp.payment_method_id,
+           tp.amount_applied::numeric AS amount_applied
+    FROM transaction_payments tp
+    WHERE tp.transaction_id = ANY($1)
+  `, [txns.map((t) => t.transaction_id)]);
+
+  const itemsMap    = {};
+  const paymentsMap = {};
+  for (const r of allItems)    (itemsMap[r.transaction_id]    ??= []).push(r);
+  for (const r of allPayments) (paymentsMap[r.transaction_id] ??= []).push(r);
+
+  let posted = 0, skipped = 0;
+  for (const txn of txns) {
+    const items    = itemsMap[txn.transaction_id]    || [];
+    const payments = paymentsMap[txn.transaction_id] || [];
+    const ok = await transaction(async (client) => {
+      await postSaleEntry(client, companyId, txn, items, payments);
+    }).then(() => true).catch(() => false);
+    if (ok) posted++; else skipped++;
+  }
+
+  return { posted, skipped };
+}
+
 // ── Sale Void Entry ───────────────────────────────────────────────────────────
 // Reversal of the original SALE journal entry — mirrors postVoidPaymentEntry pattern.
 // Looks up the posted SALE entry by source_id and swaps all Dr/Cr sides.
@@ -1404,7 +1466,7 @@ async function getJournalEntry(companyId, jeId) {
 module.exports = {
   findAccIds, _post,
   postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
-  postSessionSummaryEntry, postDailySummaryEntry,
+  postSessionSummaryEntry, postDailySummaryEntry, postUnpostedPerTransaction,
   postPaymentEntry, postVoidPaymentEntry,
   postDirectExpenseEntry, postVoidDirectExpenseEntry,
   postReturnEntry, postOpeningBalanceEntry,

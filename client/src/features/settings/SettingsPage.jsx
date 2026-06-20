@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CreditCard, Plus, Pencil, ToggleLeft, ToggleRight, Check,
   Monitor, GitBranch, Package, Users, Star, Percent, Trash2,
-  RotateCcw, Layers, ArrowUpCircle, CheckCircle2, Clock, XCircle, Send, ShieldCheck,
+  RotateCcw, Layers, ArrowUpCircle, CheckCircle2, Clock, XCircle, Send, ShieldCheck, BookOpen,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -2004,6 +2004,7 @@ function JournalTab() {
   const [postingMode, setPostingMode] = useState('per_transaction');
   const [dailyBranchId, setDailyBranchId] = useState('');
   const [dailyDate,     setDailyDate]     = useState(new Date().toISOString().slice(0, 10));
+  const [postMode,      setPostMode]      = useState('combined');
 
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
@@ -2031,10 +2032,17 @@ function JournalTab() {
   });
 
   const dailyMut = useMutation({
-    mutationFn: ({ branchId, date }) =>
-      api.post('/journal/daily-summaries', { branchId, date }).then((r) => r.data),
-    onSuccess: () => toast.success('Daily summary posted to journal'),
-    onError:   (e) => toast.error(e.response?.data?.message || 'Failed to post summary'),
+    mutationFn: ({ branchId, date, mode }) =>
+      api.post('/journal/daily-summaries', { branchId, date, mode }).then((r) => r.data),
+    onSuccess: (data) => {
+      if (data?.data?.posted !== undefined) {
+        const { posted, skipped } = data.data;
+        toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` (${skipped} skipped)` : ''}`);
+      } else {
+        toast.success('Summary posted to journal');
+      }
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to post'),
   });
 
   const MODES = [
@@ -2096,49 +2104,84 @@ function JournalTab() {
         </div>
       </div>
 
-      {/* Daily summary trigger — always visible so admins can retroactively post unposted transactions */}
+      {/* Post unposted transactions — always visible so admins can retroactively post at any time */}
       <div className="rounded-xl border border-gray-200 p-5 space-y-4">
-          <p className="text-sm font-medium text-gray-900">Post Daily Summary</p>
-          <p className="text-xs text-gray-500">
-            Post one journal entry aggregating all unposted sales for a branch on a given date.
-            {postingMode === 'daily_summary'
-              ? ' Run this at end of business each day.'
-              : ' Use this to catch any transactions that were not posted while in a different posting mode.'}
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Branch</label>
-              <select
-                value={dailyBranchId}
-                onChange={(e) => setDailyBranchId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
-              >
-                <option value="">— Select —</option>
-                {(branches || []).map((b) => (
-                  <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
-              <input
-                type="date"
-                value={dailyDate}
-                onChange={(e) => setDailyDate(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+            <BookOpen className="h-5 w-5 text-emerald-600" />
           </div>
-          <div className="flex justify-end">
-            <Button
-              loading={dailyMut.isPending}
-              disabled={!dailyBranchId || !dailyDate}
-              onClick={() => dailyMut.mutate({ branchId: dailyBranchId, date: dailyDate })}
-            >
-              Post Summary
-            </Button>
+          <div>
+            <p className="text-sm font-medium text-gray-900">Post Unposted Transactions</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Manually post any sales that weren't recorded in the journal — useful after mode switches or to catch skipped entries.
+            </p>
           </div>
         </div>
+
+        {/* Mode toggle */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">Posting style</label>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+            {[
+              { value: 'combined',         label: 'Combined',        desc: 'One aggregate journal entry for the day' },
+              { value: 'per_transaction',  label: 'Per Transaction', desc: 'One journal entry per sale' },
+            ].map((opt, i) => (
+              <button
+                key={opt.value}
+                onClick={() => setPostMode(opt.value)}
+                className={[
+                  'flex-1 px-3 py-2 text-center transition-colors',
+                  i === 0 ? '' : 'border-l border-gray-200',
+                  postMode === opt.value
+                    ? 'bg-primary-600 text-white font-medium'
+                    : 'bg-white text-gray-600 hover:bg-gray-50',
+                ].join(' ')}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-gray-400">
+            {postMode === 'combined'
+              ? 'One aggregate journal entry covering all unposted sales for the selected branch and date.'
+              : 'Individual journal entries for each unposted sale — matches per-transaction audit trail.'}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Branch</label>
+            <select
+              value={dailyBranchId}
+              onChange={(e) => setDailyBranchId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">— Select —</option>
+              {(branches || []).map((b) => (
+                <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+            <input
+              type="date"
+              value={dailyDate}
+              onChange={(e) => setDailyDate(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            loading={dailyMut.isPending}
+            disabled={!dailyBranchId || !dailyDate}
+            onClick={() => dailyMut.mutate({ branchId: dailyBranchId, date: dailyDate, mode: postMode })}
+          >
+            Post
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
