@@ -310,15 +310,24 @@ async function postGRN(companyId, grnId) {
     `SELECT * FROM grn_items WHERE grn_id = $1`, [grnId]
   );
 
+  // Fetch costing method once (outside item loop)
+  const { rows: [co] } = await query(
+    `SELECT costing_method FROM companies WHERE company_id = $1`, [companyId]
+  );
+  const costingMethod = co?.costing_method || 'weighted_average';
+
   return transaction(async (client) => {
     // Update inventory — upsert into product_branch_inventory
     for (const item of items) {
       const qtyReceived = parseFloat(item.quantity_received);
+      const unitCost    = parseFloat(item.unit_cost);
 
-      // Lock the row first so qtyBefore is accurate even under concurrent GRNs
+      // Lock the row + fetch current cost_price for WAC
       const { rows: invRows } = await client.query(
-        `SELECT quantity_available FROM product_branch_inventory
-         WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
+        `SELECT pbi.quantity_available, COALESCE(p.cost_price, 0)::numeric AS cost_price
+         FROM product_branch_inventory pbi
+         JOIN products p ON p.product_id = pbi.product_id
+         WHERE pbi.product_id = $1 AND pbi.branch_id = $2 FOR UPDATE OF pbi`,
         [item.product_id, grn.branch_id]
       );
       const qtyBefore = invRows.length ? parseFloat(invRows[0].quantity_available) : 0;
@@ -331,6 +340,25 @@ async function postGRN(companyId, grnId) {
           SET quantity_available = $3,
               last_updated = now()
       `, [item.product_id, grn.branch_id, qtyAfter]);
+
+      // ── Costing method update ──────────────────────────────────────────────
+      if (costingMethod === 'weighted_average') {
+        const oldCost  = invRows.length ? parseFloat(invRows[0].cost_price) : 0;
+        const newCost  = qtyAfter > 0
+          ? +((qtyBefore * oldCost + qtyReceived * unitCost) / qtyAfter).toFixed(4)
+          : unitCost;
+        await client.query(
+          `UPDATE products SET cost_price = $1 WHERE product_id = $2`,
+          [newCost, item.product_id]
+        );
+      } else if (costingMethod === 'fifo') {
+        await client.query(`
+          INSERT INTO inventory_cost_layers
+            (company_id, branch_id, product_id, grn_id, unit_cost, qty_original, qty_remaining, received_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $6, now())
+        `, [companyId, grn.branch_id, item.product_id, grnId, unitCost, qtyReceived]);
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       await recordMovement(client, {
         companyId: grn.company_id, branchId: grn.branch_id, productId: item.product_id,

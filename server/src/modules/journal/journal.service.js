@@ -67,17 +67,20 @@ async function _post(client, companyId, { entryDate, description, sourceType, so
 // ── Sale Entry ────────────────────────────────────────────────────────────────
 // DR Cash/Bank (per payment method) + DR COGS + DR AR (unpaid portion)
 // CR Revenue (net of VAT) + CR VAT Payable + CR Inventory
-async function postSaleEntry(client, companyId, txn, items, rawPayments) {
+async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap = null) {
   try {
     const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
     if (!accIds['4000']) return; // CoA not seeded
 
-    const productIds = [...new Set(items.map((i) => i.productId || i.product_id))];
-    const { rows: prods } = await client.query(
-      `SELECT product_id, COALESCE(cost_price, 0)::numeric AS cost_price FROM products WHERE product_id = ANY($1)`,
-      [productIds]
-    );
-    const costMap = Object.fromEntries(prods.map((p) => [p.product_id, parseFloat(p.cost_price)]));
+    let costMap = {};
+    if (!cogsMap) {
+      const productIds = [...new Set(items.map((i) => i.productId || i.product_id))];
+      const { rows: prods } = await client.query(
+        `SELECT product_id, COALESCE(cost_price, 0)::numeric AS cost_price FROM products WHERE product_id = ANY($1)`,
+        [productIds]
+      );
+      costMap = Object.fromEntries(prods.map((p) => [p.product_id, parseFloat(p.cost_price)]));
+    }
 
     const pmIds = [...new Set(rawPayments.map((p) => p.paymentMethodId || p.payment_method_id))].filter(Boolean);
     // pmMap: paymentMethodId → { methodName, glAccountId (from linked bank account's GL account) }
@@ -103,10 +106,12 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments) {
     const entryDate    = toDateStr(txn.transaction_date || txn.transactionDate);
     const totalPaid    = rawPayments.reduce((s, p) => s + parseFloat(p.amountApplied || p.amount_applied || 0), 0);
     const arAmount     = +(totalAmount - totalPaid).toFixed(4);
-    const totalCOGS    = items.reduce((s, i) => {
-      const pid = i.productId || i.product_id;
-      return s + parseFloat(i.quantity) * (costMap[pid] || 0);
-    }, 0);
+    const totalCOGS = cogsMap
+      ? Object.values(cogsMap).reduce((s, c) => s + c, 0)
+      : items.reduce((s, i) => {
+          const pid = i.productId || i.product_id;
+          return s + parseFloat(i.quantity) * (costMap[pid] || 0);
+        }, 0);
 
     const lines = [];
 

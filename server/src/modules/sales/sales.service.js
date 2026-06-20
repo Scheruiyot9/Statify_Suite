@@ -5,6 +5,70 @@ const QueryBuilder = require('../../shared/qb');
 const jrn = require('../journal/journal.service');
 const { recordMovement } = require('../inventory/movements.service');
 
+// ── FIFO helpers ─────────────────────────────────────────────────────────────
+
+async function consumeFifoLayers(client, companyId, branchId, productId, qtyNeeded) {
+  const { rows: layers } = await client.query(`
+    SELECT layer_id, qty_remaining::numeric, unit_cost::numeric
+    FROM inventory_cost_layers
+    WHERE company_id=$1 AND branch_id=$2 AND product_id=$3 AND qty_remaining > 0
+    ORDER BY received_at ASC
+    FOR UPDATE
+  `, [companyId, branchId, productId]);
+
+  let remaining = qtyNeeded;
+  let totalCost = 0;
+
+  for (const layer of layers) {
+    if (remaining <= 0.0001) break;
+    const take = Math.min(remaining, parseFloat(layer.qty_remaining));
+    totalCost += take * parseFloat(layer.unit_cost);
+    remaining -= take;
+    await client.query(
+      `UPDATE inventory_cost_layers SET qty_remaining = qty_remaining - $1 WHERE layer_id = $2`,
+      [take, layer.layer_id]
+    );
+  }
+
+  if (remaining > 0.0001) {
+    // Pre-FIFO stock: fall back to products.cost_price
+    const { rows: [p] } = await client.query(
+      `SELECT COALESCE(cost_price, 0)::numeric AS cost_price FROM products WHERE product_id = $1`,
+      [productId]
+    );
+    totalCost += remaining * parseFloat(p?.cost_price || 0);
+  }
+
+  return { totalCost: +totalCost.toFixed(4) };
+}
+
+async function returnFifoLayers(client, companyId, branchId, productId, qty) {
+  const { rows: [agg] } = await client.query(`
+    SELECT COALESCE(
+      SUM(qty_remaining * unit_cost)::numeric / NULLIF(SUM(qty_remaining), 0), 0
+    )::numeric AS wac
+    FROM inventory_cost_layers
+    WHERE company_id=$1 AND branch_id=$2 AND product_id=$3 AND qty_remaining > 0
+  `, [companyId, branchId, productId]);
+
+  let returnCost = parseFloat(agg?.wac || 0);
+  if (returnCost <= 0) {
+    const { rows: [p] } = await client.query(
+      `SELECT COALESCE(cost_price, 0)::numeric AS cost_price FROM products WHERE product_id = $1`,
+      [productId]
+    );
+    returnCost = parseFloat(p?.cost_price || 0);
+  }
+
+  await client.query(`
+    INSERT INTO inventory_cost_layers
+      (company_id, branch_id, product_id, grn_id, unit_cost, qty_original, qty_remaining, received_at)
+    VALUES ($1, $2, $3, NULL, $4, $5, $5, now())
+  `, [companyId, branchId, productId, returnCost, qty]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function getLoyaltyRates(client, companyId) {
   const { rows } = await client.query(
     `SELECT points_earn_rate, points_redeem_rate FROM companies WHERE company_id = $1`,
@@ -29,9 +93,10 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
 
   // Enforce "no sale below cost" when enabled for this company
   const { rows: coRows } = await query(
-    `SELECT pos_prevent_sales_below_cost FROM companies WHERE company_id = $1`,
+    `SELECT pos_prevent_sales_below_cost, costing_method FROM companies WHERE company_id = $1`,
     [companyId]
   );
+  const costingMethod = coRows[0]?.costing_method || 'weighted_average';
   if (coRows[0]?.pos_prevent_sales_below_cost) {
     const productIds = items.map((i) => i.productId);
     const { rows: costRows } = await query(
@@ -110,6 +175,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
         idempotencyKey || null]);
 
     const txn = txnRows[0];
+    const cogsMap = costingMethod === 'fifo' ? {} : null;
 
     for (const item of items) {
       const { rows: stockRows } = await client.query(`
@@ -152,6 +218,11 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
         referenceNo:   txnNumber,
         userId:        cashierUserId,
       });
+
+      if (costingMethod === 'fifo') {
+        const { totalCost } = await consumeFifoLayers(client, companyId, branchId, item.productId, parseFloat(item.quantity));
+        cogsMap[item.productId] = (cogsMap[item.productId] || 0) + totalCost;
+      }
     }
 
     for (let i = 0; i < payments.length; i++) {
@@ -171,7 +242,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       ...txn,
       tax_amount:      taxAmount,
       cashier_user_id: cashierUserId,
-    }, items, payments);
+    }, items, payments, cogsMap);
 
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft
     let pointsEarned = 0;
@@ -383,6 +454,11 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
   const transactionNumber = rows[0].transaction_number;
 
   return transaction(async (client) => {
+    const { rows: [co] } = await client.query(
+      `SELECT costing_method FROM companies WHERE company_id = $1`, [companyId]
+    );
+    const costingMethod = co?.costing_method || 'weighted_average';
+
     const { rows: items } = await client.query(
       `SELECT product_id, quantity FROM sales_transaction_items WHERE transaction_id = $1`,
       [transactionId]
@@ -414,6 +490,10 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
         notes:         reason || null,
         userId,
       });
+
+      if (costingMethod === 'fifo') {
+        await returnFifoLayers(client, companyId, branchId, item.product_id, parseFloat(item.quantity));
+      }
     }
 
     await client.query(`
@@ -464,8 +544,9 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
 
   // Enforce prevent-sales-below-cost policy
   const { rows: coRows } = await query(
-    `SELECT pos_prevent_sales_below_cost FROM companies WHERE company_id = $1`, [companyId]
+    `SELECT pos_prevent_sales_below_cost, costing_method FROM companies WHERE company_id = $1`, [companyId]
   );
+  const costingMethod = coRows[0]?.costing_method || 'weighted_average';
   if (coRows[0]?.pos_prevent_sales_below_cost) {
     const productIds = items.map((i) => i.productId);
     const { rows: costRows } = await query(
@@ -506,6 +587,10 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
         referenceType: 'SALE_EDIT', referenceId: transactionId,
         referenceNo: transactionNumber, notes: `Edit: ${editReason}`, userId,
       });
+
+      if (costingMethod === 'fifo') {
+        await returnFifoLayers(client, companyId, branchId, oi.product_id, parseFloat(oi.quantity));
+      }
     }
 
     // 2. Reverse existing journal entry for this sale
@@ -545,6 +630,8 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
     // 5. Replace items + deduct new inventory
     await client.query(`DELETE FROM sales_transaction_items WHERE transaction_id = $1`, [transactionId]);
 
+    const cogsMap = costingMethod === 'fifo' ? {} : null;
+
     for (const item of items) {
       const { rows: stock } = await client.query(
         `SELECT quantity_available FROM product_branch_inventory
@@ -576,6 +663,11 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
         referenceType: 'SALE_EDIT', referenceId: transactionId,
         referenceNo: transactionNumber, userId,
       });
+
+      if (costingMethod === 'fifo') {
+        const { totalCost } = await consumeFifoLayers(client, companyId, branchId, item.productId, parseFloat(item.quantity));
+        cogsMap[item.productId] = (cogsMap[item.productId] || 0) + totalCost;
+      }
     }
 
     // 6. Replace payments
@@ -615,7 +707,8 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
       payment_method_id: p.paymentMethodId,
       amountApplied:     parseFloat(p.amountApplied || 0),
       amount_applied:    parseFloat(p.amountApplied || 0),
-    })));
+    })),
+    cogsMap);
 
     return { transaction_id: transactionId, transaction_number: transactionNumber };
   });

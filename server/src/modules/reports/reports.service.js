@@ -1107,14 +1107,17 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
 // ── Stock Valuation ───────────────────────────────────────────────────────────
 
 async function getStockValuation(companyId, role, branchIds, { branchId } = {}) {
+  const { rows: [co] } = await query(
+    `SELECT costing_method FROM companies WHERE company_id = $1`, [companyId]
+  );
+  const costingMethod = co?.costing_method || 'weighted_average';
+
   const conds = ['p.company_id = $1', 'p.is_active = TRUE', 'b.company_id = $1', 'pbi.quantity_available > 0'];
   const vals  = [companyId];
 
   if (isCompanyWide(role)) {
-    // company-wide roles: optionally filter by a specific branchId from query params
     if (branchId) { vals.push(branchId); conds.push(`pbi.branch_id = $${vals.length}`); }
   } else {
-    // branch-scoped roles: restrict to assigned branches
     const ids = branchIds && branchIds.length
       ? branchIds
       : ['00000000-0000-0000-0000-000000000000'];
@@ -1122,22 +1125,59 @@ async function getStockValuation(companyId, role, branchIds, { branchId } = {}) 
     conds.push(`pbi.branch_id = ANY($${vals.length})`);
   }
 
-  const { rows } = await query(`
-    SELECT
-      p.product_id, p.product_name, p.sku, p.unit_of_measure,
-      COALESCE(pc.category_name, 'Uncategorized') AS category_name,
-      b.branch_name, b.branch_id,
-      pbi.quantity_available::numeric AS qty,
-      COALESCE(p.cost_price, 0)::numeric AS unit_cost,
-      (pbi.quantity_available * COALESCE(p.cost_price, 0))::numeric AS total_value,
-      pbi.reorder_level
-    FROM product_branch_inventory pbi
-    JOIN products p ON p.product_id = pbi.product_id
-    JOIN branches b ON b.branch_id  = pbi.branch_id
-    LEFT JOIN categories pc ON pc.category_id = p.category_id
-    WHERE ${conds.join(' AND ')}
-    ORDER BY total_value DESC
-  `, vals);
+  let rows;
+  if (costingMethod === 'fifo') {
+    ({ rows } = await query(`
+      WITH fifo_costs AS (
+        SELECT
+          product_id, branch_id,
+          SUM(qty_remaining * unit_cost)::numeric AS fifo_total_cost,
+          SUM(qty_remaining)::numeric             AS fifo_qty
+        FROM inventory_cost_layers
+        WHERE company_id = $1 AND qty_remaining > 0
+        GROUP BY product_id, branch_id
+      )
+      SELECT
+        p.product_id, p.product_name, p.sku, p.unit_of_measure,
+        COALESCE(pc.category_name, 'Uncategorized') AS category_name,
+        b.branch_name, b.branch_id,
+        pbi.quantity_available::numeric AS qty,
+        COALESCE(
+          fc.fifo_total_cost / NULLIF(fc.fifo_qty, 0),
+          p.cost_price,
+          0
+        )::numeric AS unit_cost,
+        COALESCE(
+          fc.fifo_total_cost,
+          pbi.quantity_available * COALESCE(p.cost_price, 0)
+        )::numeric AS total_value,
+        pbi.reorder_level
+      FROM product_branch_inventory pbi
+      JOIN products p ON p.product_id = pbi.product_id
+      JOIN branches b ON b.branch_id  = pbi.branch_id
+      LEFT JOIN categories pc ON pc.category_id = p.category_id
+      LEFT JOIN fifo_costs fc ON fc.product_id = pbi.product_id AND fc.branch_id = pbi.branch_id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY total_value DESC
+    `, vals));
+  } else {
+    ({ rows } = await query(`
+      SELECT
+        p.product_id, p.product_name, p.sku, p.unit_of_measure,
+        COALESCE(pc.category_name, 'Uncategorized') AS category_name,
+        b.branch_name, b.branch_id,
+        pbi.quantity_available::numeric AS qty,
+        COALESCE(p.cost_price, 0)::numeric AS unit_cost,
+        (pbi.quantity_available * COALESCE(p.cost_price, 0))::numeric AS total_value,
+        pbi.reorder_level
+      FROM product_branch_inventory pbi
+      JOIN products p ON p.product_id = pbi.product_id
+      JOIN branches b ON b.branch_id  = pbi.branch_id
+      LEFT JOIN categories pc ON pc.category_id = p.category_id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY total_value DESC
+    `, vals));
+  }
 
   const items = rows.map((r) => ({
     productId:    r.product_id,

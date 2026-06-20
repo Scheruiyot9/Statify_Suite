@@ -2018,6 +2018,106 @@ function SecurityTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// ── Inventory Settings Tab ────────────────────────────────────────────────────
+
+function InventoryTab() {
+  const qc        = useQueryClient();
+  const companyId = useAuthStore((s) => s.user?.companyId);
+  const userRole  = useAuthStore((s) => s.user?.role);
+  const isAdmin   = userRole === 'company_admin';
+
+  const [costingMethod, setCostingMethod] = useState('weighted_average');
+
+  const { data: companyData } = useQuery({
+    queryKey: ['company-mine', companyId],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    enabled:  !!companyId && isAdmin,
+  });
+
+  useEffect(() => {
+    if (companyData?.costing_method) {
+      setCostingMethod(companyData.costing_method);
+    }
+  }, [companyData]);
+
+  const saveMut = useMutation({
+    mutationFn: (method) =>
+      api.patch('/companies/mine/profile', { costing_method: method }).then((r) => r.data.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
+      toast.success('Costing method saved');
+    },
+  });
+
+  const METHODS = [
+    {
+      value: 'weighted_average',
+      label: 'Weighted Average Cost (WAC)',
+      desc:  'Each purchase blends into a running average cost price. Simpler to manage and the recommended default.',
+    },
+    {
+      value: 'fifo',
+      label: 'First In, First Out (FIFO)',
+      desc:  'Oldest stock layers are consumed first. More accurate COGS when purchase prices change frequently.',
+    },
+  ];
+
+  return (
+    <div className="max-w-lg space-y-6 py-4">
+      <div className="rounded-xl border border-gray-200 p-5 space-y-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
+            <Package className="h-5 w-5 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">Inventory Costing Method</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Determines how cost of goods sold (COGS) is calculated on each sale.
+              Applies to the whole company. Changing this only affects new GRNs and sales going forward.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {METHODS.map((m) => (
+            <label key={m.value}
+              className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
+                costingMethod === m.value
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}>
+              <input
+                type="radio"
+                name="costing_method"
+                value={m.value}
+                checked={costingMethod === m.value}
+                onChange={() => setCostingMethod(m.value)}
+                className="mt-0.5 accent-primary-600"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">{m.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{m.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            loading={saveMut.isPending}
+            disabled={costingMethod === companyData?.costing_method}
+            onClick={() => saveMut.mutate(costingMethod)}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const NAV_GROUPS = [
   {
     label: 'POS Setup',
@@ -2033,6 +2133,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'categories', label: 'Product Categories', Icon: Package },
       { id: 'tax',        label: 'Tax Rates',           Icon: Percent },
+      { id: 'inventory',  label: 'Inventory',           Icon: Layers  },
     ],
   },
   {
@@ -2096,6 +2197,7 @@ export default function SettingsPage() {
           {activeTab === 'pay-modes'      && <PayModesTab />}
           {activeTab === 'terminals'      && <TerminalsTab />}
           {activeTab === 'return-reasons' && <ReturnReasonsTab />}
+          {activeTab === 'inventory'      && <InventoryTab />}
           {activeTab === 'security'       && <SecurityTab />}
           {activeTab === 'subscription'   && <SubscriptionTab />}
         </div>
