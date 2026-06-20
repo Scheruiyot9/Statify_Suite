@@ -274,6 +274,14 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
       `, [companyId, sessionId]);
       if (existing.length) return;
 
+      // Exclude transactions already posted individually (mode was per_transaction earlier today)
+      const NOT_YET_POSTED = `
+        AND NOT EXISTS (
+          SELECT 1 FROM journal_entries je
+          WHERE je.company_id = $2 AND je.source_type = 'SALE'
+            AND je.source_id = st.transaction_id AND je.status = 'posted'
+        )`;
+
       const { rows: [agg] } = await client.query(`
         SELECT
           st.branch_id,
@@ -282,9 +290,10 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
           COALESCE(SUM(st.tax_amount),    0)::numeric AS tax_amount
         FROM sales_transactions st
         WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+          ${NOT_YET_POSTED}
         GROUP BY st.branch_id
       `, [sessionId, companyId]);
-      if (!agg || parseFloat(agg.total_amount) <= 0.005) return;
+      if (!agg || parseFloat(agg.total_amount) <= 0.005) return; // nothing unposted in this session
 
       const { rows: pmtRows } = await client.query(`
         SELECT pm.method_name, ba.account_id AS gl_account_id,
@@ -294,6 +303,7 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
         LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
         JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
         WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+          ${NOT_YET_POSTED}
         GROUP BY pm.method_name, ba.account_id
       `, [sessionId, companyId]);
 
@@ -303,6 +313,7 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
         JOIN products p ON p.product_id = sti.product_id
         JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
         WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+          ${NOT_YET_POSTED}
       `, [sessionId, companyId]);
 
       const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
@@ -358,6 +369,18 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
     `, [companyId, branchId, date]);
     if (existing.length) throw new Error(`Daily summary for ${date} already posted for this branch`);
 
+    // Exclude transactions already covered by a session summary OR posted individually
+    const UNPOSTED = `
+      AND NOT EXISTS (
+        SELECT 1 FROM journal_entries je
+        WHERE je.company_id = $1 AND je.status = 'posted'
+          AND (
+            (je.source_type = 'SESSION_SALE_SUMMARY' AND je.source_id = st.pos_session_id)
+            OR
+            (je.source_type = 'SALE' AND je.source_id = st.transaction_id)
+          )
+      )`;
+
     const { rows: [agg] } = await client.query(`
       SELECT
         COALESCE(SUM(st.total_amount), 0)::numeric AS total_amount,
@@ -365,11 +388,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       FROM sales_transactions st
       WHERE st.company_id = $1 AND st.branch_id = $2
         AND st.transaction_date::date = $3 AND st.status = 'completed'
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
-            AND je.source_id = st.pos_session_id AND je.status = 'posted'
-        )
+        ${UNPOSTED}
     `, [companyId, branchId, date]);
     if (!agg || parseFloat(agg.total_amount) <= 0.005) throw new Error('No unposted sales found for this date/branch');
 
@@ -382,11 +401,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
       WHERE st.company_id = $1 AND st.branch_id = $2
         AND st.transaction_date::date = $3 AND st.status = 'completed'
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
-            AND je.source_id = st.pos_session_id AND je.status = 'posted'
-        )
+        ${UNPOSTED}
       GROUP BY pm.method_name, ba.account_id
     `, [companyId, branchId, date]);
 
@@ -397,11 +412,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
       WHERE st.company_id = $1 AND st.branch_id = $2
         AND st.transaction_date::date = $3 AND st.status = 'completed'
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
-            AND je.source_id = st.pos_session_id AND je.status = 'posted'
-        )
+        ${UNPOSTED}
     `, [companyId, branchId, date]);
 
     const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
