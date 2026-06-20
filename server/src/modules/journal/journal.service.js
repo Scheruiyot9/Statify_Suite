@@ -510,7 +510,17 @@ async function postUnpostedPerTransaction(companyId, branchId, date, userId) {
     const payments = paymentsMap[txn.transaction_id] || [];
     const ok = await transaction(async (client) => {
       await postSaleEntry(client, companyId, txn, items, payments);
-    }).then(() => true).catch(() => false);
+      // postSaleEntry swallows errors and has silent early returns — verify a JE was actually created
+      const { rows } = await client.query(
+        `SELECT 1 FROM journal_entries
+         WHERE source_type = 'SALE' AND source_id = $1 AND status = 'posted' LIMIT 1`,
+        [txn.transaction_id]
+      );
+      if (!rows.length) throw new Error(`no JE created for ${txn.transaction_number}`);
+    }).then(() => true).catch((e) => {
+      console.error('[retro-post]', e.message);
+      return false;
+    });
     if (ok) posted++; else skipped++;
   }
 

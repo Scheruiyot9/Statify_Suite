@@ -2037,7 +2037,13 @@ function JournalTab() {
     onSuccess: (data) => {
       if (data?.data?.posted !== undefined) {
         const { posted, skipped } = data.data;
-        toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` (${skipped} skipped)` : ''}`);
+        if (posted === 0 && skipped === 0) {
+          toast.success('No unposted transactions found for this date');
+        } else if (posted === 0) {
+          toast.error(`0 posted — ${skipped} failed (check server logs or chart of accounts setup)`);
+        } else {
+          toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` · ${skipped} failed` : ''}`);
+        }
       } else {
         toast.success('Summary posted to journal');
       }
