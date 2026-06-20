@@ -2018,6 +2018,166 @@ function SecurityTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// ── Journal Settings Tab ──────────────────────────────────────────────────────
+
+function JournalTab() {
+  const qc        = useQueryClient();
+  const companyId = useAuthStore((s) => s.user?.companyId);
+  const userRole  = useAuthStore((s) => s.user?.role);
+  const isAdmin   = userRole === 'company_admin';
+
+  const [postingMode, setPostingMode] = useState('per_transaction');
+  const [dailyBranchId, setDailyBranchId] = useState('');
+  const [dailyDate,     setDailyDate]     = useState(new Date().toISOString().slice(0, 10));
+
+  const { data: companyData } = useQuery({
+    queryKey: ['company-mine', companyId],
+    queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
+    enabled:  !!companyId && isAdmin,
+  });
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => api.get('/branches').then((r) => r.data.data),
+    enabled:  !!companyId && isAdmin,
+  });
+
+  useEffect(() => {
+    if (companyData?.journal_posting_mode) setPostingMode(companyData.journal_posting_mode);
+  }, [companyData]);
+
+  const saveMut = useMutation({
+    mutationFn: (mode) =>
+      api.patch('/companies/mine/profile', { journal_posting_mode: mode }).then((r) => r.data.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-mine', companyId] });
+      toast.success('Journal posting mode saved');
+    },
+  });
+
+  const dailyMut = useMutation({
+    mutationFn: ({ branchId, date }) =>
+      api.post('/journal/daily-summaries', { branchId, date }).then((r) => r.data),
+    onSuccess: () => toast.success('Daily summary posted to journal'),
+    onError:   (e) => toast.error(e.response?.data?.message || 'Failed to post summary'),
+  });
+
+  const MODES = [
+    {
+      value: 'per_transaction',
+      label: 'Per Transaction',
+      desc:  'One journal entry for every sale. Full audit trail — best for low-to-medium volume.',
+    },
+    {
+      value: 'session_summary',
+      label: 'Session Summary',
+      desc:  'One journal entry when a cashier closes their shift, covering all sales in that session.',
+    },
+    {
+      value: 'daily_summary',
+      label: 'Daily Summary',
+      desc:  'One journal entry per branch per day, posted manually by an admin. Best for high-volume operations.',
+    },
+  ];
+
+  return (
+    <div className="max-w-lg space-y-6 py-4">
+      {/* Posting mode */}
+      <div className="rounded-xl border border-gray-200 p-5 space-y-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50">
+            <Layers className="h-5 w-5 text-violet-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">Journal Posting Mode</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Controls how sales are recorded in the double-entry journal. Does not affect inventory or reports.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {MODES.map((m) => (
+            <label key={m.value}
+              className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
+                postingMode === m.value
+                  ? 'border-primary-500 bg-primary-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}>
+              <input
+                type="radio"
+                name="journal_posting_mode"
+                value={m.value}
+                checked={postingMode === m.value}
+                onChange={() => setPostingMode(m.value)}
+                className="mt-0.5 accent-primary-600"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">{m.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{m.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            loading={saveMut.isPending}
+            disabled={postingMode === companyData?.journal_posting_mode}
+            onClick={() => saveMut.mutate(postingMode)}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+
+      {/* Daily summary trigger — only shown when daily_summary mode is active */}
+      {postingMode === 'daily_summary' && (
+        <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+          <p className="text-sm font-medium text-gray-900">Post Daily Summary</p>
+          <p className="text-xs text-gray-500">
+            Post one journal entry aggregating all sales for a branch on a given date.
+            Run this at end of business each day.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Branch</label>
+              <select
+                value={dailyBranchId}
+                onChange={(e) => setDailyBranchId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+              >
+                <option value="">— Select —</option>
+                {(branches || []).map((b) => (
+                  <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+              <input
+                type="date"
+                value={dailyDate}
+                onChange={(e) => setDailyDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              loading={dailyMut.isPending}
+              disabled={!dailyBranchId || !dailyDate}
+              onClick={() => dailyMut.mutate({ branchId: dailyBranchId, date: dailyDate })}
+            >
+              Post Summary
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Inventory Settings Tab ────────────────────────────────────────────────────
 
 function InventoryTab() {
@@ -2146,8 +2306,9 @@ const NAV_GROUPS = [
   {
     label: 'System',
     items: [
-      { id: 'security',     label: 'Security',     Icon: ShieldCheck },
-      { id: 'subscription', label: 'Subscription', Icon: Layers      },
+      { id: 'journal',      label: 'Journal',      Icon: ArrowUpCircle },
+      { id: 'security',     label: 'Security',     Icon: ShieldCheck   },
+      { id: 'subscription', label: 'Subscription', Icon: Layers        },
     ],
   },
 ];
@@ -2198,6 +2359,7 @@ export default function SettingsPage() {
           {activeTab === 'terminals'      && <TerminalsTab />}
           {activeTab === 'return-reasons' && <ReturnReasonsTab />}
           {activeTab === 'inventory'      && <InventoryTab />}
+          {activeTab === 'journal'        && <JournalTab />}
           {activeTab === 'security'       && <SecurityTab />}
           {activeTab === 'subscription'   && <SubscriptionTab />}
         </div>

@@ -2,6 +2,7 @@ const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const productsService = require('../products/products.service');
 const QueryBuilder = require('../../shared/qb');
+const jrn = require('../journal/journal.service');
 
 // ── POS Product Catalog ───────────────────────────────────────────────────────
 
@@ -463,12 +464,33 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     }
   }
 
-  return {
+  const result = {
     ...rows[0],
     terminal_name:        sessionRows[0].terminal_name,
     expected_cash_amount: parseFloat(rows[0].expected_cash_amount),
     cash_variance:        parseFloat(rows[0].cash_variance),
   };
+
+  // Post journal summary if company uses session or daily summary mode
+  const { rows: [co] } = await query(
+    `SELECT journal_posting_mode, branch_id FROM companies c
+     JOIN pos_sessions ps ON ps.company_id = c.company_id
+     WHERE ps.session_id = $1`, [sessionId]
+  );
+  const postingMode = co?.journal_posting_mode || 'per_transaction';
+
+  if (postingMode === 'session_summary') {
+    await jrn.postSessionSummaryEntry(companyId, sessionId, userId).catch((e) =>
+      console.error('[ledger] session summary failed:', e.message)
+    );
+  } else if (postingMode === 'daily_summary') {
+    const today = new Date().toISOString().slice(0, 10);
+    await jrn.postDailySummaryEntry(companyId, co.branch_id, today, userId).catch((e) =>
+      console.error('[ledger] daily summary skipped (may already be posted):', e.message)
+    );
+  }
+
+  return result;
 }
 
 // ── Shifts Management ─────────────────────────────────────────────────────────

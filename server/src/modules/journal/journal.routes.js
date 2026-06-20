@@ -14,5 +14,6 @@ r.get('/unreconciled',      requireFinance, requireRole('company_admin','account
 r.post('/opening-balances', requireFinance, requireRole('company_admin','accountant'),                  ctrl.openingBalances);
 r.post('/ar-settlement',    requireFinance, requireRole('company_admin','accountant'),                  ctrl.arSettlement);
 r.post('/reconcile',        requireFinance, requireRole('company_admin','accountant'),                  ctrl.reconcile);
+r.post('/daily-summaries', requireFinance, requireRole('company_admin'),                               ctrl.postDailySummary);
 
 module.exports = r;

@@ -13,4 +13,11 @@ const unreconciledLines = async (req, res) =>
 const reconcile         = async (req, res) =>
   ok(res, await svc.reconcileLines(req.tenantId, req.user.userId, req.body.lineIds));
 
-module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile };
+const postDailySummary  = async (req, res) => {
+  const { branchId, date } = req.body;
+  if (!branchId || !date) throw new Error('branchId and date are required');
+  const result = await svc.postDailySummaryEntry(req.tenantId, branchId, date, req.user.userId);
+  created(res, { journalEntryId: result });
+};
+
+module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile, postDailySummary };

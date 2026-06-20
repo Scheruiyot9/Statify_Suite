@@ -301,7 +301,7 @@ async function getMyCompany(companyId) {
             lock_timeout_minutes, session_lifetime_days,
             pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode,
             pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit,
-            pos_prevent_sales_below_cost, costing_method
+            pos_prevent_sales_below_cost, costing_method, journal_posting_mode
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -363,6 +363,11 @@ async function updateMyProfile(companyId, patch) {
     const method = valid.includes(patch.costing_method) ? patch.costing_method : 'weighted_average';
     setParts.push(`costing_method = ${p(method)}`);
   }
+  if ('journal_posting_mode' in patch) {
+    const valid = ['per_transaction', 'session_summary', 'daily_summary'];
+    const mode  = valid.includes(patch.journal_posting_mode) ? patch.journal_posting_mode : 'per_transaction';
+    setParts.push(`journal_posting_mode = ${p(mode)}`);
+  }
 
   if (!setParts.length) throw AppError.badRequest('No fields to update');
 
@@ -374,7 +379,7 @@ async function updateMyProfile(companyId, patch) {
                 lock_timeout_minutes, session_lifetime_days,
                 pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode,
                 pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit,
-                pos_prevent_sales_below_cost, costing_method`,
+                pos_prevent_sales_below_cost, costing_method, journal_posting_mode`,
     params
   );
   if (!rows.length) throw AppError.notFound('Company');

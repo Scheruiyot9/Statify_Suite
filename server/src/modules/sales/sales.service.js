@@ -93,10 +93,11 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
 
   // Enforce "no sale below cost" when enabled for this company
   const { rows: coRows } = await query(
-    `SELECT pos_prevent_sales_below_cost, costing_method FROM companies WHERE company_id = $1`,
+    `SELECT pos_prevent_sales_below_cost, costing_method, journal_posting_mode FROM companies WHERE company_id = $1`,
     [companyId]
   );
-  const costingMethod = coRows[0]?.costing_method || 'weighted_average';
+  const costingMethod   = coRows[0]?.costing_method       || 'weighted_average';
+  const postingMode     = coRows[0]?.journal_posting_mode || 'per_transaction';
   if (coRows[0]?.pos_prevent_sales_below_cost) {
     const productIds = items.map((i) => i.productId);
     const { rows: costRows } = await query(
@@ -237,12 +238,14 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
           p.referenceNumber || null, i + 1]);
     }
 
-    // Post double-entry journal for this sale
-    await jrn.postSaleEntry(client, companyId, {
-      ...txn,
-      tax_amount:      taxAmount,
-      cashier_user_id: cashierUserId,
-    }, items, payments, cogsMap);
+    // Post double-entry journal for this sale (skipped in summary modes — posted at session/day close)
+    if (postingMode === 'per_transaction') {
+      await jrn.postSaleEntry(client, companyId, {
+        ...txn,
+        tax_amount:      taxAmount,
+        cashier_user_id: cashierUserId,
+      }, items, payments, cogsMap);
+    }
 
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft
     let pointsEarned = 0;

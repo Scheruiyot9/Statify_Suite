@@ -178,40 +178,322 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
   }
 }
 
+// ── Summary-mode helpers ──────────────────────────────────────────────────────
+
+// Check whether a transaction has been included in a posted session or daily summary.
+async function _isCoveredBySummary(client, companyId, transactionId) {
+  const { rows: [st] } = await client.query(`
+    SELECT pos_session_id, branch_id, transaction_date::date AS sale_date
+    FROM sales_transactions WHERE transaction_id = $1 AND company_id = $2
+  `, [transactionId, companyId]);
+  if (!st) return false;
+
+  if (st.pos_session_id) {
+    const { rows } = await client.query(`
+      SELECT 1 FROM journal_entries
+      WHERE company_id=$1 AND source_type='SESSION_SALE_SUMMARY' AND source_id=$2 AND status='posted'
+    `, [companyId, st.pos_session_id]);
+    if (rows.length) return true;
+  }
+
+  const { rows } = await client.query(`
+    SELECT 1 FROM journal_entries
+    WHERE company_id=$1 AND source_type='DAILY_SALE_SUMMARY' AND source_id=$2 AND entry_date=$3 AND status='posted'
+  `, [companyId, st.branch_id, st.sale_date]);
+  return rows.length > 0;
+}
+
+// Build reversal lines for a single transaction (used when reversing a summary-covered sale).
+// Returns { lines, txnNumber } or null.
+async function _buildSaleReversalLines(client, companyId, transactionId, accIds) {
+  const { rows: [st] } = await client.query(`
+    SELECT total_amount::numeric, tax_amount::numeric, transaction_number
+    FROM sales_transactions WHERE transaction_id = $1 AND company_id = $2
+  `, [transactionId, companyId]);
+  if (!st) return null;
+
+  const { rows: pmtRows } = await client.query(`
+    SELECT pm.method_name, ba.account_id AS gl_account_id, tp.amount_applied::numeric AS amt
+    FROM transaction_payments tp
+    JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+    LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+    WHERE tp.transaction_id = $1
+  `, [transactionId]);
+
+  const { rows: [cogsRow] } = await client.query(`
+    SELECT COALESCE(SUM(sti.quantity * COALESCE(p.cost_price, 0)), 0)::numeric AS cogs
+    FROM sales_transaction_items sti
+    JOIN products p ON p.product_id = sti.product_id
+    WHERE sti.transaction_id = $1
+  `, [transactionId]);
+
+  const totalAmount = parseFloat(st.total_amount);
+  const taxAmount   = parseFloat(st.tax_amount);
+  const netRevenue  = +(totalAmount - taxAmount).toFixed(4);
+  const totalCOGS   = parseFloat(cogsRow?.cogs || 0);
+
+  const lines = [];
+
+  // CR: cash/bank lines reversed
+  for (const pmt of pmtRows) {
+    let accId = pmt.gl_account_id || null;
+    if (!accId) {
+      const methodName = (pmt.method_name || '').toLowerCase();
+      const isBank = methodName.includes('bank') || methodName.includes('transfer') || methodName.includes('cheque');
+      accId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
+    }
+    if (!accId) continue;
+    const amt = parseFloat(pmt.amt);
+    if (amt > 0.005) lines.push({ accountId: accId, debit: 0, credit: +amt.toFixed(4) });
+  }
+
+  if (totalCOGS > 0.005 && accIds['5000']) {
+    lines.push({ accountId: accIds['5000'], debit: 0, credit: +totalCOGS.toFixed(4) });
+  }
+  if (netRevenue > 0.005 && accIds['4000']) {
+    lines.push({ accountId: accIds['4000'], debit: netRevenue, credit: 0 });
+  }
+  if (taxAmount > 0.005 && accIds['2100']) {
+    lines.push({ accountId: accIds['2100'], debit: +taxAmount.toFixed(4), credit: 0 });
+  }
+  if (totalCOGS > 0.005 && accIds['1200']) {
+    lines.push({ accountId: accIds['1200'], debit: +totalCOGS.toFixed(4), credit: 0 });
+  }
+
+  return { lines, txnNumber: st.transaction_number };
+}
+
+// ── Session Sale Summary ──────────────────────────────────────────────────────
+// One JE per session close — aggregates all completed sales in the session.
+async function postSessionSummaryEntry(companyId, sessionId, userId) {
+  return transaction(async (client) => {
+    try {
+      const { rows: existing } = await client.query(`
+        SELECT 1 FROM journal_entries
+        WHERE company_id=$1 AND source_type='SESSION_SALE_SUMMARY' AND source_id=$2 AND status='posted'
+      `, [companyId, sessionId]);
+      if (existing.length) return;
+
+      const { rows: [agg] } = await client.query(`
+        SELECT
+          st.branch_id,
+          MIN(st.transaction_date::date) AS entry_date,
+          COALESCE(SUM(st.total_amount),  0)::numeric AS total_amount,
+          COALESCE(SUM(st.tax_amount),    0)::numeric AS tax_amount
+        FROM sales_transactions st
+        WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+        GROUP BY st.branch_id
+      `, [sessionId, companyId]);
+      if (!agg || parseFloat(agg.total_amount) <= 0.005) return;
+
+      const { rows: pmtRows } = await client.query(`
+        SELECT pm.method_name, ba.account_id AS gl_account_id,
+               COALESCE(SUM(tp.amount_applied), 0)::numeric AS total
+        FROM transaction_payments tp
+        JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+        LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+        JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
+        WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+        GROUP BY pm.method_name, ba.account_id
+      `, [sessionId, companyId]);
+
+      const { rows: [cogsRow] } = await client.query(`
+        SELECT COALESCE(SUM(sti.quantity * COALESCE(p.cost_price, 0)), 0)::numeric AS total_cogs
+        FROM sales_transaction_items sti
+        JOIN products p ON p.product_id = sti.product_id
+        JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+        WHERE st.pos_session_id = $1 AND st.company_id = $2 AND st.status = 'completed'
+      `, [sessionId, companyId]);
+
+      const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+      if (!accIds['4000']) return;
+
+      const totalAmount = parseFloat(agg.total_amount);
+      const taxAmount   = parseFloat(agg.tax_amount);
+      const netRevenue  = +(totalAmount - taxAmount).toFixed(4);
+      const totalCOGS   = parseFloat(cogsRow?.total_cogs || 0);
+
+      const lines = [];
+
+      for (const pmt of pmtRows) {
+        let drAccId = pmt.gl_account_id || null;
+        if (!drAccId) {
+          const name = (pmt.method_name || '').toLowerCase();
+          const isBank = name.includes('bank') || name.includes('transfer') || name.includes('cheque');
+          drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
+        }
+        if (!drAccId) continue;
+        const amt = parseFloat(pmt.total);
+        if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
+      }
+
+      if (totalCOGS  > 0.005 && accIds['5000']) lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4),  credit: 0 });
+      if (netRevenue > 0.005 && accIds['4000']) lines.push({ accountId: accIds['4000'], debit: 0, credit: netRevenue });
+      if (taxAmount  > 0.005 && accIds['2100']) lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
+      if (totalCOGS  > 0.005 && accIds['1200']) lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+
+      if (lines.length < 2) return;
+
+      await _post(client, companyId, {
+        entryDate:   agg.entry_date,
+        description: 'Session sales summary',
+        sourceType:  'SESSION_SALE_SUMMARY',
+        sourceId:    sessionId,
+        userId,
+        lines,
+      });
+    } catch (err) {
+      console.error('[ledger] postSessionSummaryEntry skipped:', err.message);
+    }
+  });
+}
+
+// ── Daily Sale Summary ────────────────────────────────────────────────────────
+// One JE per branch per day — admin-triggered via endpoint.
+async function postDailySummaryEntry(companyId, branchId, date, userId) {
+  return transaction(async (client) => {
+    const { rows: existing } = await client.query(`
+      SELECT 1 FROM journal_entries
+      WHERE company_id=$1 AND source_type='DAILY_SALE_SUMMARY' AND source_id=$2 AND entry_date=$3 AND status='posted'
+    `, [companyId, branchId, date]);
+    if (existing.length) throw new Error(`Daily summary for ${date} already posted for this branch`);
+
+    const { rows: [agg] } = await client.query(`
+      SELECT
+        COALESCE(SUM(st.total_amount), 0)::numeric AS total_amount,
+        COALESCE(SUM(st.tax_amount),   0)::numeric AS tax_amount
+      FROM sales_transactions st
+      WHERE st.company_id = $1 AND st.branch_id = $2
+        AND st.transaction_date::date = $3 AND st.status = 'completed'
+        AND NOT EXISTS (
+          SELECT 1 FROM journal_entries je
+          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
+            AND je.source_id = st.pos_session_id AND je.status = 'posted'
+        )
+    `, [companyId, branchId, date]);
+    if (!agg || parseFloat(agg.total_amount) <= 0.005) throw new Error('No unposted sales found for this date/branch');
+
+    const { rows: pmtRows } = await client.query(`
+      SELECT pm.method_name, ba.account_id AS gl_account_id,
+             COALESCE(SUM(tp.amount_applied), 0)::numeric AS total
+      FROM transaction_payments tp
+      JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+      LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+      JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
+      WHERE st.company_id = $1 AND st.branch_id = $2
+        AND st.transaction_date::date = $3 AND st.status = 'completed'
+        AND NOT EXISTS (
+          SELECT 1 FROM journal_entries je
+          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
+            AND je.source_id = st.pos_session_id AND je.status = 'posted'
+        )
+      GROUP BY pm.method_name, ba.account_id
+    `, [companyId, branchId, date]);
+
+    const { rows: [cogsRow] } = await client.query(`
+      SELECT COALESCE(SUM(sti.quantity * COALESCE(p.cost_price, 0)), 0)::numeric AS total_cogs
+      FROM sales_transaction_items sti
+      JOIN products p ON p.product_id = sti.product_id
+      JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
+      WHERE st.company_id = $1 AND st.branch_id = $2
+        AND st.transaction_date::date = $3 AND st.status = 'completed'
+        AND NOT EXISTS (
+          SELECT 1 FROM journal_entries je
+          WHERE je.company_id = $1 AND je.source_type = 'SESSION_SALE_SUMMARY'
+            AND je.source_id = st.pos_session_id AND je.status = 'posted'
+        )
+    `, [companyId, branchId, date]);
+
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+    if (!accIds['4000']) throw new Error('Chart of Accounts not seeded');
+
+    const totalAmount = parseFloat(agg.total_amount);
+    const taxAmount   = parseFloat(agg.tax_amount);
+    const netRevenue  = +(totalAmount - taxAmount).toFixed(4);
+    const totalCOGS   = parseFloat(cogsRow?.total_cogs || 0);
+
+    const lines = [];
+
+    for (const pmt of pmtRows) {
+      let drAccId = pmt.gl_account_id || null;
+      if (!drAccId) {
+        const name = (pmt.method_name || '').toLowerCase();
+        const isBank = name.includes('bank') || name.includes('transfer') || name.includes('cheque');
+        drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
+      }
+      if (!drAccId) continue;
+      const amt = parseFloat(pmt.total);
+      if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
+    }
+
+    if (totalCOGS  > 0.005 && accIds['5000']) lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4),  credit: 0 });
+    if (netRevenue > 0.005 && accIds['4000']) lines.push({ accountId: accIds['4000'], debit: 0, credit: netRevenue });
+    if (taxAmount  > 0.005 && accIds['2100']) lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
+    if (totalCOGS  > 0.005 && accIds['1200']) lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+
+    if (lines.length < 2) throw new Error('Nothing to post');
+
+    return _post(client, companyId, {
+      entryDate:   date,
+      description: `Daily sales summary — ${date}`,
+      sourceType:  'DAILY_SALE_SUMMARY',
+      sourceId:    branchId,
+      userId,
+      lines,
+    });
+  });
+}
+
 // ── Sale Void Entry ───────────────────────────────────────────────────────────
 // Reversal of the original SALE journal entry — mirrors postVoidPaymentEntry pattern.
 // Looks up the posted SALE entry by source_id and swaps all Dr/Cr sides.
 async function postSaleVoidEntry(client, companyId, txn) {
   try {
+    // Case 1: individual SALE JE exists — reverse it directly (per_transaction mode)
     const { rows: jeRows } = await client.query(
       `SELECT journal_entry_id FROM journal_entries
        WHERE company_id = $1 AND source_type = 'SALE' AND source_id = $2 AND status = 'posted'
        ORDER BY created_at DESC LIMIT 1`,
       [companyId, txn.transaction_id]
     );
-    if (!jeRows.length) return; // CoA not seeded or entry was skipped
+    if (jeRows.length) {
+      const { rows: origLines } = await client.query(
+        `SELECT account_id, debit, credit, description, entity_type, entity_id
+         FROM ledger_entry_lines WHERE journal_entry_id = $1`,
+        [jeRows[0].journal_entry_id]
+      );
+      if (!origLines.length) return;
+      await _post(client, companyId, {
+        entryDate:   new Date().toISOString().slice(0, 10),
+        description: `Void sale — ${txn.transaction_number}`,
+        sourceType:  'SALE_VOID',
+        sourceId:    txn.transaction_id,
+        userId:      txn.voided_by_user_id || null,
+        lines: origLines.map((l) => ({
+          accountId: l.account_id, debit: parseFloat(l.credit), credit: parseFloat(l.debit),
+          description: l.description, entityType: l.entity_type, entityId: l.entity_id,
+        })),
+      });
+      return;
+    }
 
-    const { rows: origLines } = await client.query(
-      `SELECT account_id, debit, credit, description, entity_type, entity_id
-       FROM ledger_entry_lines WHERE journal_entry_id = $1`,
-      [jeRows[0].journal_entry_id]
-    );
-    if (!origLines.length) return;
+    // Case 2: no individual JE — check if a summary JE covers this transaction
+    const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
+    if (!covered) return;
+
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+    if (!accIds['4000']) return;
+
+    const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
+    if (!result || result.lines.length < 2) return;
 
     await _post(client, companyId, {
       entryDate:   new Date().toISOString().slice(0, 10),
-      description: `Void sale — ${txn.transaction_number}`,
+      description: `Void sale — ${result.txnNumber}`,
       sourceType:  'SALE_VOID',
       sourceId:    txn.transaction_id,
       userId:      txn.voided_by_user_id || null,
-      lines: origLines.map((l) => ({
-        accountId:   l.account_id,
-        debit:       parseFloat(l.credit),
-        credit:      parseFloat(l.debit),
-        description: l.description,
-        entityType:  l.entity_type,
-        entityId:    l.entity_id,
-      })),
+      lines:       result.lines,
     });
   } catch (err) {
     console.error('[ledger] postSaleVoidEntry skipped:', err.message);
@@ -224,35 +506,51 @@ async function postSaleVoidEntry(client, companyId, txn) {
 // edits each reverse the previous corrected entry, not the original.
 async function postSaleEditReversal(client, companyId, txn) {
   try {
+    // Case 1: individual SALE JE exists — reverse it
     const { rows: jeRows } = await client.query(
       `SELECT journal_entry_id FROM journal_entries
        WHERE company_id = $1 AND source_type = 'SALE' AND source_id = $2 AND status = 'posted'
        ORDER BY created_at DESC LIMIT 1`,
       [companyId, txn.transaction_id]
     );
-    if (!jeRows.length) return;
+    if (jeRows.length) {
+      const { rows: origLines } = await client.query(
+        `SELECT account_id, debit, credit, description, entity_type, entity_id
+         FROM ledger_entry_lines WHERE journal_entry_id = $1`,
+        [jeRows[0].journal_entry_id]
+      );
+      if (!origLines.length) return;
+      await _post(client, companyId, {
+        entryDate:   new Date().toISOString().slice(0, 10),
+        description: `Edit reversal — ${txn.transaction_number}`,
+        sourceType:  'SALE_EDIT',
+        sourceId:    txn.transaction_id,
+        userId:      txn.edited_by_user_id || null,
+        lines: origLines.map((l) => ({
+          accountId: l.account_id, debit: parseFloat(l.credit), credit: parseFloat(l.debit),
+          description: l.description, entityType: l.entity_type, entityId: l.entity_id,
+        })),
+      });
+      return;
+    }
 
-    const { rows: origLines } = await client.query(
-      `SELECT account_id, debit, credit, description, entity_type, entity_id
-       FROM ledger_entry_lines WHERE journal_entry_id = $1`,
-      [jeRows[0].journal_entry_id]
-    );
-    if (!origLines.length) return;
+    // Case 2: no individual JE — check if a summary covers this transaction
+    const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
+    if (!covered) return;
+
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+    if (!accIds['4000']) return;
+
+    const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
+    if (!result || result.lines.length < 2) return;
 
     await _post(client, companyId, {
       entryDate:   new Date().toISOString().slice(0, 10),
-      description: `Edit reversal — ${txn.transaction_number}`,
+      description: `Edit reversal — ${result.txnNumber}`,
       sourceType:  'SALE_EDIT',
       sourceId:    txn.transaction_id,
       userId:      txn.edited_by_user_id || null,
-      lines: origLines.map((l) => ({
-        accountId:   l.account_id,
-        debit:       parseFloat(l.credit),
-        credit:      parseFloat(l.debit),
-        description: l.description,
-        entityType:  l.entity_type,
-        entityId:    l.entity_id,
-      })),
+      lines:       result.lines,
     });
   } catch (err) {
     console.error('[ledger] postSaleEditReversal skipped:', err.message);
@@ -1095,6 +1393,7 @@ async function getJournalEntry(companyId, jeId) {
 module.exports = {
   findAccIds, _post,
   postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
+  postSessionSummaryEntry, postDailySummaryEntry,
   postPaymentEntry, postVoidPaymentEntry,
   postDirectExpenseEntry, postVoidDirectExpenseEntry,
   postReturnEntry, postOpeningBalanceEntry,
