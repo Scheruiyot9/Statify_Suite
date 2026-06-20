@@ -178,7 +178,7 @@ async function deleteTerminal(companyId, terminalId) {
 
   const { rows } = await query(`
     UPDATE pos_terminals
-    SET is_active = FALSE, updated_at = now()
+    SET is_active = FALSE
     WHERE terminal_id = $1 AND company_id = $2
     RETURNING terminal_id
   `, [terminalId, companyId]);
