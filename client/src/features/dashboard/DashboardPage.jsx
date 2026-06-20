@@ -309,7 +309,7 @@ function BranchComparisonCard({ branches, period, onPeriod }) {
               />
             </div>
             <p className="mt-0.5 text-right text-xs text-gray-400">
-              Today: {formatCurrency(b.todaySales)}
+              Last 24h: {formatCurrency(b.todaySales)}
             </p>
           </div>
         ))}
@@ -466,7 +466,7 @@ function RecentTransactionsCard({ transactions }) {
       <Card title="Recent Transactions" icon={ShoppingCart} action={viewAll}>
         <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
           <ShoppingCart className="h-8 w-8 text-gray-200" />
-          <p className="text-sm text-gray-400">No transactions yet today.</p>
+          <p className="text-sm text-gray-400">No transactions in the last 24 hours.</p>
         </div>
       </Card>
     );
@@ -628,7 +628,7 @@ function PlatformOverview() {
         <div className="relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-5">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600/80">Today's Revenue</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600/80">Revenue (Last 24h)</p>
               <p className="mt-1 text-3xl font-extrabold leading-none text-amber-800">
                 {data?.today_sales != null ? formatCurrency(data.today_sales) : '—'}
               </p>
@@ -637,7 +637,7 @@ function PlatformOverview() {
               <DollarSign className="h-5 w-5 text-amber-600" />
             </div>
           </div>
-          <p className="mt-3 text-xs text-amber-600/70">Gross revenue across all tenants today</p>
+          <p className="mt-3 text-xs text-amber-600/70">Gross revenue across all tenants in last 24 hours</p>
         </div>
 
         {/* Live Sessions */}
@@ -841,13 +841,13 @@ export default function DashboardPage() {
             : canViewInventory ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
         }`}>
           <StatCard
-            label="Today's Sales"
+            label="Sales (Last 24h)"
             value={formatCurrencyCompact(data?.todaySales ?? 0)}
             Icon={TrendingUp}
             gradient="bg-gradient-to-br from-primary-600 to-primary-800"
             iconColor="text-white"
             accent="text-primary-200"
-            sub={`${data?.todayTransactions ?? 0} transactions today`}
+            sub={`${data?.todayTransactions ?? 0} transactions in last 24h`}
           />
           <StatCard
             label="Transactions"
@@ -856,7 +856,7 @@ export default function DashboardPage() {
             gradient="bg-gradient-to-br from-secondary-500 to-secondary-700"
             iconColor="text-white"
             accent="text-secondary-200"
-            sub="completed today"
+            sub="completed in last 24h"
           />
           {canViewInventory && (
             <StatCard
@@ -879,7 +879,7 @@ export default function DashboardPage() {
               gradient="bg-gradient-to-br from-violet-500 to-violet-700"
               iconColor="text-white"
               accent="text-violet-200"
-              sub={`${formatCurrencyCompact(data.branchComparison.reduce((s,b) => s + b.todaySales, 0))} total today`}
+              sub={`${formatCurrencyCompact(data.branchComparison.reduce((s,b) => s + b.todaySales, 0))} total (last 24h)`}
             />
           )}
         </div>

@@ -9,9 +9,9 @@ async function getPlatformSummary() {
   const [summaryRes, tenantRes] = await Promise.all([
     query(`
       SELECT
-        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date::date = CURRENT_DATE), 0)::numeric AS today_sales,
-        COUNT(*)                   FILTER (WHERE transaction_date::date = CURRENT_DATE)              AS today_txns,
-        COUNT(DISTINCT customer_id) FILTER (WHERE transaction_date::date = CURRENT_DATE AND customer_id IS NOT NULL) AS customers_served
+        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date >= NOW() - INTERVAL '24 hours'), 0)::numeric AS today_sales,
+        COUNT(*)                   FILTER (WHERE transaction_date >= NOW() - INTERVAL '24 hours')              AS today_txns,
+        COUNT(DISTINCT customer_id) FILTER (WHERE transaction_date >= NOW() - INTERVAL '24 hours' AND customer_id IS NOT NULL) AS customers_served
       FROM sales_transactions
       WHERE status = 'completed'
     `),
@@ -71,10 +71,10 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
     // 1. Today's summary
     query(`
       SELECT
-        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date::date = CURRENT_DATE), 0)::numeric AS today_sales,
-        COUNT(*)                   FILTER (WHERE transaction_date::date = CURRENT_DATE)              AS today_txns,
+        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date >= NOW() - INTERVAL '24 hours'), 0)::numeric AS today_sales,
+        COUNT(*)                   FILTER (WHERE transaction_date >= NOW() - INTERVAL '24 hours')              AS today_txns,
         COUNT(DISTINCT customer_id) FILTER (
-          WHERE transaction_date::date = CURRENT_DATE AND customer_id IS NOT NULL
+          WHERE transaction_date >= NOW() - INTERVAL '24 hours' AND customer_id IS NOT NULL
         ) AS customers_served
       FROM sales_transactions st
       WHERE st.company_id = $1 AND st.status = 'completed'
@@ -188,10 +188,10 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
             b.branch_name,
             b.branch_code,
             COALESCE(SUM(st.total_amount) FILTER (
-              WHERE st.transaction_date::date = CURRENT_DATE
+              WHERE st.transaction_date >= NOW() - INTERVAL '24 hours'
             ), 0)::numeric AS today_sales,
             COUNT(st.transaction_id) FILTER (
-              WHERE st.transaction_date::date = CURRENT_DATE
+              WHERE st.transaction_date >= NOW() - INTERVAL '24 hours'
             )              AS today_txns,
             COALESCE(SUM(st.total_amount) FILTER (
               WHERE st.transaction_date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')
