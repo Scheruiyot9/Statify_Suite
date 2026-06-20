@@ -2096,13 +2096,14 @@ function JournalTab() {
         </div>
       </div>
 
-      {/* Daily summary trigger — only shown when daily_summary mode is active */}
-      {postingMode === 'daily_summary' && (
-        <div className="rounded-xl border border-gray-200 p-5 space-y-4">
+      {/* Daily summary trigger — always visible so admins can retroactively post unposted transactions */}
+      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
           <p className="text-sm font-medium text-gray-900">Post Daily Summary</p>
           <p className="text-xs text-gray-500">
-            Post one journal entry aggregating all sales for a branch on a given date.
-            Run this at end of business each day.
+            Post one journal entry aggregating all unposted sales for a branch on a given date.
+            {postingMode === 'daily_summary'
+              ? ' Run this at end of business each day.'
+              : ' Use this to catch any transactions that were not posted while in a different posting mode.'}
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -2138,7 +2139,6 @@ function JournalTab() {
             </Button>
           </div>
         </div>
-      )}
     </div>
   );
 }
