@@ -217,7 +217,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
               <Plus className="h-3.5 w-3.5" /> Add item
             </button>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="rounded-lg border border-gray-200">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
