@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShoppingCart, Plus, Search, ChevronRight, ChevronDown,
@@ -40,6 +40,59 @@ function StatusBadge({ status }) {
   return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${m.color}`}>{m.label}</span>;
 }
 
+// ── Searchable product picker ─────────────────────────────────────────────────
+
+function ProductSearch({ products, value, onChange }) {
+  const [query,  setQuery]  = useState('');
+  const [open,   setOpen]   = useState(false);
+  const ref = useRef(null);
+
+  const selected = products.find((p) => p.product_id === value);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = (query.length > 0
+    ? products.filter((p) =>
+        p.product_name.toLowerCase().includes(query.toLowerCase()) ||
+        (p.sku ?? '').toLowerCase().includes(query.toLowerCase())
+      )
+    : products
+  ).slice(0, 30);
+
+  return (
+    <div className="relative" ref={ref}>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          className="w-full rounded-lg border border-gray-300 pl-8 pr-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+          placeholder="Search product or SKU…"
+          value={open ? query : (selected?.product_name ?? '')}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        />
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-gray-400">No products match</p>
+          ) : filtered.map((p) => (
+            <button key={p.product_id} type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(p.product_id); setOpen(false); setQuery(''); }}
+              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-primary-50 transition-colors ${value === p.product_id ? 'bg-primary-50' : ''}`}>
+              <span className="font-medium text-gray-900 truncate">{p.product_name}</span>
+              <span className="ml-3 shrink-0 text-xs text-gray-400 font-mono">{p.sku}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── PO Item row editor ────────────────────────────────────────────────────────
 
 function POItemRow({ item, products, onChange, onRemove }) {
@@ -54,12 +107,7 @@ function POItemRow({ item, products, onChange, onRemove }) {
   return (
     <tr className="border-b border-gray-100">
       <td className="py-2 pr-2">
-        <select className={sel} value={item.product_id ?? ''} onChange={(e) => handleProductChange(e.target.value)}>
-          <option value="">— Select product —</option>
-          {products.map((p) => (
-            <option key={p.product_id} value={p.product_id}>{p.product_name}</option>
-          ))}
-        </select>
+        <ProductSearch products={products} value={item.product_id ?? ''} onChange={handleProductChange} />
       </td>
       <td className="py-2 px-2 w-28">
         <input type="number" min="0.001" step="0.001" className={inp} value={item.quantity_ordered}
