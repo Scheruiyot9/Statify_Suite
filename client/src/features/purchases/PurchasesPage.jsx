@@ -931,19 +931,29 @@ export default function PurchasesPage() {
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
                   <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Status</th>
+                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Payment</th>
                   <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
                   <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredPOs.length === 0 ? (
-                  <tr><td colSpan={6} className="py-10 text-center text-gray-400">No purchase orders found</td></tr>
-                ) : filteredPOs.map((po) => (
+                  <tr><td colSpan={7} className="py-10 text-center text-gray-400">No purchase orders found</td></tr>
+                ) : filteredPOs.map((po) => {
+                  const paid = parseFloat(po.paid_amount || 0);
+                  const total = parseFloat(po.total_amount || 0);
+                  const payStatus = paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+                  return (
                   <tr key={po.po_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => setDetailPO(po)}>
                     <td className="py-3 pl-4 font-mono text-sm font-medium text-primary-700">{po.po_number}</td>
                     <td className="py-3 px-4 text-gray-800">{po.supplier_name}</td>
                     <td className="hidden sm:table-cell py-3 px-4 text-gray-500">{po.order_date?.slice(0, 10)}</td>
                     <td className="py-3 px-4"><StatusBadge status={po.status} /></td>
+                    <td className="hidden sm:table-cell py-3 px-4">
+                      {payStatus === 'paid'    && <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span>}
+                      {payStatus === 'partial' && <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Partial</span>}
+                      {payStatus === 'unpaid'  && <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">Unpaid</span>}
+                    </td>
                     <td className="py-3 px-4 text-right font-medium">{formatCurrency(po.total_amount)}</td>
                     <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-2">
@@ -967,7 +977,7 @@ export default function PurchasesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ); })}
               </tbody>
             </table>
             </div>

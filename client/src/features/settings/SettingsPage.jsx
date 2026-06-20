@@ -530,126 +530,112 @@ function TerminalsTab() {
 
       {/* ── POS Behaviour ── */}
       {isCompanyAdmin && (
-        <div className="rounded-xl border border-gray-200 p-5 space-y-4">
-          <div className="flex items-start gap-3">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-4 bg-gray-50 border-b border-gray-100">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
               <Monitor className="h-5 w-5 text-primary-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">POS Behaviour</p>
+              <p className="text-sm font-semibold text-gray-900">POS Behaviour</p>
               <p className="text-xs text-gray-500 mt-0.5">Controls what cashiers can do at the point of sale.</p>
             </div>
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div className="relative mt-0.5 flex-shrink-0">
-              <input type="checkbox" className="sr-only" checked={allowPriceEdit} onChange={(e) => setAllowPriceEdit(e.target.checked)} />
-              <div className={`h-5 w-9 rounded-full transition-colors ${allowPriceEdit ? 'bg-primary-500' : 'bg-gray-200'}`} />
-              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowPriceEdit ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-800">Allow price editing on cart</p>
-              <p className="text-xs text-gray-500">Cashiers can tap the unit price on any cart item to override it before checkout.</p>
-            </div>
-          </label>
+          {/* Toggle rows */}
+          <div className="divide-y divide-gray-50">
+            {[
+              {
+                label: 'Allow price editing on cart',
+                desc:  'Cashiers can tap the unit price on any cart item to override it before checkout.',
+                val: allowPriceEdit, set: setAllowPriceEdit, accent: 'primary',
+              },
+              {
+                label: 'Partial quantity stepping (¼ units)',
+                desc:  'The − button steps through 1 → 0.75 → 0.50 → 0.25. Useful for businesses that sell by weight or measure.',
+                val: allowPartialQty, set: setAllowPartialQty, accent: 'primary',
+              },
+              {
+                label: 'Allow editing the cart total',
+                desc:  'Cashier can type a custom grand total; the difference is applied as an order discount.',
+                val: allowTotalEdit, set: setAllowTotalEdit, accent: 'primary',
+              },
+              {
+                label: 'Default to barcode scan mode',
+                desc:  'When enabled, POS terminals open in scan mode. Disable to default to product search instead.',
+                val: defaultScanMode, set: setDefaultScanMode, accent: 'primary',
+              },
+              {
+                label: 'Prevent sales below purchase cost',
+                desc:  'Cashiers cannot sell an item below its cost price. The POS will block checkout and warn when a price is set too low.',
+                val: preventSalesBelowCost, set: setPreventSalesBelowCost, accent: 'red',
+              },
+            ].map(({ label, desc, val, set, accent }) => (
+              <label key={label} className="flex items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                </div>
+                <div className="relative flex-shrink-0 ml-2">
+                  <input type="checkbox" className="sr-only" checked={val} onChange={(e) => set(e.target.checked)} />
+                  <div className={`h-5 w-9 rounded-full transition-colors ${val ? (accent === 'red' ? 'bg-red-500' : 'bg-primary-500') : 'bg-gray-200'}`} />
+                  <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${val ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </label>
+            ))}
+          </div>
 
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div className="relative mt-0.5 flex-shrink-0">
-              <input type="checkbox" className="sr-only" checked={allowPartialQty} onChange={(e) => setAllowPartialQty(e.target.checked)} />
-              <div className={`h-5 w-9 rounded-full transition-colors ${allowPartialQty ? 'bg-primary-500' : 'bg-gray-200'}`} />
-              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowPartialQty ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-800">Partial quantity stepping (¼ units)</p>
-              <p className="text-xs text-gray-500">The − button steps through 1 → 0.75 → 0.50 → 0.25. Useful for businesses that sell by weight or measure.</p>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div className="relative mt-0.5 flex-shrink-0">
-              <input type="checkbox" className="sr-only" checked={allowTotalEdit} onChange={(e) => setAllowTotalEdit(e.target.checked)} />
-              <div className={`h-5 w-9 rounded-full transition-colors ${allowTotalEdit ? 'bg-primary-500' : 'bg-gray-200'}`} />
-              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${allowTotalEdit ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-800">Allow editing the cart total</p>
-              <p className="text-xs text-gray-400 mt-0.5">Cashier can type a custom grand total; the difference is applied as an order discount.</p>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div className="relative mt-0.5 flex-shrink-0">
-              <input type="checkbox" className="sr-only" checked={defaultScanMode} onChange={(e) => setDefaultScanMode(e.target.checked)} />
-              <div className={`h-5 w-9 rounded-full transition-colors ${defaultScanMode ? 'bg-primary-500' : 'bg-gray-200'}`} />
-              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${defaultScanMode ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-800">Default to barcode scan mode</p>
-              <p className="text-xs text-gray-500">When enabled, POS terminals open in scan mode. Disable to default to product search instead.</p>
-            </div>
-          </label>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div className="relative mt-0.5 flex-shrink-0">
-              <input type="checkbox" className="sr-only" checked={preventSalesBelowCost} onChange={(e) => setPreventSalesBelowCost(e.target.checked)} />
-              <div className={`h-5 w-9 rounded-full transition-colors ${preventSalesBelowCost ? 'bg-red-500' : 'bg-gray-200'}`} />
-              <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${preventSalesBelowCost ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-800">Prevent sales below purchase cost</p>
-              <p className="text-xs text-gray-500">Cashiers cannot sell an item below its cost price. The POS will block checkout and warn when a price is set too low.</p>
-            </div>
-          </label>
-
-          {/* ── Price Rounding ── */}
-          <div className="pt-3 border-t border-gray-100 space-y-3">
+          {/* Price Rounding */}
+          <div className="px-5 py-4 border-t border-gray-100 space-y-2">
             <div>
               <p className="text-sm font-medium text-gray-800">Price rounding</p>
               <p className="text-xs text-gray-500 mt-0.5">Auto-round the Amount Due at checkout. Cashiers can nudge amounts with ↑↓ buttons.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-10 flex-shrink-0">Mode</span>
+            <div className="flex items-center gap-2 flex-wrap">
               <select
                 value={roundingMode}
                 onChange={(e) => setRoundingMode(e.target.value)}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
               >
-                <option value="none">None</option>
+                <option value="none">No rounding</option>
                 <option value="nearest">Nearest</option>
                 <option value="up">↑ Round Up</option>
                 <option value="down">↓ Round Down</option>
               </select>
+              {roundingMode !== 'none' && (
+                <>
+                  <input
+                    type="number"
+                    min="0.0001"
+                    step="0.01"
+                    value={roundingUnit}
+                    onChange={(e) => setRoundingUnit(parseFloat(e.target.value) || 1)}
+                    placeholder="1.00"
+                    className="w-24 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-right focus:border-primary-500 focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-400">unit (e.g. 0.05, 1.00, 5.00)</span>
+                </>
+              )}
             </div>
-            {roundingMode !== 'none' && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 w-10 flex-shrink-0">Unit</span>
-                <input
-                  type="number"
-                  min="0.0001"
-                  step="0.01"
-                  value={roundingUnit}
-                  onChange={(e) => setRoundingUnit(parseFloat(e.target.value) || 1)}
-                  className="w-28 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-right focus:border-primary-500 focus:outline-none"
-                />
-                <span className="text-xs text-gray-400">e.g. 0.05, 0.50, 1.00, 5.00</span>
-              </div>
-            )}
           </div>
 
-          <Button
-            loading={savePosBehaviourMut.isPending}
-            onClick={() => savePosBehaviourMut.mutate({
-              pos_allow_price_edit:          allowPriceEdit,
-              pos_allow_partial_qty:         allowPartialQty,
-              pos_default_scan_mode:         defaultScanMode,
-              pos_allow_total_edit:          allowTotalEdit,
-              pos_prevent_sales_below_cost:  preventSalesBelowCost,
-              pos_rounding_mode:             roundingMode,
-              pos_rounding_unit:             roundingUnit,
-            })}
-          >
-            Save POS Settings
-          </Button>
+          {/* Footer / Save */}
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end">
+            <Button
+              loading={savePosBehaviourMut.isPending}
+              onClick={() => savePosBehaviourMut.mutate({
+                pos_allow_price_edit:          allowPriceEdit,
+                pos_allow_partial_qty:         allowPartialQty,
+                pos_default_scan_mode:         defaultScanMode,
+                pos_allow_total_edit:          allowTotalEdit,
+                pos_prevent_sales_below_cost:  preventSalesBelowCost,
+                pos_rounding_mode:             roundingMode,
+                pos_rounding_unit:             roundingUnit,
+              })}
+            >
+              Save POS Settings
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -2083,7 +2069,7 @@ function JournalTab() {
   return (
     <div className="max-w-lg space-y-6 py-4">
       {/* Posting mode */}
-      <div className="rounded-xl border border-gray-200 p-5 space-y-5">
+      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50">
             <Layers className="h-5 w-5 text-violet-600" />
@@ -2096,38 +2082,28 @@ function JournalTab() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          {MODES.map((m) => (
-            <label key={m.value}
-              className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                postingMode === m.value
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}>
-              <input
-                type="radio"
-                name="journal_posting_mode"
-                value={m.value}
-                checked={postingMode === m.value}
-                onChange={() => setPostingMode(m.value)}
-                className="mt-0.5 accent-primary-600"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{m.label}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{m.desc}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            loading={saveMut.isPending}
-            disabled={postingMode === companyData?.journal_posting_mode}
-            onClick={() => saveMut.mutate(postingMode)}
-          >
-            Save
-          </Button>
+        <div>
+          <div className="flex items-center gap-3">
+            <select
+              value={postingMode}
+              onChange={(e) => setPostingMode(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+            >
+              {MODES.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <Button
+              loading={saveMut.isPending}
+              disabled={postingMode === companyData?.journal_posting_mode}
+              onClick={() => saveMut.mutate(postingMode)}
+            >
+              Save
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            {MODES.find((m) => m.value === postingMode)?.desc}
+          </p>
         </div>
       </div>
 
@@ -2224,7 +2200,7 @@ function InventoryTab() {
 
   return (
     <div className="max-w-lg space-y-6 py-4">
-      <div className="rounded-xl border border-gray-200 p-5 space-y-5">
+      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
             <Package className="h-5 w-5 text-indigo-600" />
@@ -2238,38 +2214,28 @@ function InventoryTab() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          {METHODS.map((m) => (
-            <label key={m.value}
-              className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                costingMethod === m.value
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}>
-              <input
-                type="radio"
-                name="costing_method"
-                value={m.value}
-                checked={costingMethod === m.value}
-                onChange={() => setCostingMethod(m.value)}
-                className="mt-0.5 accent-primary-600"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{m.label}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{m.desc}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            loading={saveMut.isPending}
-            disabled={costingMethod === companyData?.costing_method}
-            onClick={() => saveMut.mutate(costingMethod)}
-          >
-            Save
-          </Button>
+        <div>
+          <div className="flex items-center gap-3">
+            <select
+              value={costingMethod}
+              onChange={(e) => setCostingMethod(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
+            >
+              {METHODS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <Button
+              loading={saveMut.isPending}
+              disabled={costingMethod === companyData?.costing_method}
+              onClick={() => saveMut.mutate(costingMethod)}
+            >
+              Save
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            {METHODS.find((m) => m.value === costingMethod)?.desc}
+          </p>
         </div>
       </div>
     </div>

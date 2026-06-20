@@ -35,8 +35,24 @@ async function listPOs(companyId, { status, supplierId, page = 1, limit = 25 } =
            u.first_name || ' ' || u.last_name AS created_by,
            a.first_name || ' ' || a.last_name AS approved_by,
            COALESCE((
-             SELECT SUM(sp.amount) FROM supplier_payments sp
-             WHERE sp.po_id = po.po_id AND sp.is_void = FALSE
+             SELECT SUM(
+               CASE WHEN sp.po_allocations IS NOT NULL THEN (
+                 SELECT COALESCE(SUM((alloc->>'amount')::numeric), 0)
+                 FROM jsonb_array_elements(sp.po_allocations) alloc
+                 WHERE alloc->>'po_id' = po.po_id::text
+               )
+               ELSE sp.amount END
+             )
+             FROM supplier_payments sp
+             WHERE sp.company_id = po.company_id
+               AND sp.is_void = FALSE
+               AND (
+                 (sp.po_allocations IS NULL AND sp.po_id = po.po_id)
+                 OR EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(sp.po_allocations) alloc
+                   WHERE alloc->>'po_id' = po.po_id::text
+                 )
+               )
            ), 0)::numeric AS paid_amount,
            COUNT(*) OVER() AS total_count
     FROM purchase_orders po
