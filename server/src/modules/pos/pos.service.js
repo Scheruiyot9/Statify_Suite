@@ -169,6 +169,12 @@ async function updateTerminal(companyId, terminalId, { terminalName, isActive, d
 }
 
 async function deleteTerminal(companyId, terminalId) {
+  const { rows: [terminal] } = await query(
+    `SELECT terminal_id FROM pos_terminals WHERE terminal_id = $1 AND company_id = $2`,
+    [terminalId, companyId]
+  );
+  if (!terminal) throw AppError.notFound('Terminal');
+
   const { rows: openSessions } = await query(
     `SELECT 1 FROM pos_sessions WHERE terminal_id = $1 AND status = 'open' LIMIT 1`,
     [terminalId]
@@ -176,14 +182,24 @@ async function deleteTerminal(companyId, terminalId) {
   if (openSessions.length)
     throw AppError.badRequest('Cannot delete a terminal with an open session. Close the session first.');
 
-  const { rows } = await query(`
-    UPDATE pos_terminals
-    SET is_active = FALSE
-    WHERE terminal_id = $1 AND company_id = $2
-    RETURNING terminal_id
-  `, [terminalId, companyId]);
+  const { rows: anySessions } = await query(
+    `SELECT 1 FROM pos_sessions WHERE terminal_id = $1 LIMIT 1`,
+    [terminalId]
+  );
 
-  if (!rows.length) throw AppError.notFound('Terminal');
+  if (anySessions.length) {
+    // Has session history — soft delete only
+    await query(
+      `UPDATE pos_terminals SET is_active = FALSE WHERE terminal_id = $1`,
+      [terminalId]
+    );
+  } else {
+    // No session history — hard delete
+    await query(
+      `DELETE FROM pos_terminals WHERE terminal_id = $1`,
+      [terminalId]
+    );
+  }
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

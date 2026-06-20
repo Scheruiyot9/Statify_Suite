@@ -356,7 +356,7 @@ function TerminalsTab() {
 
   const { data: terminals = [], isLoading } = useQuery({
     queryKey: ['terminals-all'],
-    queryFn:  () => api.get('/pos/terminals/all', { params: { includeInactive: 'true' } }).then((r) => r.data.data),
+    queryFn:  () => api.get('/pos/terminals/all').then((r) => r.data.data),
   });
 
   const createMut = useMutation({
@@ -440,13 +440,12 @@ function TerminalsTab() {
                       <th className="hidden sm:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Code</th>
                       <th className="hidden md:table-cell px-4 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
                       <th className="hidden md:table-cell px-4 py-2.5 text-center text-xs font-medium text-gray-500">Sessions</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Status</th>
                       <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {terms.map((t) => (
-                      <tr key={t.terminal_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!t.is_active ? 'opacity-50' : ''}`}>
+                      <tr key={t.terminal_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-100">
@@ -458,16 +457,6 @@ function TerminalsTab() {
                         <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-500">{t.terminal_code}</td>
                         <td className="hidden md:table-cell px-4 py-3 text-gray-500">{t.description || <span className="text-gray-300">—</span>}</td>
                         <td className="hidden md:table-cell px-4 py-3 text-center text-gray-600">{t.session_count}</td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => toggleMut.mutate({ id: t.terminal_id, isActive: !t.is_active })}
-                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium transition-colors"
-                          >
-                            {t.is_active
-                              ? <><ToggleRight className="h-4 w-4 text-green-500" /><span className="text-green-700">Active</span></>
-                              : <><ToggleLeft  className="h-4 w-4 text-gray-400" /><span className="text-gray-500">Inactive</span></>}
-                          </button>
-                        </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
