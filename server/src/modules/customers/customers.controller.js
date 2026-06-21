@@ -41,4 +41,10 @@ const remove = async (req, res) => {
   res.json({ success: true, message: 'Customer deleted' });
 };
 
-module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove };
+const creditPayment = async (req, res) => {
+  const { amount, notes } = req.body;
+  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount), notes);
+  res.json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditPayment };

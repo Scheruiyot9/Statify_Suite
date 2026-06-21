@@ -85,11 +85,13 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     loyaltyPointsRedeemed = 0,
     orderDiscount = 0,
     idempotencyKey,
+    isCreditSale = false,
   } = data;
 
   if (!items?.length)    throw AppError.badRequest('Cart is empty');
-  if (!payments?.length) throw AppError.badRequest('At least one payment is required');
   if (!branchId)         throw AppError.badRequest('Branch context is required');
+  if (isCreditSale && !customerId) throw AppError.badRequest('A customer must be selected for credit sales');
+  if (!isCreditSale && !payments?.length) throw AppError.badRequest('At least one payment is required');
 
   // Enforce "no sale below cost" when enabled for this company
   const { rows: coRows } = await query(
@@ -160,8 +162,22 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     const discountAmt    = itemDiscounts + loyaltyDiscount + parseFloat(orderDiscount || 0);
     const totalAmount    = Math.max(0, subtotal - loyaltyDiscount - parseFloat(orderDiscount || 0));
 
-    const totalPaid     = payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
-    const paymentStatus = totalPaid >= totalAmount ? 'paid' : 'partial';
+    const totalPaid     = isCreditSale ? 0 : payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
+    const paymentStatus = isCreditSale ? 'partial' : (totalPaid >= totalAmount ? 'paid' : 'partial');
+
+    // Validate and lock credit limit before inserting anything
+    if (isCreditSale) {
+      const { rows: cRows } = await client.query(
+        `SELECT allow_credit, credit_limit, credit_balance FROM customers WHERE customer_id = $1 AND company_id = $2 FOR UPDATE`,
+        [customerId, companyId]
+      );
+      if (!cRows.length || !cRows[0].allow_credit) throw AppError.badRequest('This customer is not enabled for credit sales');
+      const newBalance = parseFloat(cRows[0].credit_balance) + totalAmount;
+      if (newBalance > parseFloat(cRows[0].credit_limit)) {
+        const available = parseFloat(cRows[0].credit_limit) - parseFloat(cRows[0].credit_balance);
+        throw AppError.badRequest(`Credit limit exceeded — available credit: ${available.toFixed(2)}`);
+      }
+    }
 
     const { rows: txnRows } = await client.query(`
       INSERT INTO sales_transactions (
@@ -226,16 +242,18 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       }
     }
 
-    for (let i = 0; i < payments.length; i++) {
-      const p = payments[i];
-      await client.query(`
-        INSERT INTO transaction_payments (
-          transaction_id, payment_method_id, amount_tendered,
-          amount_applied, change_given, reference_number, sequence_no
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-      `, [txn.transaction_id, p.paymentMethodId,
-          p.amountTendered, p.amountApplied, p.changeGiven || 0,
-          p.referenceNumber || null, i + 1]);
+    if (!isCreditSale) {
+      for (let i = 0; i < payments.length; i++) {
+        const p = payments[i];
+        await client.query(`
+          INSERT INTO transaction_payments (
+            transaction_id, payment_method_id, amount_tendered,
+            amount_applied, change_given, reference_number, sequence_no
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [txn.transaction_id, p.paymentMethodId,
+            p.amountTendered, p.amountApplied, p.changeGiven || 0,
+            p.referenceNumber || null, i + 1]);
+      }
     }
 
     // Post double-entry journal for this sale (skipped in summary modes — posted at session/day close)
@@ -245,6 +263,14 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
         tax_amount:      taxAmount,
         cashier_user_id: cashierUserId,
       }, items, payments, cogsMap);
+    }
+
+    // Charge to credit account
+    if (isCreditSale && customerId) {
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
+        [customerId, totalAmount]
+      );
     }
 
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft

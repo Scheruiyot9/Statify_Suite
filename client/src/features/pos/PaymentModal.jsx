@@ -712,6 +712,15 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     );
   };
 
+  const buildItemsPayload = () => items.map((i) => ({
+    productId: i.product.product_id,
+    quantity:  i.quantity,
+    unitPrice: i.unitPrice,
+    discount:  i.discount,
+    taxAmount: i.taxAmount,
+    lineTotal: i.lineTotal,
+  }));
+
   const handleCharge = useCallback(() => {
     if (!canProcess) return;
     processPayment({
@@ -721,14 +730,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       notes,
       loyaltyPointsRedeemed: pointsToRedeem,
       orderDiscount:         cartTotals.orderDiscountAmt,
-      items: items.map((i) => ({
-        productId: i.product.product_id,
-        quantity:  i.quantity,
-        unitPrice: i.unitPrice,
-        discount:  i.discount,
-        taxAmount: i.taxAmount,
-        lineTotal: i.lineTotal,
-      })),
+      items: buildItemsPayload(),
       payments: paymentLines.map((l) => {
         const m      = methods.find((m) => m.payment_method_id === l.methodId);
         const isCash = m?.method_name === 'Cash';
@@ -742,6 +744,20 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       }),
     });
   }, [canProcess, processPayment, branchId, session, customer, notes, cartTotals, items, methods, paymentLines, pointsToRedeem]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChargeToAccount = useCallback(() => {
+    processPayment({
+      branchId,
+      sessionId:            session?.session_id ?? null,
+      customerId:           customer?.customer_id ?? null,
+      notes,
+      loyaltyPointsRedeemed: 0,
+      orderDiscount:         cartTotals.orderDiscountAmt,
+      items: buildItemsPayload(),
+      payments: [],
+      isCreditSale: true,
+    });
+  }, [processPayment, branchId, session, customer, notes, cartTotals, items]); // eslint-disable-line react-hooks/exhaustive-deps -- items covers buildItemsPayload
 
   // Auto-submit after M-Pesa resolves and all payment lines are satisfied.
   useEffect(() => {
@@ -888,6 +904,25 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
                 Redeeming {pointsToRedeem} pts = {formatCurrency(loyaltyDiscount)} discount
               </p>
             )}
+          </div>
+        )}
+
+        {/* Charge to account (credit-enabled customers only) */}
+        {customer?.allow_credit && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
+                <CreditCard className="h-4 w-4" /> Credit Account
+              </div>
+              <span className="text-xs text-blue-600">
+                Available: {formatCurrency(Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0)))}
+              </span>
+            </div>
+            <Button size="sm" variant="secondary" fullWidth
+              disabled={isPending || effectiveTotal <= 0 || effectiveTotal > Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0))}
+              onClick={handleChargeToAccount}>
+              Charge to Account
+            </Button>
           </div>
         )}
 

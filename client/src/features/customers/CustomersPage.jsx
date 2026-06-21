@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -19,6 +19,8 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
     id_number:         initial?.id_number         ?? '',
     kra_pin:           initial?.kra_pin           ?? '',
     notes:             initial?.notes             ?? '',
+    allow_credit:      initial?.allow_credit      ?? false,
+    credit_limit:      initial?.credit_limit      ?? 0,
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none';
@@ -59,6 +61,20 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
           <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
           <textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
         </div>
+        <div className="col-span-full flex items-center gap-3 pt-1">
+          <input type="checkbox" id="allow_credit" checked={form.allow_credit}
+            onChange={(e) => set('allow_credit', e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          <label htmlFor="allow_credit" className="text-sm font-medium text-gray-700 select-none">Allow credit sales</label>
+        </div>
+        {form.allow_credit && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Credit Limit (KES)</label>
+            <input type="number" min="0" step="100" className={inputCls}
+              value={form.credit_limit}
+              onChange={(e) => set('credit_limit', e.target.value)} />
+          </div>
+        )}
       </div>
       <div className="flex justify-end gap-3 pt-2">
         <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
@@ -68,8 +84,11 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
   );
 }
 
-function CustomerDetail({ customer }) {
+function CustomerDetail({ customer, onRecordPayment }) {
   if (!customer) return null;
+  const creditUsed      = customer.credit_balance  ?? 0;
+  const creditLimit     = customer.credit_limit    ?? 0;
+  const creditAvailable = Math.max(0, creditLimit - creditUsed);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
@@ -84,6 +103,33 @@ function CustomerDetail({ customer }) {
           </div>
         ))}
       </div>
+      {customer.allow_credit && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+            <CreditCard className="h-4 w-4" /> Credit Account
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center text-xs">
+            <div>
+              <p className="text-gray-500">Outstanding</p>
+              <p className="font-bold text-red-600">{formatCurrency(creditUsed)}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Limit</p>
+              <p className="font-bold text-gray-800">{formatCurrency(creditLimit)}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Available</p>
+              <p className="font-bold text-green-700">{formatCurrency(creditAvailable)}</p>
+            </div>
+          </div>
+          {creditUsed > 0 && (
+            <Button size="sm" variant="secondary" fullWidth icon={<CreditCard className="h-3.5 w-3.5" />}
+              onClick={onRecordPayment}>
+              Record Payment
+            </Button>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 text-sm">
         {customer.phone && <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4" />{customer.phone}</div>}
         {customer.email && <div className="flex items-center gap-2 text-gray-600"><Mail  className="h-4 w-4" />{customer.email}</div>}
@@ -119,10 +165,12 @@ export default function CustomersPage() {
   const { hasCapability } = usePermission();
   const canCreateCustomers = hasCapability('customers.create');
   const canManageCustomers = hasCapability('customers.manage');
-  const [search, setSearch] = useState('');
-  const [page, setPage]     = useState(1);
-  const [modal, setModal]   = useState(null);
-  const [detail, setDetail] = useState(null);
+  const [search, setSearch]         = useState('');
+  const [page, setPage]             = useState(1);
+  const [modal, setModal]           = useState(null);
+  const [detail, setDetail]         = useState(null);
+  const [creditPay, setCreditPay]   = useState(null); // { customerId, customerName }
+  const [payAmount, setPayAmount]   = useState('');
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['customers', search, page],
@@ -150,6 +198,18 @@ export default function CustomersPage() {
   const updateMut = useMutation({
     mutationFn: ({ id, ...d }) => api.put(`/customers/${id}`, d),
     onSuccess: () => { toast.success('Customer updated'); qc.invalidateQueries(['customers']); setModal(null); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const creditPayMut = useMutation({
+    mutationFn: ({ id, amount }) => api.post(`/customers/${id}/credit-payment`, { amount }),
+    onSuccess: (res) => {
+      toast.success(`Payment recorded — balance: ${formatCurrency(res.data.data.credit_balance)}`);
+      qc.invalidateQueries(['customers']);
+      qc.invalidateQueries(['customer-detail', detail]);
+      setCreditPay(null);
+      setPayAmount('');
+    },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
@@ -277,7 +337,31 @@ export default function CustomersPage() {
           </div>
         )}
       >
-        <CustomerDetail customer={customerDetail} />
+        <CustomerDetail customer={customerDetail}
+          onRecordPayment={() => setCreditPay({ id: customerDetail.customer_id, name: customerDetail.customer_name, balance: customerDetail.credit_balance })} />
+      </Modal>
+
+      <Modal open={!!creditPay} onClose={() => { setCreditPay(null); setPayAmount(''); }}
+        title={`Record Payment — ${creditPay?.name ?? ''}`} size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Outstanding balance: <span className="font-semibold text-red-600">{formatCurrency(creditPay?.balance ?? 0)}</span>
+          </p>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Payment Amount (KES)</label>
+            <input type="number" min="1" step="0.01" autoFocus
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" fullWidth onClick={() => { setCreditPay(null); setPayAmount(''); }}>Cancel</Button>
+            <Button variant="primary" fullWidth
+              disabled={!payAmount || parseFloat(payAmount) <= 0 || creditPayMut.isPending}
+              onClick={() => creditPayMut.mutate({ id: creditPay.id, amount: parseFloat(payAmount) })}>
+              {creditPayMut.isPending ? 'Saving…' : 'Record Payment'}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

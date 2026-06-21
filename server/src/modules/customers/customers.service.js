@@ -44,6 +44,7 @@ async function listCustomers(companyId, { search, groupId, phone, customerId, pa
     SELECT
       c.customer_id, c.customer_name, c.customer_code, c.phone, c.email,
       c.customer_group_id, c.loyalty_points_balance, c.credit_balance,
+      c.allow_credit, c.credit_limit,
       c.kra_pin, c.id_number,
       c.created_at,
       cg.group_name,
@@ -72,6 +73,8 @@ async function listCustomers(companyId, { search, groupId, phone, customerId, pa
       group_name: r.group_name,
       loyalty_points_balance: parseInt(r.loyalty_points_balance || 0),
       credit_balance: parseFloat(r.credit_balance || 0),
+      allow_credit:   r.allow_credit ?? false,
+      credit_limit:   parseFloat(r.credit_limit || 0),
       kra_pin:    r.kra_pin,
       id_number:  r.id_number,
       created_at: r.created_at,
@@ -108,7 +111,7 @@ async function getCustomer(companyId, customerId) {
 
 async function createCustomer(companyId, data) {
   const { customer_name, phone, email, customer_group_id, customer_code, date_of_birth, notes,
-          kra_pin, id_number } = data;
+          kra_pin, id_number, allow_credit = false, credit_limit = 0 } = data;
   const code        = customer_code || await _generateCode(companyId);
   const normalPhone = normalizePhone(phone);
 
@@ -138,19 +141,21 @@ async function createCustomer(companyId, data) {
   const { rows } = await query(`
     INSERT INTO customers (
       company_id, customer_name, phone, email, customer_group_id,
-      customer_code, date_of_birth, kra_pin, id_number, notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      customer_code, date_of_birth, kra_pin, id_number, notes,
+      allow_credit, credit_limit
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     RETURNING *
   `, [companyId, customer_name, normalPhone, email || null,
     customer_group_id || null, code, date_of_birth || null,
-    kra_pin?.trim() || null, id_number?.trim() || null, notes || null]);
+    kra_pin?.trim() || null, id_number?.trim() || null, notes || null,
+    allow_credit, parseFloat(credit_limit) || 0]);
 
   return rows[0];
 }
 
 async function updateCustomer(companyId, customerId, data) {
   const { customer_name, phone, email, customer_group_id, date_of_birth, notes,
-          kra_pin, id_number } = data;
+          kra_pin, id_number, allow_credit, credit_limit } = data;
   const normalPhone = phone !== undefined ? normalizePhone(phone) : undefined;
 
   // Duplicate checks (exclude self)
@@ -186,13 +191,16 @@ async function updateCustomer(companyId, customerId, data) {
         kra_pin           = COALESCE($8,  kra_pin),
         id_number         = COALESCE($9,  id_number),
         notes             = COALESCE($10, notes),
+        allow_credit      = COALESCE($11, allow_credit),
+        credit_limit      = COALESCE($12, credit_limit),
         updated_at        = now()
     WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL
     RETURNING *
   `, [companyId, customerId,
     customer_name ?? null, normalPhone ?? null, email ?? null,
     customer_group_id ?? null, date_of_birth ?? null,
-    kra_pin?.trim() || null, id_number?.trim() || null, notes ?? null]);
+    kra_pin?.trim() || null, id_number?.trim() || null, notes ?? null,
+    allow_credit ?? null, credit_limit != null ? parseFloat(credit_limit) : null]);
 
   if (!rows.length) throw AppError.notFound('Customer');
   return rows[0];
@@ -233,6 +241,24 @@ async function _generateCode(companyId) {
   return `CUST-${String(parseInt(rows[0].cnt) + 1).padStart(5, '0')}`;
 }
 
+async function recordCreditPayment(companyId, customerId, amount, notes) {
+  if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
+  const { rows } = await query(`
+    UPDATE customers
+    SET credit_balance = GREATEST(0, credit_balance - $3),
+        updated_at     = now()
+    WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL
+    RETURNING customer_id, customer_name, credit_balance, credit_limit, allow_credit
+  `, [companyId, customerId, amount]);
+  if (!rows.length) throw AppError.notFound('Customer');
+  return {
+    customer_id:    rows[0].customer_id,
+    customer_name:  rows[0].customer_name,
+    credit_balance: parseFloat(rows[0].credit_balance),
+    credit_limit:   parseFloat(rows[0].credit_limit),
+  };
+}
+
 async function deleteCustomer(companyId, customerId, deletedBy) {
   const { rows: txns } = await query(`
     SELECT 1 FROM sales_transactions
@@ -255,5 +281,6 @@ async function deleteCustomer(companyId, customerId, deletedBy) {
 }
 
 module.exports = {
-  listCustomers, getCustomer, createCustomer, updateCustomer, listGroups, createGroup, updateGroup, deleteCustomer,
+  listCustomers, getCustomer, createCustomer, updateCustomer, listGroups, createGroup, updateGroup,
+  recordCreditPayment, deleteCustomer,
 };
