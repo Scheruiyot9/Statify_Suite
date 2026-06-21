@@ -29,30 +29,21 @@ describe('permissionsForRole', () => {
     expect(permissionsForRole('cashier')).toContain('open_pos_session');
   });
 
-  test('sales_staff only has view_products and view_customers', () => {
-    const perms = permissionsForRole('sales_staff');
-    expect(perms).toEqual(expect.arrayContaining(['view_products', 'view_customers']));
-    expect(perms).not.toContain('open_pos_session');
-    expect(perms).not.toContain('manage_users');
-    expect(perms).not.toContain('adjust_stock');
-  });
-
-  test('inventory_manager can adjust_stock but not open_pos_session', () => {
-    const perms = permissionsForRole('inventory_manager');
-    expect(perms).toContain('adjust_stock');
-    expect(perms).not.toContain('open_pos_session');
-  });
-
-  test('accountant can view_reports but not adjust_stock', () => {
+  test('accountant can view_reports', () => {
     const perms = permissionsForRole('accountant');
     expect(perms).toContain('view_reports');
-    expect(perms).not.toContain('adjust_stock');
+  });
+
+  test('branch_manager has open_pos_session', () => {
+    const perms = permissionsForRole('branch_manager');
+    expect(perms).toContain('open_pos_session');
+    expect(perms).not.toContain('manage_users');
   });
 
   test('all defined roles are present in ROLE_PERMISSIONS', () => {
     const expectedRoles = [
       'super_admin', 'company_admin', 'branch_manager',
-      'accountant', 'inventory_manager', 'cashier', 'sales_staff',
+      'accountant', 'cashier',
     ];
     expectedRoles.forEach((role) => {
       expect(ROLE_PERMISSIONS).toHaveProperty(role);
@@ -73,7 +64,6 @@ describe('isCompanyWide', () => {
   test('returns false for branch-scoped roles', () => {
     expect(isCompanyWide('cashier')).toBe(false);
     expect(isCompanyWide('branch_manager')).toBe(false);
-    expect(isCompanyWide('sales_staff')).toBe(false);
   });
 
   test('returns false for unknown role', () => {

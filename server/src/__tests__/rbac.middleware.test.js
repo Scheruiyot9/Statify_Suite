@@ -85,9 +85,9 @@ describe('ROLE_RANK', () => {
     expect(ROLE_RANK.super_admin).toBe(Math.max(...ranks));
   });
 
-  test('sales_staff has lowest rank', () => {
+  test('cashier has lowest rank', () => {
     const ranks = Object.values(ROLE_RANK);
-    expect(ROLE_RANK.sales_staff).toBe(Math.min(...ranks));
+    expect(ROLE_RANK.cashier).toBe(Math.min(...ranks));
   });
 
   test('company_admin outranks branch_manager', () => {
@@ -139,7 +139,7 @@ describe('requireAnyPermission', () => {
   });
 
   test('throws 403 when user has none of the listed permissions', () => {
-    const req = mockReq({ role: 'sales_staff' }); // only view_products, view_customers
+    const req = mockReq({ role: 'cashier' }); // no manage_users or adjust_stock
     expect(() => requireAnyPermission('manage_users', 'adjust_stock')(req, mockRes, mockNext))
       .toThrow(expect.objectContaining({ statusCode: 403 }));
   });
@@ -155,7 +155,7 @@ describe('requireAnyPermission', () => {
 
 describe('requireBranchAccess', () => {
   test('company-wide roles bypass branch restriction', () => {
-    for (const role of ['super_admin', 'company_admin', 'accountant', 'inventory_manager']) {
+    for (const role of ['super_admin', 'company_admin', 'accountant']) {
       mockNext.mockClear();
       const req = mockReq({ role, branchIds: [] });
       req.params.branchId = 'some-other-branch';
