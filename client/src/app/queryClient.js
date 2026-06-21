@@ -14,6 +14,12 @@ export const queryClient = new QueryClient({
     },
     mutations: {
       onError: (err) => {
+        // Auth errors (TOKEN_EXPIRED, INVALID_TOKEN) are handled by the Axios
+        // interceptor — it either silently refreshes the token or redirects to
+        // /login. Showing a toast here would be noise and cause the "Token
+        // expired" flash the user sees on PIN unlock.
+        const code = err?.response?.data?.code;
+        if (code === 'TOKEN_EXPIRED' || code === 'INVALID_TOKEN') return;
         const msg = err?.response?.data?.message || 'Something went wrong';
         toast.error(msg);
       },
