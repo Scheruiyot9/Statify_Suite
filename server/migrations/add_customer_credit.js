@@ -2,7 +2,7 @@
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-const { query } = require('../src/config/db');
+const { query } = require('../src/config/database');
 
 query(`
   ALTER TABLE customers
