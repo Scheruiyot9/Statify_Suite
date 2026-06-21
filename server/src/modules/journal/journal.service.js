@@ -524,7 +524,16 @@ async function postUnpostedPerTransaction(companyId, branchId, date, userId) {
     if (ok) posted++; else skipped++;
   }
 
-  return { posted, skipped };
+  // Re-query to confirm ground truth — catches any edge cases not reflected in the loop counters
+  const { rows: stillUnposted } = await query(`
+    SELECT COUNT(*)::int AS cnt
+    FROM sales_transactions st
+    WHERE st.company_id = $1 AND st.branch_id = $2
+      AND st.transaction_date::date = $3 AND st.status = 'completed'
+      ${UNPOSTED}
+  `, [companyId, branchId, date]);
+
+  return { posted, skipped, remaining: stillUnposted[0].cnt };
 }
 
 // ── Sale Void Entry ───────────────────────────────────────────────────────────

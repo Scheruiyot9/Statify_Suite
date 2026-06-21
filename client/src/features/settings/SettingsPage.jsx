@@ -2036,11 +2036,13 @@ function JournalTab() {
       api.post('/journal/daily-summaries', { branchId, date, mode }).then((r) => r.data),
     onSuccess: (data) => {
       if (data?.data?.posted !== undefined) {
-        const { posted, skipped } = data.data;
+        const { posted, skipped, remaining } = data.data;
         if (posted === 0 && skipped === 0) {
           toast.success('No unposted transactions found for this date');
         } else if (posted === 0) {
-          toast.error(`0 posted — ${skipped} failed (check server logs or chart of accounts setup)`);
+          toast.error(`0 posted — ${skipped} failed (check chart of accounts setup)`);
+        } else if (remaining > 0) {
+          toast(`Posted ${posted} · ${remaining} still unposted`, { icon: '⚠️' });
         } else {
           toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` · ${skipped} failed` : ''}`);
         }
