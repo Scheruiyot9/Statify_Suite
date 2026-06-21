@@ -428,11 +428,12 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
 
     const totalAmount = parseFloat(agg.total_amount);
     const taxAmount   = parseFloat(agg.tax_amount);
-    const netRevenue  = +(totalAmount - taxAmount).toFixed(4);
     const totalCOGS   = parseFloat(cogsRow?.total_cogs || 0);
 
     const lines = [];
 
+    // Sum what was actually collected (may exceed total_amount due to cash rounding)
+    let totalPaid = 0;
     for (const pmt of pmtRows) {
       let drAccId = pmt.gl_account_id || null;
       if (!drAccId) {
@@ -442,19 +443,23 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       }
       if (!drAccId) continue;
       const amt = parseFloat(pmt.total);
+      totalPaid += amt;
       if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
     }
+
+    // When collected amount exceeds invoice total (Kenyan cash rounding), the excess is revenue
+    const effectiveRevenue = Math.max(totalAmount, totalPaid);
 
     if (totalCOGS > 0.005 && accIds['5000'] && accIds['1200']) {
       lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4), credit: 0 });
       lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
     }
-    if (totalAmount > 0.005 && accIds['4000']) {
+    if (effectiveRevenue > 0.005 && accIds['4000']) {
       if (taxAmount > 0.005 && accIds['2100']) {
-        lines.push({ accountId: accIds['4000'], debit: 0, credit: +(totalAmount - taxAmount).toFixed(4) });
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +(effectiveRevenue - taxAmount).toFixed(4) });
         lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
       } else {
-        lines.push({ accountId: accIds['4000'], debit: 0, credit: +totalAmount.toFixed(4) });
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +effectiveRevenue.toFixed(4) });
       }
     }
 
