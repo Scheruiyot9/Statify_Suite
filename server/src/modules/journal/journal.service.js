@@ -1503,8 +1503,52 @@ async function getJournalEntry(companyId, jeId) {
   };
 }
 
+// ── Credit Receipt Entry ──────────────────────────────────────────────────────
+// Called inside recordCreditPayment transaction.
+// DR Cash/Bank  CR AR (1100)
+async function postCreditReceiptEntry(client, companyId, { customerId, customerName, amount, paymentMethodId }) {
+  try {
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100']);
+    if (!accIds['1100']) return;
+
+    let drAccId = accIds['1000'];
+    if (paymentMethodId) {
+      const { rows: [pm] } = await client.query(
+        `SELECT pm.method_name, ba.account_id AS gl_account_id
+         FROM payment_methods pm
+         LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
+         WHERE pm.payment_method_id = $1`,
+        [paymentMethodId]
+      );
+      if (pm?.gl_account_id) {
+        drAccId = pm.gl_account_id;
+      } else if (pm) {
+        const name = (pm.method_name || '').toLowerCase();
+        if ((name.includes('bank') || name.includes('transfer') || name.includes('cheque')) && accIds['1010'])
+          drAccId = accIds['1010'];
+      }
+    }
+    if (!drAccId) return;
+
+    await _post(client, companyId, {
+      entryDate:   new Date().toISOString().slice(0, 10),
+      description: `Credit receipt — ${customerName}`,
+      sourceType:  'CREDIT_PAYMENT',
+      sourceId:    customerId,
+      userId:      null,
+      lines: [
+        { accountId: drAccId,        debit: +amount.toFixed(4), credit: 0, entityType: 'customer', entityId: customerId },
+        { accountId: accIds['1100'], debit: 0, credit: +amount.toFixed(4), entityType: 'customer', entityId: customerId },
+      ],
+    });
+  } catch (err) {
+    console.error('[journal] postCreditReceiptEntry skipped:', err.message);
+  }
+}
+
 module.exports = {
   findAccIds, _post,
+  postCreditReceiptEntry,
   postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
   postSessionSummaryEntry, postDailySummaryEntry, postUnpostedPerTransaction,
   postPaymentEntry, postVoidPaymentEntry,

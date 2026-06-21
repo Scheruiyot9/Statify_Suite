@@ -1,6 +1,7 @@
-const { query } = require('../../config/database');
+const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const QueryBuilder = require('../../shared/qb');
+const { postCreditReceiptEntry } = require('../journal/journal.service');
 
 // Normalize Kenyan phone to 07XXXXXXXX / 01XXXXXXXX local format
 function normalizePhone(raw) {
@@ -11,9 +12,10 @@ function normalizePhone(raw) {
   return p || null;
 }
 
-async function listCustomers(companyId, { search, groupId, phone, customerId, page = 1, limit = 25 } = {}) {
+async function listCustomers(companyId, { search, groupId, phone, customerId, creditOutstanding, page = 1, limit = 25 } = {}) {
   const qb = new QueryBuilder([companyId]);
   const conditions = ['c.company_id = $1', 'c.deleted_at IS NULL'];
+  if (creditOutstanding === 'true') conditions.push('c.credit_balance > 0');
 
   if (search) {
     const p = qb.add(`%${search}%`);
@@ -267,17 +269,18 @@ async function listCreditTransactions(companyId, customerId) {
   }));
 }
 
-async function recordCreditPayment(companyId, customerId, amount) {
+async function recordCreditPayment(companyId, customerId, amount, paymentMethodId) {
   if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
 
   return transaction(async (client) => {
     const { rows: custRows } = await client.query(`
-      SELECT credit_balance FROM customers
+      SELECT credit_balance, customer_name FROM customers
       WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL FOR UPDATE
     `, [companyId, customerId]);
     if (!custRows.length) throw AppError.notFound('Customer');
 
-    const actualPayment = Math.min(amount, parseFloat(custRows[0].credit_balance));
+    const actualPayment  = Math.min(amount, parseFloat(custRows[0].credit_balance));
+    const customerName   = custRows[0].customer_name;
 
     // Reduce credit balance
     const { rows: updated } = await client.query(`
@@ -305,6 +308,11 @@ async function recordCreditPayment(companyId, customerId, amount) {
         remaining -= parseFloat(txn.total_amount);
       }
     }
+
+    // Post journal entry: DR Cash/Bank  CR AR (1100)
+    await postCreditReceiptEntry(client, companyId, {
+      customerId, customerName, amount: actualPayment, paymentMethodId,
+    });
 
     return {
       customer_id:    updated[0].customer_id,

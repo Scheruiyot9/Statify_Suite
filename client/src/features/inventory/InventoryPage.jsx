@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -248,8 +248,29 @@ export default function InventoryPage() {
   const [page, setPage]                 = useState(1);
   const [adjustItem, setAdjustItem]   = useState(null);
   const [ledgerItem, setLedgerItem]   = useState(null); // { product_id, product_name }
-  const [selected, setSelected]       = useState(new Set()); // keys: product_id:branch_id
+  const [selected, setSelected]       = useState(new Set());
   const [bulkOpen, setBulkOpen]       = useState(false);
+  const [sortBy,  setSortBy]  = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('asc'); }
+    setPage(1);
+  };
+
+  const SortTh = ({ col, label, className = '' }) => {
+    const active = sortBy === col;
+    const Icon = active ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+    return (
+      <th onClick={() => toggleSort(col)}
+        className={`px-3 py-2 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100 transition-colors ${className}`}>
+        <span className="flex items-center gap-1 whitespace-nowrap">
+          {label}<Icon className={`h-3.5 w-3.5 flex-shrink-0 ${active ? 'text-primary-600' : 'text-gray-300'}`} />
+        </span>
+      </th>
+    );
+  };
 
   // Filter option lists
   const { data: branchesData } = useQuery({
@@ -266,7 +287,7 @@ export default function InventoryPage() {
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['inventory', search, branchFilter, categoryFilter, statusFilter, page],
+    queryKey: ['inventory', search, branchFilter, categoryFilter, statusFilter, page, sortBy, sortDir],
     queryFn: () =>
       api.get('/inventory', {
         params: {
@@ -276,6 +297,8 @@ export default function InventoryPage() {
           stockStatus: statusFilter || undefined,
           page,
           limit: 50,
+          sortBy,
+          sortDir,
         },
       }).then((r) => r.data.data),
     keepPreviousData: true,
@@ -405,13 +428,13 @@ export default function InventoryPage() {
                       className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                   </th>
                 )}
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Product</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden sm:table-cell">SKU</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600 hidden md:table-cell">Category</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Available</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600 hidden lg:table-cell w-16">Min</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600 hidden sm:table-cell">Selling Price</th>
+                <SortTh col="name"     label="Product"       className="text-left" />
+                <SortTh col="sku"      label="SKU"           className="text-left hidden sm:table-cell" />
+                <SortTh col="branch"   label="Branch"        className="text-left hidden md:table-cell" />
+                <SortTh col="category" label="Category"      className="text-left hidden md:table-cell" />
+                <SortTh col="stock"    label="Available"     className="text-right" />
+                <SortTh col="reorder"  label="Min"           className="text-right hidden lg:table-cell w-16" />
+                <SortTh col="price"    label="Selling Price" className="text-right hidden sm:table-cell" />
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>

@@ -1,8 +1,8 @@
 const svc = require('./products.service');
 
 const list = async (req, res) => {
-  const { branchId, search, categoryId, isActive, page, limit } = req.query;
-  const result = await svc.listProducts(req.tenantId, { branchId, search, categoryId, isActive, page, limit });
+  const { branchId, search, categoryId, isActive, page, limit, sortBy, sortDir } = req.query;
+  const result = await svc.listProducts(req.tenantId, { branchId, search, categoryId, isActive, page, limit, sortBy, sortDir });
   res.json({ success: true, data: result });
 };
 

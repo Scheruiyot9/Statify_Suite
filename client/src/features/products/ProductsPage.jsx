@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen, RefreshCw, ChevronDown } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Download, Upload, CheckCircle2, XCircle, FileSpreadsheet, BookOpen, RefreshCw, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -352,11 +352,32 @@ export default function ProductsPage() {
   const [modal, setModal]           = useState(null);
   const [viewProduct, setViewProduct] = useState(null);
   const [showImport, setShowImport] = useState(false);
-  const [ledgerProduct, setLedgerProduct] = useState(null); // { product_id, product_name }
+  const [ledgerProduct, setLedgerProduct] = useState(null);
+  const [sortBy,  setSortBy]  = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('asc'); }
+    setPage(1);
+  };
+
+  const SortTh = ({ col, label, className = '' }) => {
+    const active = sortBy === col;
+    const Icon = active ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+    return (
+      <th onClick={() => toggleSort(col)}
+        className={`px-3 py-2 font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100 transition-colors ${className}`}>
+        <span className="flex items-center gap-1 whitespace-nowrap">
+          {label}<Icon className={`h-3.5 w-3.5 flex-shrink-0 ${active ? 'text-primary-600' : 'text-gray-300'}`} />
+        </span>
+      </th>
+    );
+  };
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['products-mgmt', search, catFilter, statusFilter, page],
-    queryFn: () => api.get('/products', { params: { search, categoryId: catFilter, isActive: statusFilter, page, limit: 25 } }).then((r) => r.data.data),
+    queryKey: ['products-mgmt', search, catFilter, statusFilter, page, sortBy, sortDir],
+    queryFn: () => api.get('/products', { params: { search, categoryId: catFilter, isActive: statusFilter, page, limit: 25, sortBy, sortDir } }).then((r) => r.data.data),
     keepPreviousData: true,
   });
 
@@ -483,12 +504,12 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Product</th>
-                <th className="hidden sm:table-cell px-3 py-2 text-left font-medium text-gray-600">SKU</th>
-                <th className="hidden md:table-cell px-3 py-2 text-left font-medium text-gray-600">Category</th>
+                <SortTh col="name"     label="Product"  className="text-left" />
+                <SortTh col="sku"      label="SKU"      className="text-left hidden sm:table-cell" />
+                <SortTh col="category" label="Category" className="text-left hidden md:table-cell" />
                 <th className="hidden md:table-cell px-3 py-2 text-left font-medium text-gray-600">Tax</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Price</th>
-                <th className="hidden sm:table-cell px-3 py-2 text-right font-medium text-gray-600">Cost</th>
+                <SortTh col="price"    label="Price"    className="text-right" />
+                <SortTh col="cost"     label="Cost"     className="text-right hidden sm:table-cell" />
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>

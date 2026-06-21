@@ -88,11 +88,12 @@ function CustomerForm({ initial, groups, creditEnabled, onSave, onClose }) {
   );
 }
 
-function CustomerDetail({ customer, onRecordPayment }) {
+function CustomerDetail({ customer, creditEnabled, onRecordPayment }) {
+  const showCredit = creditEnabled && !!customer?.allow_credit;
   const { data: creditTxns = [] } = useQuery({
     queryKey: ['credit-transactions', customer?.customer_id],
     queryFn: () => api.get(`/customers/${customer.customer_id}/credit-transactions`).then((r) => r.data.data),
-    enabled: !!customer?.allow_credit && !!customer?.customer_id,
+    enabled: showCredit && !!customer?.customer_id,
   });
 
   if (!customer) return null;
@@ -113,7 +114,7 @@ function CustomerDetail({ customer, onRecordPayment }) {
           </div>
         ))}
       </div>
-      {customer.allow_credit && (
+      {showCredit && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
           <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
             <CreditCard className="h-4 w-4" /> Credit Account
@@ -200,12 +201,14 @@ export default function CustomersPage() {
   const [page, setPage]             = useState(1);
   const [modal, setModal]           = useState(null);
   const [detail, setDetail]         = useState(null);
-  const [creditPay, setCreditPay]   = useState(null); // { customerId, customerName }
-  const [payAmount, setPayAmount]   = useState('');
+  const [creditPay, setCreditPay]       = useState(null);
+  const [payAmount, setPayAmount]       = useState('');
+  const [payMethodId, setPayMethodId]   = useState('');
+  const [outstandingOnly, setOutstandingOnly] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['customers', search, page],
-    queryFn: () => api.get('/customers', { params: { search, page, limit: 25 } }).then((r) => r.data.data),
+    queryKey: ['customers', search, page, outstandingOnly],
+    queryFn: () => api.get('/customers', { params: { search, page, limit: 25, creditOutstanding: outstandingOnly ? 'true' : undefined } }).then((r) => r.data.data),
     keepPreviousData: true,
   });
 
@@ -238,14 +241,22 @@ export default function CustomersPage() {
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
+  const { data: payMethods = [] } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => api.get('/pos/payment-methods').then((r) => r.data.data ?? r.data),
+    enabled: creditEnabled,
+  });
+
   const creditPayMut = useMutation({
-    mutationFn: ({ id, amount }) => api.post(`/customers/${id}/credit-payment`, { amount }),
+    mutationFn: ({ id, amount, paymentMethodId }) => api.post(`/customers/${id}/credit-payment`, { amount, paymentMethodId }),
     onSuccess: (res) => {
       toast.success(`Payment recorded — balance: ${formatCurrency(res.data.data.credit_balance)}`);
       qc.invalidateQueries(['customers']);
       qc.invalidateQueries(['customer-detail', detail]);
+      qc.invalidateQueries(['credit-transactions', creditPay?.id]);
       setCreditPay(null);
       setPayAmount('');
+      setPayMethodId('');
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
@@ -263,6 +274,12 @@ export default function CustomersPage() {
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none" />
         </div>
+        {creditEnabled && (
+          <button onClick={() => { setOutstandingOnly((v) => !v); setPage(1); }}
+            className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${outstandingOnly ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+            {outstandingOnly ? 'Outstanding only' : 'All customers'}
+          </button>
+        )}
         <Button variant="secondary" size="sm"
           icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
           onClick={() => refetch()}>
@@ -293,6 +310,7 @@ export default function CustomersPage() {
                 <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Total Spent</th>
                 <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Points</th>
+                {creditEnabled && <th className="hidden lg:table-cell px-4 py-3 text-right font-medium text-gray-600">Credit Owed</th>}
                 {canManageCustomers && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
@@ -327,6 +345,13 @@ export default function CustomersPage() {
                       <Star className="h-3 w-3" />{c.loyalty_points_balance.toLocaleString()}
                     </span>
                   </td>
+                  {creditEnabled && (
+                    <td className="hidden lg:table-cell px-4 py-3 text-right">
+                      {c.allow_credit && c.credit_balance > 0
+                        ? <span className="font-semibold text-red-600 text-xs">{formatCurrency(c.credit_balance)}</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                  )}
                   {canManageCustomers && (
                     <td className="px-4 py-3 text-center">
                       <button onClick={(e) => { e.stopPropagation(); setDetail(c.customer_id); }}
@@ -374,11 +399,11 @@ export default function CustomersPage() {
           </div>
         )}
       >
-        <CustomerDetail customer={customerDetail}
+        <CustomerDetail customer={customerDetail} creditEnabled={creditEnabled}
           onRecordPayment={() => setCreditPay({ id: customerDetail.customer_id, name: customerDetail.customer_name, balance: customerDetail.credit_balance })} />
       </Modal>
 
-      <Modal open={!!creditPay} onClose={() => { setCreditPay(null); setPayAmount(''); }}
+      <Modal open={!!creditPay} onClose={() => { setCreditPay(null); setPayAmount(''); setPayMethodId(''); }}
         title={`Record Payment — ${creditPay?.name ?? ''}`} size="sm">
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
@@ -390,11 +415,21 @@ export default function CustomersPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
               value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
+            <select value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+              <option value="">— Cash (default) —</option>
+              {payMethods.map((m) => (
+                <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-3">
-            <Button variant="secondary" fullWidth onClick={() => { setCreditPay(null); setPayAmount(''); }}>Cancel</Button>
+            <Button variant="secondary" fullWidth onClick={() => { setCreditPay(null); setPayAmount(''); setPayMethodId(''); }}>Cancel</Button>
             <Button variant="primary" fullWidth
               disabled={!payAmount || parseFloat(payAmount) <= 0 || creditPayMut.isPending}
-              onClick={() => creditPayMut.mutate({ id: creditPay.id, amount: parseFloat(payAmount) })}>
+              onClick={() => creditPayMut.mutate({ id: creditPay.id, amount: parseFloat(payAmount), paymentMethodId: payMethodId || null })}>
               {creditPayMut.isPending ? 'Saving…' : 'Record Payment'}
             </Button>
           </div>

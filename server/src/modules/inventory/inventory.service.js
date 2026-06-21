@@ -5,8 +5,19 @@ const { sendMail } = require('../../shared/mailer');
 const QueryBuilder = require('../../shared/qb');
 const { recordMovement } = require('./movements.service');
 
+const INVENTORY_SORT = {
+  name:     'p.product_name',
+  sku:      'p.sku',
+  branch:   'b.branch_name',
+  category: 'pc.category_name',
+  stock:    'pbi.quantity_available',
+  reorder:  'pbi.reorder_level',
+  price:    'selling_price',
+  cost:     'p.cost_price',
+};
+
 async function listInventory(companyId, role, branchIds, filters = {}) {
-  const { branchId, search, lowStock, categoryId, stockStatus, page = 1, limit = 50 } = filters;
+  const { branchId, search, lowStock, categoryId, stockStatus, page = 1, limit = 50, sortBy, sortDir } = filters;
   const isWide = isCompanyWide(role);
 
   const qb = new QueryBuilder([companyId]);
@@ -60,7 +71,8 @@ async function listInventory(companyId, role, branchIds, filters = {}) {
     LEFT JOIN categories pc   ON pc.category_id  = p.category_id
     LEFT JOIN product_branch_pricing pbp ON pbp.product_id = p.product_id AND pbp.branch_id = pbi.branch_id
     WHERE ${conditions.join(' AND ')}
-    ORDER BY p.product_name, b.branch_name
+    ORDER BY ${INVENTORY_SORT[sortBy] || 'p.product_name'} ${sortDir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST,
+             p.product_name ASC, b.branch_name ASC
     LIMIT $${limIdx} OFFSET $${offIdx}
   `, qb.params);
 

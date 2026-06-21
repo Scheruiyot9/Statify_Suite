@@ -346,7 +346,8 @@ function HoldDialog({ onConfirm, onCancel }) {
 // ── Collect credit payment modal ──────────────────────────────────────────────
 function CollectCreditModal({ open, customer, onClose }) {
   const qc = useQueryClient();
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount]       = useState('');
+  const [payMethodId, setPayMethodId] = useState('');
 
   const { data: txns = [], isLoading: txnsLoading } = useQuery({
     queryKey: ['credit-transactions', customer?.customer_id],
@@ -354,15 +355,21 @@ function CollectCreditModal({ open, customer, onClose }) {
     enabled: open && !!customer?.customer_id,
   });
 
+  const { data: payMethods = [] } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => api.get('/pos/payment-methods').then((r) => r.data.data ?? r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const unpaidTxns = txns.filter((t) => t.payment_status !== 'paid');
   const outstanding = parseFloat(customer?.credit_balance ?? 0);
 
   useEffect(() => {
-    if (open) setAmount(outstanding > 0 ? String(outstanding) : '');
+    if (open) { setAmount(outstanding > 0 ? String(outstanding) : ''); setPayMethodId(''); }
   }, [open, outstanding]);
 
   const payMut = useMutation({
-    mutationFn: (amt) => api.post(`/customers/${customer.customer_id}/credit-payment`, { amount: amt }),
+    mutationFn: ({ amt, pmId }) => api.post(`/customers/${customer.customer_id}/credit-payment`, { amount: amt, paymentMethodId: pmId || null }),
     onSuccess: (res) => {
       const { credit_balance, amount_paid } = res.data.data;
       toast.success(`KES ${Number(amount_paid).toLocaleString()} received — balance: KES ${Number(credit_balance).toLocaleString()}`);
@@ -384,7 +391,7 @@ function CollectCreditModal({ open, customer, onClose }) {
         {txnsLoading ? (
           <p className="text-xs text-gray-400 text-center py-2">Loading entries…</p>
         ) : unpaidTxns.length > 0 && (
-          <div className="space-y-1 max-h-48 overflow-y-auto">
+          <div className="space-y-1 max-h-40 overflow-y-auto">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Unpaid Entries</p>
             {unpaidTxns.map((t) => (
               <div key={t.transaction_id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs">
@@ -405,12 +412,23 @@ function CollectCreditModal({ open, customer, onClose }) {
             value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
+          <select value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+            <option value="">— Cash (default) —</option>
+            {payMethods.map((m) => (
+              <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex gap-3">
           <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
           <Button variant="primary" fullWidth
             disabled={!amount || parseFloat(amount) <= 0 || payMut.isPending}
             loading={payMut.isPending}
-            onClick={() => payMut.mutate(parseFloat(amount))}>
+            onClick={() => payMut.mutate({ amt: parseFloat(amount), pmId: payMethodId })}>
             Record Payment
           </Button>
         </div>

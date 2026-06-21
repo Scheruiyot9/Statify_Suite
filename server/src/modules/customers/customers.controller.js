@@ -1,8 +1,8 @@
 const svc = require('./customers.service');
 
 const list = async (req, res) => {
-  const { search, groupId, phone, customerId, page, limit } = req.query;
-  const result = await svc.listCustomers(req.tenantId, { search, groupId, phone, customerId, page, limit });
+  const { search, groupId, phone, customerId, creditOutstanding, page, limit } = req.query;
+  const result = await svc.listCustomers(req.tenantId, { search, groupId, phone, customerId, creditOutstanding, page, limit });
   res.json({ success: true, data: result });
 };
 
@@ -47,8 +47,8 @@ const creditTransactions = async (req, res) => {
 };
 
 const creditPayment = async (req, res) => {
-  const { amount } = req.body;
-  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount));
+  const { amount, paymentMethodId } = req.body;
+  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount), paymentMethodId || null);
   res.json({ success: true, data: result });
 };
 

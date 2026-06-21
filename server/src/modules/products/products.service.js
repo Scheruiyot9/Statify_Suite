@@ -2,7 +2,16 @@ const { query, transaction } = require('../../config/database');
 const AppError = require('../../shared/AppError');
 const QueryBuilder = require('../../shared/qb');
 
-async function listProducts(companyId, { branchId, search, categoryId, isActive, page = 1, limit = 60 } = {}) {
+const PRODUCT_SORT = {
+  name:     'p.product_name',
+  sku:      'p.sku',
+  price:    'branch_price',
+  cost:     'p.cost_price',
+  category: 'pc.category_name',
+  stock:    'quantity_available',
+};
+
+async function listProducts(companyId, { branchId, search, categoryId, isActive, page = 1, limit = 60, sortBy, sortDir } = {}) {
   const qb = new QueryBuilder([companyId]);
   // isActive: undefined/'' = all, 'true' = active only, 'false' = inactive only
   const activeClause = isActive === 'true' ? 'p.is_active = TRUE'
@@ -52,7 +61,8 @@ async function listProducts(companyId, { branchId, search, categoryId, isActive,
     LEFT JOIN tax_templates tt ON tt.tax_template_id = p.tax_template_id
     ${branchJoins}
     WHERE ${conditions.join(' AND ')}
-    ORDER BY pc.category_name NULLS LAST, p.product_name
+    ORDER BY ${PRODUCT_SORT[sortBy] || 'p.product_name'} ${sortDir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST,
+             p.product_name ASC
     LIMIT $${limIdx} OFFSET $${offIdx}
   `, qb.params);
 
