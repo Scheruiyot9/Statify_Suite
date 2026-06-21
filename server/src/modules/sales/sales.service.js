@@ -189,13 +189,13 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       INSERT INTO sales_transactions (
         company_id, branch_id, cashier_user_id, pos_session_id,
         customer_id, transaction_number, subtotal, tax_amount,
-        discount_amount, total_amount, status, payment_status, notes, idempotency_key
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'completed',$11,$12,$13)
+        discount_amount, total_amount, status, payment_status, notes, idempotency_key, is_credit_sale
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'completed',$11,$12,$13,$14)
       RETURNING transaction_id, transaction_number, transaction_date, total_amount, payment_status
     `, [companyId, branchId, cashierUserId, sessionId || null,
         customerId || null, txnNumber,
         subtotal, taxAmount, discountAmt, totalAmount, paymentStatus, notes || null,
-        idempotencyKey || null]);
+        idempotencyKey || null, isCreditSale]);
 
     const txn = txnRows[0];
     const cogsMap = costingMethod === 'fifo' ? {} : null;

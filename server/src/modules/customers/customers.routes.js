@@ -22,7 +22,8 @@ router.post('/', requireAnyPermission('create_transaction', 'manage_customers'),
 router.put('/:id',    requireAnyPermission('manage_customers'), controller.update);
 router.delete('/:id', requireAnyPermission('manage_customers'), controller.remove);
 
-// ── Credit payment (reduces outstanding balance) ──────────────────────────────
-router.post('/:id/credit-payment', requireAnyPermission('manage_customers'), controller.creditPayment);
+// ── Credit account ────────────────────────────────────────────────────────────
+router.get('/:id/credit-transactions', controller.creditTransactions);
+router.post('/:id/credit-payment', requireAnyPermission('manage_customers', 'create_transaction'), controller.creditPayment);
 
 module.exports = router;

@@ -89,6 +89,12 @@ function CustomerForm({ initial, groups, creditEnabled, onSave, onClose }) {
 }
 
 function CustomerDetail({ customer, onRecordPayment }) {
+  const { data: creditTxns = [] } = useQuery({
+    queryKey: ['credit-transactions', customer?.customer_id],
+    queryFn: () => api.get(`/customers/${customer.customer_id}/credit-transactions`).then((r) => r.data.data),
+    enabled: !!customer?.allow_credit && !!customer?.customer_id,
+  });
+
   if (!customer) return null;
   const creditUsed      = customer.credit_balance  ?? 0;
   const creditLimit     = customer.credit_limit    ?? 0;
@@ -126,6 +132,27 @@ function CustomerDetail({ customer, onRecordPayment }) {
               <p className="font-bold text-green-700">{formatCurrency(creditAvailable)}</p>
             </div>
           </div>
+          {creditTxns.length > 0 && (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {creditTxns.map((t) => (
+                <div key={t.transaction_id}
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${t.payment_status === 'paid' ? 'border-green-100 bg-green-50 text-gray-400' : 'border-amber-100 bg-white'}`}>
+                  <div className="min-w-0">
+                    <p className="font-mono font-semibold text-gray-700">{t.transaction_number}</p>
+                    <p className="text-gray-400">{formatDate(t.transaction_date)}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`font-bold ${t.payment_status === 'paid' ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(t.total_amount)}
+                    </p>
+                    <p className={`text-[10px] uppercase font-semibold ${t.payment_status === 'paid' ? 'text-green-500' : 'text-orange-500'}`}>
+                      {t.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {creditUsed > 0 && (
             <Button size="sm" variant="secondary" fullWidth icon={<CreditCard className="h-3.5 w-3.5" />}
               onClick={onRecordPayment}>

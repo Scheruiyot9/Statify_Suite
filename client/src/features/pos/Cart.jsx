@@ -3,8 +3,9 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Plus, Minus, UserCircle2, Percent, ChevronDown, Gift,
   Clock, BadgeCheck, Phone, X, Pencil,
-  RotateCcw, XCircle, Wallet, ShoppingCart, Search,
+  RotateCcw, XCircle, Wallet, ShoppingCart, Search, CreditCard,
 } from 'lucide-react';
+import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 import { useCartStore, useAuthStore } from '@/app/store';
 import { formatCurrency, applyRounding } from '@/utils/formatters';
@@ -342,10 +343,87 @@ function HoldDialog({ onConfirm, onCancel }) {
   );
 }
 
+// ── Collect credit payment modal ──────────────────────────────────────────────
+function CollectCreditModal({ open, customer, onClose }) {
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState('');
+
+  const { data: txns = [], isLoading: txnsLoading } = useQuery({
+    queryKey: ['credit-transactions', customer?.customer_id],
+    queryFn: () => api.get(`/customers/${customer.customer_id}/credit-transactions`).then((r) => r.data.data),
+    enabled: open && !!customer?.customer_id,
+  });
+
+  const unpaidTxns = txns.filter((t) => t.payment_status !== 'paid');
+  const outstanding = parseFloat(customer?.credit_balance ?? 0);
+
+  useEffect(() => {
+    if (open) setAmount(outstanding > 0 ? String(outstanding) : '');
+  }, [open, outstanding]);
+
+  const payMut = useMutation({
+    mutationFn: (amt) => api.post(`/customers/${customer.customer_id}/credit-payment`, { amount: amt }),
+    onSuccess: (res) => {
+      const { credit_balance, amount_paid } = res.data.data;
+      toast.success(`KES ${Number(amount_paid).toLocaleString()} received — balance: KES ${Number(credit_balance).toLocaleString()}`);
+      qc.invalidateQueries({ queryKey: ['credit-transactions', customer.customer_id] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Collect Payment — ${customer?.customer_name ?? ''}`} size="sm">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-orange-50 border border-orange-200 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-orange-700 font-medium">Outstanding Balance</span>
+          <span className="text-lg font-bold text-orange-700">{formatCurrency(outstanding)}</span>
+        </div>
+
+        {txnsLoading ? (
+          <p className="text-xs text-gray-400 text-center py-2">Loading entries…</p>
+        ) : unpaidTxns.length > 0 && (
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Unpaid Entries</p>
+            {unpaidTxns.map((t) => (
+              <div key={t.transaction_id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs">
+                <div>
+                  <p className="font-mono font-semibold text-gray-700">{t.transaction_number}</p>
+                  <p className="text-gray-400">{new Date(t.transaction_date).toLocaleDateString()}</p>
+                </div>
+                <p className="font-bold text-red-600">{formatCurrency(t.total_amount)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Amount Received (KES)</label>
+          <input type="number" min="1" step="0.01" autoFocus
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+            value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </div>
+
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+          <Button variant="primary" fullWidth
+            disabled={!amount || parseFloat(amount) <= 0 || payMut.isPending}
+            loading={payMut.isPending}
+            onClick={() => payMut.mutate(parseFloat(amount))}>
+            Record Payment
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Inline customer typeahead ─────────────────────────────────────────────────
 function CustomerTypeahead() {
   const customer    = useCartStore((s) => s.customer);
   const setCustomer = useCartStore((s) => s.setCustomer);
+  const qc          = useQueryClient();
 
   const [search,     setSearch]     = useState('');
   const [debounced,  setDebounced]  = useState('');
@@ -481,8 +559,12 @@ function CustomerTypeahead() {
   // ── Customer selected ──
   const loyaltyPoints = customer.loyalty_points_balance ?? 0;
   const creditBalance = parseFloat(customer.credit_balance ?? 0);
+  const [collectOpen, setCollectOpen] = useState(false);
+  const companySettings = qc.getQueryData(['my-company']);
+  const creditEnabled   = !!companySettings?.credit_sales_enabled;
   return (
     <>
+      <CollectCreditModal open={collectOpen} customer={customer} onClose={() => setCollectOpen(false)} />
       <div ref={containerRef} className="relative flex items-center gap-2">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
           {customer.customer_name[0]?.toUpperCase()}
@@ -507,6 +589,14 @@ function CustomerTypeahead() {
               <span className="flex items-center gap-1 text-[11px] font-semibold text-orange-500">
                 <Wallet className="h-2.5 w-2.5" />Balance {formatCurrency(creditBalance)}
               </span>
+            )}
+            {creditEnabled && customer.allow_credit && creditBalance > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setCollectOpen(true); }}
+                className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
+              >
+                <CreditCard className="h-2.5 w-2.5" />Collect
+              </button>
             )}
           </div>
         </div>

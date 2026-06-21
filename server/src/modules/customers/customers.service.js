@@ -241,22 +241,79 @@ async function _generateCode(companyId) {
   return `CUST-${String(parseInt(rows[0].cnt) + 1).padStart(5, '0')}`;
 }
 
-async function recordCreditPayment(companyId, customerId, amount, notes) {
-  if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
+async function listCreditTransactions(companyId, customerId) {
   const { rows } = await query(`
-    UPDATE customers
-    SET credit_balance = GREATEST(0, credit_balance - $3),
-        updated_at     = now()
-    WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL
-    RETURNING customer_id, customer_name, credit_balance, credit_limit, allow_credit
-  `, [companyId, customerId, amount]);
-  if (!rows.length) throw AppError.notFound('Customer');
-  return {
-    customer_id:    rows[0].customer_id,
-    customer_name:  rows[0].customer_name,
-    credit_balance: parseFloat(rows[0].credit_balance),
-    credit_limit:   parseFloat(rows[0].credit_limit),
-  };
+    SELECT st.transaction_id, st.transaction_number, st.transaction_date,
+           st.total_amount, st.payment_status,
+           COALESCE(
+             json_agg(
+               json_build_object('name', p.product_name, 'qty', sti.quantity)
+               ORDER BY sti.sales_transaction_item_id
+             ) FILTER (WHERE p.product_name IS NOT NULL),
+             '[]'
+           ) AS items
+    FROM sales_transactions st
+    LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.transaction_id
+    LEFT JOIN products p ON p.product_id = sti.product_id
+    WHERE st.customer_id = $2 AND st.company_id = $1
+      AND st.is_credit_sale = TRUE AND st.status = 'completed'
+    GROUP BY st.transaction_id
+    ORDER BY st.transaction_date DESC
+    LIMIT 100
+  `, [companyId, customerId]);
+  return rows.map((r) => ({
+    ...r,
+    total_amount: parseFloat(r.total_amount),
+  }));
+}
+
+async function recordCreditPayment(companyId, customerId, amount) {
+  if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
+
+  return transaction(async (client) => {
+    const { rows: custRows } = await client.query(`
+      SELECT credit_balance FROM customers
+      WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL FOR UPDATE
+    `, [companyId, customerId]);
+    if (!custRows.length) throw AppError.notFound('Customer');
+
+    const actualPayment = Math.min(amount, parseFloat(custRows[0].credit_balance));
+
+    // Reduce credit balance
+    const { rows: updated } = await client.query(`
+      UPDATE customers
+      SET credit_balance = GREATEST(0, credit_balance - $3), updated_at = now()
+      WHERE company_id = $1 AND customer_id = $2
+      RETURNING customer_id, customer_name, credit_balance, credit_limit
+    `, [companyId, customerId, actualPayment]);
+
+    // Mark oldest unpaid credit transactions as paid (FIFO)
+    const { rows: txns } = await client.query(`
+      SELECT transaction_id, total_amount FROM sales_transactions
+      WHERE customer_id = $1 AND is_credit_sale = TRUE AND payment_status = 'partial' AND status = 'completed'
+      ORDER BY transaction_date ASC
+    `, [customerId]);
+
+    let remaining = actualPayment;
+    for (const txn of txns) {
+      if (remaining <= 0.005) break;
+      if (remaining >= parseFloat(txn.total_amount) - 0.005) {
+        await client.query(
+          `UPDATE sales_transactions SET payment_status = 'paid', updated_at = now() WHERE transaction_id = $1`,
+          [txn.transaction_id]
+        );
+        remaining -= parseFloat(txn.total_amount);
+      }
+    }
+
+    return {
+      customer_id:    updated[0].customer_id,
+      customer_name:  updated[0].customer_name,
+      credit_balance: parseFloat(updated[0].credit_balance),
+      credit_limit:   parseFloat(updated[0].credit_limit),
+      amount_paid:    actualPayment,
+    };
+  });
 }
 
 async function deleteCustomer(companyId, customerId, deletedBy) {
@@ -282,5 +339,5 @@ async function deleteCustomer(companyId, customerId, deletedBy) {
 
 module.exports = {
   listCustomers, getCustomer, createCustomer, updateCustomer, listGroups, createGroup, updateGroup,
-  recordCreditPayment, deleteCustomer,
+  listCreditTransactions, recordCreditPayment, deleteCustomer,
 };

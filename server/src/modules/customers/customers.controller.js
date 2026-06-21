@@ -41,10 +41,15 @@ const remove = async (req, res) => {
   res.json({ success: true, message: 'Customer deleted' });
 };
 
+const creditTransactions = async (req, res) => {
+  const rows = await svc.listCreditTransactions(req.tenantId, req.params.id);
+  res.json({ success: true, data: rows });
+};
+
 const creditPayment = async (req, res) => {
-  const { amount, notes } = req.body;
-  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount), notes);
+  const { amount } = req.body;
+  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount));
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditPayment };
+module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment };
