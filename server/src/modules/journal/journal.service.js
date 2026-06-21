@@ -104,8 +104,10 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
     const taxAmount    = parseFloat(txn.tax_amount   || txn.taxAmount   || 0);
     const netRevenue   = +(totalAmount - taxAmount).toFixed(4);
     const entryDate    = toDateStr(txn.transaction_date || txn.transactionDate);
-    const totalPaid    = rawPayments.reduce((s, p) => s + parseFloat(p.amountApplied || p.amount_applied || 0), 0);
-    const arAmount     = +(totalAmount - totalPaid).toFixed(4);
+    const totalPaid       = rawPayments.reduce((s, p) => s + parseFloat(p.amountApplied || p.amount_applied || 0), 0);
+    // When payment exceeds total (Kenyan cash rounding), the rounded-up amount is the actual revenue
+    const effectiveRevenue = Math.max(totalAmount, totalPaid);
+    const arAmount         = +(totalAmount - Math.min(totalPaid, totalAmount)).toFixed(4);
     const totalCOGS = cogsMap
       ? Object.values(cogsMap).reduce((s, c) => s + c, 0)
       : items.reduce((s, i) => {
@@ -149,15 +151,15 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
       lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
     }
 
-    // CR: Revenue
-    // If VAT Payable account (2100) exists: credit netRevenue to revenue + taxAmount to VAT.
+    // CR: Revenue — use effectiveRevenue (max of invoice total and amount paid, to handle cash rounding).
+    // If VAT Payable account (2100) exists: split into net revenue + VAT.
     // If 2100 is missing: absorb tax into revenue so the entry stays balanced.
-    if (totalAmount > 0.005 && accIds['4000']) {
+    if (effectiveRevenue > 0.005 && accIds['4000']) {
       if (taxAmount > 0.005 && accIds['2100']) {
-        lines.push({ accountId: accIds['4000'], debit: 0, credit: netRevenue });
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +(effectiveRevenue - taxAmount).toFixed(4) });
         lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
       } else {
-        lines.push({ accountId: accIds['4000'], debit: 0, credit: +totalAmount.toFixed(4) });
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +effectiveRevenue.toFixed(4) });
       }
     }
 
