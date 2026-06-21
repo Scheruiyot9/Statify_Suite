@@ -443,10 +443,11 @@ function CustomerTypeahead() {
   const setCustomer = useCartStore((s) => s.setCustomer);
   const qc          = useQueryClient();
 
-  const [search,     setSearch]     = useState('');
-  const [debounced,  setDebounced]  = useState('');
-  const [open,       setOpen]       = useState(false);
-  const [modalOpen,  setModalOpen]  = useState(false);
+  const [search,      setSearch]      = useState('');
+  const [debounced,   setDebounced]   = useState('');
+  const [open,        setOpen]        = useState(false);
+  const [modalOpen,   setModalOpen]   = useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
   const containerRef = useRef(null);
   const inputRef     = useRef(null);
 
@@ -577,7 +578,6 @@ function CustomerTypeahead() {
   // ── Customer selected ──
   const loyaltyPoints = customer.loyalty_points_balance ?? 0;
   const creditBalance = parseFloat(customer.credit_balance ?? 0);
-  const [collectOpen, setCollectOpen] = useState(false);
   const companySettings = qc.getQueryData(['my-company']);
   const creditEnabled   = !!companySettings?.credit_sales_enabled;
   return (
