@@ -519,7 +519,7 @@ async function voidTransaction(companyId, transactionId, userId, reason, role, b
 }
 
 async function editTransaction(companyId, transactionId, userId, data, role, branchIds = []) {
-  const { items, payments, customerId, notes, editReason, orderDiscount = 0 } = data;
+  const { items, payments, customerId, notes, editReason, orderDiscount = 0, transactionDate: newTransactionDate } = data;
 
   if (!items?.length)       throw AppError.badRequest('At least one item is required');
   if (!payments?.length)    throw AppError.badRequest('At least one payment is required');
@@ -542,7 +542,7 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
 
   const branchId          = rows[0].branch_id;
   const transactionNumber = rows[0].transaction_number;
-  const transactionDate   = rows[0].transaction_date;
+  const transactionDate   = newTransactionDate ? new Date(newTransactionDate) : rows[0].transaction_date;
   const cashierUserId     = rows[0].cashier_user_id;
 
   // Enforce prevent-sales-below-cost policy
@@ -624,11 +624,12 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
              last_edited_by = $10,
              last_edited_at = now(),
              edit_reason    = $11,
+             transaction_date = $12,
              updated_at     = now()
        WHERE company_id = $1 AND transaction_id = $2
     `, [companyId, transactionId, customerId || null,
         subtotal, taxAmount, discountAmt, totalAmount, paymentStatus,
-        notes || null, userId, editReason]);
+        notes || null, userId, editReason, transactionDate]);
 
     // 5. Replace items + deduct new inventory
     await client.query(`DELETE FROM sales_transaction_items WHERE transaction_id = $1`, [transactionId]);

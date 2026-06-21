@@ -117,10 +117,11 @@ function ProductSearch({ branchId, onSelect }) {
 export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
   const qc = useQueryClient();
 
-  const [items,       setItems]      = useState([]);
-  const [payments,    setPayments]   = useState([]);
-  const [notes,       setNotes]      = useState('');
-  const [editReason,  setEditReason] = useState('');
+  const [items,            setItems]           = useState([]);
+  const [payments,         setPayments]        = useState([]);
+  const [notes,            setNotes]           = useState('');
+  const [editReason,       setEditReason]      = useState('');
+  const [transactionDate,  setTransactionDate] = useState('');
 
   // Payment methods list for the payments dropdown
   const { data: payMethods = [] } = useQuery({
@@ -137,6 +138,7 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
     setPayments((txn.payments ?? []).map(fromServerPayment));
     setNotes(txn.notes ?? '');
     setEditReason('');
+    setTransactionDate(txn.transaction_date ? txn.transaction_date.slice(0, 10) : '');
   }, [txn]);
 
   // ── item helpers ────────────────────────────────────────────────────────────
@@ -247,9 +249,10 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
         changeGiven:     parseFloat(p.changeGiven) || 0,
         referenceNumber: p.referenceNumber || null,
       })),
-      customerId: txn.customer_id ?? null,
-      notes:      notes || null,
-      editReason: editReason.trim(),
+      customerId:      txn.customer_id ?? null,
+      notes:           notes || null,
+      editReason:      editReason.trim(),
+      transactionDate: transactionDate || undefined,
     };
 
     mut.mutate(payload);
@@ -267,8 +270,17 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
           <p>Inventory and journal entries will be reversed and re-posted. The transaction number stays the same.</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-x-4 text-xs text-gray-500">
-          <div><span className="text-gray-400">Date: </span>{formatDateTime(txn.transaction_date)}</div>
+        <div className="grid grid-cols-3 gap-x-4 text-xs text-gray-500 items-center">
+          <div>
+            <span className="text-gray-400 block mb-0.5">Date</span>
+            <input
+              type="date"
+              value={transactionDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setTransactionDate(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-primary-500 focus:outline-none"
+            />
+          </div>
           <div><span className="text-gray-400">Cashier: </span>{txn.cashier_name}</div>
           <div><span className="text-gray-400">Branch: </span>{txn.branch_name}</div>
         </div>

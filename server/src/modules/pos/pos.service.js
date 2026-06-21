@@ -909,7 +909,7 @@ async function listTransfers(companyId, sessionId) {
 
 // ── Shift Correction (company_admin only) ─────────────────────────────────────
 
-async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason }) {
+async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason, workDate }) {
   if (!correctionReason?.trim()) throw AppError.badRequest('Correction reason is required');
 
   const { rows: [sess] } = await query(
@@ -924,8 +924,9 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
 
   const hasOpening = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
   const hasClosing = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
+  const hasWorkDate = !!workDate;
 
-  if (!hasOpening && !hasClosing) throw AppError.badRequest('Provide at least one value to correct');
+  if (!hasOpening && !hasClosing && !hasWorkDate) throw AppError.badRequest('Provide at least one value to correct');
   if (hasClosing && sess.status === 'open')
     throw AppError.badRequest('Closing balance can only be corrected on a closed shift');
 
@@ -958,6 +959,11 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
       const expected = parseFloat(sess.expected_cash_amount || 0);
       sets.push(`cash_variance = $${qb.add(+(newClosing - expected).toFixed(2))}`);
     }
+  }
+
+  if (hasWorkDate) {
+    // Replace date part of session_start, preserving the original time-of-day
+    sets.push(`session_start = ($${qb.add(workDate)}::date + session_start::time)`);
   }
 
   sets.push(`corrected_by     = $${qb.add(userId)}`);

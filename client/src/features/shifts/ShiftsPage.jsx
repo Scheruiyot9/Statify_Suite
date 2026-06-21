@@ -277,15 +277,18 @@ function RecRow({ label, value, bold, className }) {
 // ── Correct Session Modal ─────────────────────────────────────────────────────
 
 function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
-  const [opening, setOpening] = useState(String(session.opening_cash_amount ?? ''));
-  const [closing, setClosing] = useState(String(session.closing_cash_counted ?? ''));
-  const [reason,  setReason]  = useState('');
+  const [opening,  setOpening]  = useState(String(session.opening_cash_amount ?? ''));
+  const [closing,  setClosing]  = useState(String(session.closing_cash_counted ?? ''));
+  const [reason,   setReason]   = useState('');
+  const [workDate, setWorkDate] = useState(
+    session.session_start ? session.session_start.slice(0, 10) : ''
+  );
   const qc = useQueryClient();
 
   const { mutate, isPending } = useMutation({
     mutationFn: (body) => api.patch(`/pos/sessions/${sessionId}/correct`, body),
     onSuccess: () => {
-      toast.success('Shift values corrected');
+      toast.success('Shift corrected');
       qc.invalidateQueries({ queryKey: ['sessions'] });
       qc.invalidateQueries({ queryKey: ['session-detail', sessionId] });
       onSaved();
@@ -299,6 +302,8 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
     const body = { correctionReason: reason };
     if (opening !== '') body.openingCashAmount  = parseFloat(opening) || 0;
     if (!isOpen && closing !== '') body.closingCashCounted = parseFloat(closing) || 0;
+    const originalDate = session.session_start ? session.session_start.slice(0, 10) : '';
+    if (workDate && workDate !== originalDate) body.workDate = workDate;
     mutate(body);
   };
 
@@ -307,6 +312,18 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
       <p className="text-xs text-gray-500">
         Only change the values that are wrong. Variance will be recalculated automatically.
       </p>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Work Date</label>
+        <input
+          type="date"
+          value={workDate}
+          max={new Date().toISOString().slice(0, 10)}
+          onChange={(e) => setWorkDate(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+        <p className="mt-0.5 text-xs text-gray-400">Change only if the shift was opened on the wrong calendar date.</p>
+      </div>
 
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">Opening Float</label>
