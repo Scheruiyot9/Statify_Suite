@@ -30,11 +30,11 @@ async function _post(client, companyId, { entryDate, description, sourceType, so
     throw new Error(`Unbalanced entry: DR=${totalDr.toFixed(4)} CR=${totalCr.toFixed(4)}`);
   }
 
-  const { rows: [{ je_counter }] } = await client.query(
-    `UPDATE companies SET je_counter = je_counter + 1 WHERE company_id = $1 RETURNING je_counter`,
+  const { rows: [{ journal_counter }] } = await client.query(
+    `UPDATE companies SET journal_counter = journal_counter + 1 WHERE company_id = $1 RETURNING journal_counter`,
     [companyId]
   );
-  const entryNumber = `JE-${new Date().getFullYear()}-${String(je_counter).padStart(6, '0')}`;
+  const entryNumber = `JE-${new Date().getFullYear()}-${String(journal_counter).padStart(6, '0')}`;
 
   const { rows: [je] } = await client.query(`
     INSERT INTO journal_entries
