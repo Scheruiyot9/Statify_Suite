@@ -319,6 +319,7 @@ function TerminalsTab() {
   const [defaultScanMode,        setDefaultScanMode]        = useState(true);
   const [allowTotalEdit,         setAllowTotalEdit]         = useState(false);
   const [preventSalesBelowCost,  setPreventSalesBelowCost]  = useState(false);
+  const [creditSalesEnabled,     setCreditSalesEnabled]     = useState(false);
   const [roundingMode,           setRoundingMode]           = useState('none');
   const [roundingUnit,           setRoundingUnit]           = useState(1);
 
@@ -335,6 +336,7 @@ function TerminalsTab() {
       setPreventSalesBelowCost(!!companyData.pos_prevent_sales_below_cost);
       setDefaultScanMode(companyData.pos_default_scan_mode !== false);
       setAllowTotalEdit(!!companyData.pos_allow_total_edit);
+      setCreditSalesEnabled(!!companyData.credit_sales_enabled);
       setRoundingMode(companyData.pos_rounding_mode  || 'none');
       setRoundingUnit(parseFloat(companyData.pos_rounding_unit) || 1);
     }
@@ -559,6 +561,11 @@ function TerminalsTab() {
                 desc:  'Cashiers cannot sell an item below its cost price. The POS will block checkout and warn when a price is set too low.',
                 val: preventSalesBelowCost, set: setPreventSalesBelowCost, accent: 'red',
               },
+              {
+                label: 'Enable credit sales',
+                desc:  'Allow customers marked as credit-enabled to charge purchases to their account. Individual credit limits are set per customer.',
+                val: creditSalesEnabled, set: setCreditSalesEnabled, accent: 'primary',
+              },
             ].map(({ label, desc, val, set, accent }) => (
               <label key={label} className="flex items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors">
                 <div className="min-w-0">
@@ -618,6 +625,7 @@ function TerminalsTab() {
                 pos_default_scan_mode:         defaultScanMode,
                 pos_allow_total_edit:          allowTotalEdit,
                 pos_prevent_sales_below_cost:  preventSalesBelowCost,
+                credit_sales_enabled:          creditSalesEnabled,
                 pos_rounding_mode:             roundingMode,
                 pos_rounding_unit:             roundingUnit,
               })}

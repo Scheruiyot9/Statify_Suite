@@ -907,8 +907,8 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
           </div>
         )}
 
-        {/* Charge to account (credit-enabled customers only) */}
-        {customer?.allow_credit && (
+        {/* Charge to account — requires credit sales enabled at company level AND on this customer */}
+        {companyData?.credit_sales_enabled && customer?.allow_credit && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">

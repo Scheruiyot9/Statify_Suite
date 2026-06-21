@@ -92,6 +92,12 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
   if (!branchId)         throw AppError.badRequest('Branch context is required');
   if (isCreditSale && !customerId) throw AppError.badRequest('A customer must be selected for credit sales');
   if (!isCreditSale && !payments?.length) throw AppError.badRequest('At least one payment is required');
+  if (isCreditSale) {
+    const { rows: coCheck } = await query(
+      `SELECT credit_sales_enabled FROM companies WHERE company_id = $1`, [companyId]
+    );
+    if (!coCheck[0]?.credit_sales_enabled) throw AppError.badRequest('Credit sales are not enabled for this company');
+  }
 
   // Enforce "no sale below cost" when enabled for this company
   const { rows: coRows } = await query(

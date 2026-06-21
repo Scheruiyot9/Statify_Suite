@@ -10,7 +10,7 @@ import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import { exportToExcel } from '@/utils/exportExcel';
 
-function CustomerForm({ initial, groups, onSave, onClose }) {
+function CustomerForm({ initial, groups, creditEnabled, onSave, onClose }) {
   const [form, setForm] = useState({
     customer_name:     initial?.customer_name     ?? '',
     phone:             initial?.phone             ?? '',
@@ -61,19 +61,23 @@ function CustomerForm({ initial, groups, onSave, onClose }) {
           <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
           <textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
         </div>
-        <div className="col-span-full flex items-center gap-3 pt-1">
-          <input type="checkbox" id="allow_credit" checked={form.allow_credit}
-            onChange={(e) => set('allow_credit', e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          <label htmlFor="allow_credit" className="text-sm font-medium text-gray-700 select-none">Allow credit sales</label>
-        </div>
-        {form.allow_credit && (
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Credit Limit (KES)</label>
-            <input type="number" min="0" step="100" className={inputCls}
-              value={form.credit_limit}
-              onChange={(e) => set('credit_limit', e.target.value)} />
-          </div>
+        {creditEnabled && (
+          <>
+            <div className="col-span-full flex items-center gap-3 pt-1">
+              <input type="checkbox" id="allow_credit" checked={form.allow_credit}
+                onChange={(e) => set('allow_credit', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <label htmlFor="allow_credit" className="text-sm font-medium text-gray-700 select-none">Allow credit sales</label>
+            </div>
+            {form.allow_credit && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Credit Limit (KES)</label>
+                <input type="number" min="0" step="100" className={inputCls}
+                  value={form.credit_limit}
+                  onChange={(e) => set('credit_limit', e.target.value)} />
+              </div>
+            )}
+          </>
         )}
       </div>
       <div className="flex justify-end gap-3 pt-2">
@@ -182,6 +186,12 @@ export default function CustomersPage() {
     queryKey: ['customer-groups'],
     queryFn: () => api.get('/customers/groups').then((r) => r.data.data),
   });
+
+  const { data: companyData } = useQuery({
+    queryKey: ['my-company'],
+    queryFn: () => api.get('/companies/mine').then((r) => r.data.data),
+  });
+  const creditEnabled = !!companyData?.credit_sales_enabled;
 
   const { data: customerDetail } = useQuery({
     queryKey: ['customer-detail', detail],
@@ -320,7 +330,7 @@ export default function CustomersPage() {
 
       <Modal open={(canCreateCustomers && modal === 'create') || (canManageCustomers && !!modal && typeof modal === 'object')} onClose={() => setModal(null)}
         title={modal === 'create' ? 'New Customer' : `Edit: ${modal?.customer_name}`} size="md">
-        <CustomerForm initial={modal !== 'create' ? modal : undefined} groups={groups}
+        <CustomerForm initial={modal !== 'create' ? modal : undefined} groups={groups} creditEnabled={creditEnabled}
           onClose={() => setModal(null)}
           onSave={(d) => modal === 'create' ? createMut.mutate(d) : updateMut.mutate({ id: modal.customer_id, ...d })} />
       </Modal>
