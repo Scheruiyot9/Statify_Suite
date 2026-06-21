@@ -336,10 +336,18 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
         if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
       }
 
-      if (totalCOGS  > 0.005 && accIds['5000']) lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4),  credit: 0 });
-      if (netRevenue > 0.005 && accIds['4000']) lines.push({ accountId: accIds['4000'], debit: 0, credit: netRevenue });
-      if (taxAmount  > 0.005 && accIds['2100']) lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
-      if (totalCOGS  > 0.005 && accIds['1200']) lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+      if (totalCOGS > 0.005 && accIds['5000'] && accIds['1200']) {
+        lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4), credit: 0 });
+        lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+      }
+      if (totalAmount > 0.005 && accIds['4000']) {
+        if (taxAmount > 0.005 && accIds['2100']) {
+          lines.push({ accountId: accIds['4000'], debit: 0, credit: +(totalAmount - taxAmount).toFixed(4) });
+          lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
+        } else {
+          lines.push({ accountId: accIds['4000'], debit: 0, credit: +totalAmount.toFixed(4) });
+        }
+      }
 
       if (lines.length < 2) return;
 
@@ -435,10 +443,18 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
     }
 
-    if (totalCOGS  > 0.005 && accIds['5000']) lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4),  credit: 0 });
-    if (netRevenue > 0.005 && accIds['4000']) lines.push({ accountId: accIds['4000'], debit: 0, credit: netRevenue });
-    if (taxAmount  > 0.005 && accIds['2100']) lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
-    if (totalCOGS  > 0.005 && accIds['1200']) lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+    if (totalCOGS > 0.005 && accIds['5000'] && accIds['1200']) {
+      lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4), credit: 0 });
+      lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
+    }
+    if (totalAmount > 0.005 && accIds['4000']) {
+      if (taxAmount > 0.005 && accIds['2100']) {
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +(totalAmount - taxAmount).toFixed(4) });
+        lines.push({ accountId: accIds['2100'], debit: 0, credit: +taxAmount.toFixed(4) });
+      } else {
+        lines.push({ accountId: accIds['4000'], debit: 0, credit: +totalAmount.toFixed(4) });
+      }
+    }
 
     if (lines.length < 2) throw new Error('Nothing to post');
 
