@@ -315,6 +315,7 @@ function PosBehaviourTab() {
   const [allowTotalEdit,         setAllowTotalEdit]         = useState(false);
   const [preventSalesBelowCost,  setPreventSalesBelowCost]  = useState(false);
   const [creditSalesEnabled,     setCreditSalesEnabled]     = useState(false);
+  const [defaultCreditLimit,     setDefaultCreditLimit]     = useState(0);
   const [roundingMode,           setRoundingMode]           = useState('none');
   const [roundingUnit,           setRoundingUnit]           = useState(1);
 
@@ -332,6 +333,7 @@ function PosBehaviourTab() {
       setDefaultScanMode(companyData.pos_default_scan_mode !== false);
       setAllowTotalEdit(!!companyData.pos_allow_total_edit);
       setCreditSalesEnabled(!!companyData.credit_sales_enabled);
+      setDefaultCreditLimit(parseFloat(companyData.default_credit_limit) || 0);
       setRoundingMode(companyData.pos_rounding_mode  || 'none');
       setRoundingUnit(parseFloat(companyData.pos_rounding_unit) || 1);
     }
@@ -416,6 +418,31 @@ function PosBehaviourTab() {
           ))}
         </div>
 
+        {/* Default credit limit — shown only when credit sales is enabled */}
+        {creditSalesEnabled && (
+          <div className="px-5 py-4 border-t border-gray-100 space-y-2">
+            <div>
+              <p className="text-sm font-medium text-gray-800">Default credit limit</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Automatically applied to new customers when they are created. Can be overridden per customer.
+                Set to 0 to require manual assignment.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Ksh</span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={defaultCreditLimit}
+                onChange={(e) => setDefaultCreditLimit(parseFloat(e.target.value) || 0)}
+                className="w-40 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-right focus:border-primary-500 focus:outline-none"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Price Rounding */}
         <div className="px-5 py-4 border-t border-gray-100 space-y-2">
           <div>
@@ -460,6 +487,7 @@ function PosBehaviourTab() {
               pos_allow_total_edit:          allowTotalEdit,
               pos_prevent_sales_below_cost:  preventSalesBelowCost,
               credit_sales_enabled:          creditSalesEnabled,
+              default_credit_limit:          defaultCreditLimit,
               pos_rounding_mode:             roundingMode,
               pos_rounding_unit:             roundingUnit,
             })}
@@ -940,11 +968,12 @@ function CustomerGroupsTab() {
 
 function BranchForm({ initial, onSave, onClose, isPending }) {
   const isEdit = !!initial;
-  const [name,     setName]     = useState(initial?.branch_name ?? '');
-  const [code,     setCode]     = useState(initial?.branch_code ?? '');
-  const [address,  setAddress]  = useState(initial?.address     ?? '');
-  const [phone,    setPhone]    = useState(initial?.phone        ?? '');
-  const [isActive, setIsActive] = useState(initial?.is_active   ?? true);
+  const [name,           setName]           = useState(initial?.branch_name     ?? '');
+  const [code,           setCode]           = useState(initial?.branch_code     ?? '');
+  const [address,        setAddress]        = useState(initial?.address         ?? '');
+  const [phone,          setPhone]          = useState(initial?.phone           ?? '');
+  const [paymentDetails, setPaymentDetails] = useState(initial?.payment_details ?? '');
+  const [isActive,       setIsActive]       = useState(initial?.is_active       ?? true);
 
   const valid = name.trim().length >= 2 && (isEdit || code.trim().length >= 2);
 
@@ -973,6 +1002,13 @@ function BranchForm({ initial, onSave, onClose, isPending }) {
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+254…"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
       </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Account / Till Number <span className="text-gray-400">(optional)</span></label>
+        <textarea value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)} rows={2}
+          placeholder={'e.g. Mpesa Till: 123456\nPaybill: 222111 · Acc: 001234'}
+          className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+        <p className="mt-0.5 text-xs text-gray-400">Shown on draft receipts so customers know where to pay.</p>
+      </div>
       {isEdit && (
         <label className="flex items-center gap-3 cursor-pointer">
           <span className="text-sm text-gray-700">Active</span>
@@ -985,7 +1021,7 @@ function BranchForm({ initial, onSave, onClose, isPending }) {
       <div className="flex gap-3 pt-2">
         <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
         <Button fullWidth disabled={!valid} loading={isPending}
-          onClick={() => onSave({ branch_name: name.trim(), branch_code: code.trim(), address: address.trim() || null, phone: phone.trim() || null, is_active: isActive })}>
+          onClick={() => onSave({ branch_name: name.trim(), branch_code: code.trim(), address: address.trim() || null, phone: phone.trim() || null, payment_details: paymentDetails, is_active: isActive })}>
           {isEdit ? 'Save Changes' : 'Create Branch'}
         </Button>
       </div>
@@ -2023,19 +2059,10 @@ function JournalTab() {
   const isAdmin   = userRole === 'company_admin';
 
   const [postingMode, setPostingMode] = useState('per_transaction');
-  const [dailyBranchId, setDailyBranchId] = useState('');
-  const [dailyDate,     setDailyDate]     = useState(new Date().toISOString().slice(0, 10));
-  const [postMode,      setPostMode]      = useState('combined');
 
   const { data: companyData } = useQuery({
     queryKey: ['company-mine', companyId],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
-    enabled:  !!companyId && isAdmin,
-  });
-
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn:  () => api.get('/branches').then((r) => r.data.data),
     enabled:  !!companyId && isAdmin,
   });
 
@@ -2052,27 +2079,6 @@ function JournalTab() {
     },
   });
 
-  const dailyMut = useMutation({
-    mutationFn: ({ branchId, date, mode }) =>
-      api.post('/journal/daily-summaries', { branchId, date, mode }).then((r) => r.data),
-    onSuccess: (data) => {
-      if (data?.data?.posted !== undefined) {
-        const { posted, skipped, remaining } = data.data;
-        if (posted === 0 && skipped === 0) {
-          toast.success('No unposted transactions found for this date');
-        } else if (posted === 0) {
-          toast.error(`0 posted — ${skipped} failed (check chart of accounts setup)`);
-        } else if (remaining > 0) {
-          toast(`Posted ${posted} · ${remaining} still unposted`, { icon: '⚠️' });
-        } else {
-          toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` · ${skipped} failed` : ''}`);
-        }
-      } else {
-        toast.success('Summary posted to journal');
-      }
-    },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to post'),
-  });
 
   const MODES = [
     {
@@ -2133,84 +2139,6 @@ function JournalTab() {
         </div>
       </div>
 
-      {/* Post unposted transactions — always visible so admins can retroactively post at any time */}
-      <div className="rounded-xl border border-gray-200 p-5 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
-            <BookOpen className="h-5 w-5 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-900">Post Unposted Transactions</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Manually post any sales that weren't recorded in the journal — useful after mode switches or to catch skipped entries.
-            </p>
-          </div>
-        </div>
-
-        {/* Mode toggle */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Posting style</label>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            {[
-              { value: 'combined',         label: 'Combined',        desc: 'One aggregate journal entry for the day' },
-              { value: 'per_transaction',  label: 'Per Transaction', desc: 'One journal entry per sale' },
-            ].map((opt, i) => (
-              <button
-                key={opt.value}
-                onClick={() => setPostMode(opt.value)}
-                className={[
-                  'flex-1 px-3 py-2 text-center transition-colors',
-                  i === 0 ? '' : 'border-l border-gray-200',
-                  postMode === opt.value
-                    ? 'bg-primary-600 text-white font-medium'
-                    : 'bg-white text-gray-600 hover:bg-gray-50',
-                ].join(' ')}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-xs text-gray-400">
-            {postMode === 'combined'
-              ? 'One aggregate journal entry covering all unposted sales for the selected branch and date.'
-              : 'Individual journal entries for each unposted sale — matches per-transaction audit trail.'}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Branch</label>
-            <select
-              value={dailyBranchId}
-              onChange={(e) => setDailyBranchId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none"
-            >
-              <option value="">— Select —</option>
-              {(branches || []).map((b) => (
-                <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
-            <input
-              type="date"
-              value={dailyDate}
-              onChange={(e) => setDailyDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <Button
-            loading={dailyMut.isPending}
-            disabled={!dailyBranchId || !dailyDate}
-            onClick={() => dailyMut.mutate({ branchId: dailyBranchId, date: dailyDate, mode: postMode })}
-          >
-            Post
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

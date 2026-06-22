@@ -4,7 +4,7 @@ const { checkBranchLimit }   = require('../../shared/subscriptionLimits');
 
 async function listBranches(companyId) {
   const { rows } = await query(
-    `SELECT branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active
+    `SELECT branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active, payment_details
      FROM branches
      WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL
      ORDER BY branch_name`,
@@ -14,7 +14,7 @@ async function listBranches(companyId) {
 }
 
 async function createBranch(companyId, data) {
-  const { branch_name, branch_code, address, phone } = data;
+  const { branch_name, branch_code, address, phone, payment_details } = data;
   if (!branch_name) throw AppError.badRequest('branch_name is required');
   if (!branch_code) throw AppError.badRequest('branch_code is required');
 
@@ -28,10 +28,10 @@ async function createBranch(companyId, data) {
 
   return transaction(async (client) => {
     const { rows: [branch] } = await client.query(`
-      INSERT INTO branches (company_id, branch_name, branch_code, address, phone, is_headquarters, is_active)
-      VALUES ($1, $2, $3, $4, $5, FALSE, TRUE)
-      RETURNING branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active
-    `, [companyId, branch_name, branch_code, address || null, phone || null]);
+      INSERT INTO branches (company_id, branch_name, branch_code, address, phone, is_headquarters, is_active, payment_details)
+      VALUES ($1, $2, $3, $4, $5, FALSE, TRUE, $6)
+      RETURNING branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active, payment_details
+    `, [companyId, branch_name, branch_code, address || null, phone || null, payment_details?.trim() || null]);
 
     // Auto-create inventory rows for all existing products in the new branch
     await client.query(`
@@ -47,17 +47,20 @@ async function createBranch(companyId, data) {
 }
 
 async function updateBranch(companyId, branchId, data) {
-  const { branch_name, address, phone, is_active } = data;
+  const { branch_name, address, phone, is_active, payment_details } = data;
+  // For payment_details: null means "not sent — keep existing"; '' means "clear it"
+  const pdParam = payment_details !== undefined ? (payment_details?.trim() ?? '') : null;
 
   const { rows } = await query(`
     UPDATE branches
-    SET branch_name = COALESCE($3, branch_name),
-        address     = COALESCE($4, address),
-        phone       = COALESCE($5, phone),
-        is_active   = COALESCE($6, is_active)
+    SET branch_name      = COALESCE($3, branch_name),
+        address          = COALESCE($4, address),
+        phone            = COALESCE($5, phone),
+        is_active        = COALESCE($6, is_active),
+        payment_details  = CASE WHEN $7::text IS NOT NULL THEN NULLIF(TRIM($7::text), '') ELSE payment_details END
     WHERE company_id = $1 AND branch_id = $2 AND deleted_at IS NULL
-    RETURNING branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active
-  `, [companyId, branchId, branch_name ?? null, address ?? null, phone ?? null, is_active ?? null]);
+    RETURNING branch_id, branch_name, branch_code, address, phone, is_headquarters, is_active, payment_details
+  `, [companyId, branchId, branch_name ?? null, address ?? null, phone ?? null, is_active ?? null, pdParam]);
 
   if (!rows.length) throw AppError.notFound('Branch');
   return rows[0];

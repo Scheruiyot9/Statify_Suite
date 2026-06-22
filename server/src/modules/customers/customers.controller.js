@@ -47,8 +47,11 @@ const creditTransactions = async (req, res) => {
 };
 
 const creditPayment = async (req, res) => {
-  const { amount, paymentMethodId } = req.body;
-  const result = await svc.recordCreditPayment(req.tenantId, req.params.id, parseFloat(amount), paymentMethodId || null);
+  const { amount, paymentMethodId, sessionId } = req.body;
+  const result = await svc.recordCreditPayment(
+    req.tenantId, req.params.id,
+    parseFloat(amount), paymentMethodId || null, sessionId || null
+  );
   res.json({ success: true, data: result });
 };
 

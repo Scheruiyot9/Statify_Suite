@@ -591,6 +591,11 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
 
   const [pointsToRedeem, setPointsToRedeem]     = useState(0);
   const [payableOverride, setPayableOverride]   = useState(null);
+
+  // "Also collect credit balance" alongside new sale
+  const [collectCredit,         setCollectCredit]         = useState(false);
+  const [collectCreditAmt,      setCollectCreditAmt]      = useState('');
+  const [collectCreditMethodId, setCollectCreditMethodId] = useState('');
   const loyaltyDiscount = pointsToRedeem * redeemRate;
   const netTotal        = Math.max(0, cartTotal - loyaltyDiscount);
   const autoRounded     = applyRounding(netTotal, roundingMode, roundingUnit);
@@ -618,7 +623,14 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const methods = liveMethods ?? ((!isOnline || methodsError) ? loadMethodsCache() : []);
 
   useEffect(() => {
-    if (open) { setPaymentLines([]); setPointsToRedeem(0); setPayableOverride(null); }
+    if (open) {
+      setPaymentLines([]);
+      setPointsToRedeem(0);
+      setPayableOverride(null);
+      setCollectCredit(false);
+      setCollectCreditAmt('');
+      setCollectCreditMethodId('');
+    }
   }, [open]);
 
   const setCustomer = useCartStore((s) => s.setCustomer);
@@ -674,9 +686,24 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
           .catch((e) => console.error('[mpesa] link-sale failed:', e?.response?.data || e.message));
       }
 
-      let msg = 'Payment successful!';
-      if (loyalty_points_earned > 0) msg += ` +${loyalty_points_earned} points earned.`;
-      toast.success(msg);
+      // Also collect outstanding credit balance if requested
+      if (collectCredit && parseFloat(collectCreditAmt) > 0 && customer?.customer_id) {
+        try {
+          const cr = await api.post(`/customers/${customer.customer_id}/credit-payment`, {
+            amount: parseFloat(collectCreditAmt),
+            paymentMethodId: collectCreditMethodId || null,
+            sessionId: session?.session_id || null,
+          });
+          const { amount_paid, credit_balance } = cr.data.data;
+          toast.success(`Sale complete + ${formatCurrency(amount_paid)} credit collected · balance: ${formatCurrency(credit_balance)}`);
+        } catch (e) {
+          toast.error('Sale recorded — credit collection failed. Collect separately.');
+        }
+      } else {
+        let msg = 'Payment successful!';
+        if (loyalty_points_earned > 0) msg += ` +${loyalty_points_earned} points earned.`;
+        toast.success(msg);
+      }
       clearCart();
       onSuccess?.(res.data.data);
       onClose();
@@ -907,22 +934,77 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
           </div>
         )}
 
-        {/* Charge to account — requires credit sales enabled at company level AND on this customer */}
-        {companyData?.credit_sales_enabled && customer?.allow_credit && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
-                <CreditCard className="h-4 w-4" /> Credit Account
+        {/* Charge to account — requires credit sales enabled at company level */}
+        {companyData?.credit_sales_enabled && (
+          !customer?.customer_id
+            ? (
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center gap-2 text-xs text-blue-600">
+                <CreditCard className="h-4 w-4 flex-shrink-0 text-blue-400" />
+                Select a customer to use credit account payment.
               </div>
-              <span className="text-xs text-blue-600">
-                Available: {formatCurrency(Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0)))}
+            )
+            : !customer?.allow_credit
+            ? null
+            : (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
+                    <CreditCard className="h-4 w-4" /> Credit Account
+                  </div>
+                  <span className="text-xs text-blue-600">
+                    Available: {formatCurrency(Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0)))}
+                  </span>
+                </div>
+                <Button size="sm" variant="secondary" fullWidth
+                  disabled={isPending || effectiveTotal <= 0 || effectiveTotal > Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0))}
+                  onClick={handleChargeToAccount}>
+                  Charge to Account
+                </Button>
+              </div>
+            )
+        )}
+
+        {/* Also collect outstanding credit balance alongside this sale */}
+        {companyData?.credit_sales_enabled && customer?.customer_id && (customer?.credit_balance ?? 0) > 0 && !customer?.allow_credit && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={collectCredit}
+                onChange={(e) => {
+                  setCollectCredit(e.target.checked);
+                  if (e.target.checked) setCollectCreditAmt((customer.credit_balance ?? 0).toFixed(2));
+                  else { setCollectCreditAmt(''); setCollectCreditMethodId(''); }
+                }}
+                className="rounded border-orange-300 text-primary-600"
+              />
+              <span className="text-xs font-semibold text-orange-800">
+                Also collect {formatCurrency(customer.credit_balance)} outstanding balance
               </span>
-            </div>
-            <Button size="sm" variant="secondary" fullWidth
-              disabled={isPending || effectiveTotal <= 0 || effectiveTotal > Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0))}
-              onClick={handleChargeToAccount}>
-              Charge to Account
-            </Button>
+            </label>
+            {collectCredit && (
+              <div className="flex gap-2 items-center pt-1">
+                <div className="flex-1">
+                  <input
+                    type="number" min="0.01" step="0.01"
+                    value={collectCreditAmt}
+                    onChange={(e) => setCollectCreditAmt(e.target.value)}
+                    placeholder="Amount"
+                    className="w-full rounded-lg border border-orange-200 px-3 py-1.5 text-xs text-right font-semibold focus:border-primary-500 focus:outline-none bg-white"
+                  />
+                </div>
+                <select
+                  value={collectCreditMethodId}
+                  onChange={(e) => setCollectCreditMethodId(e.target.value)}
+                  className="flex-1 rounded-lg border border-orange-200 px-2 py-1.5 text-xs bg-white focus:border-primary-500 focus:outline-none"
+                >
+                  <option value="">Cash</option>
+                  {methods.map((m) => (
+                    <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
 

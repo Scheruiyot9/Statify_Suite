@@ -14,6 +14,8 @@ r.get('/unreconciled',      requireFinance, requireRole('company_admin','account
 r.post('/opening-balances', requireFinance, requireRole('company_admin','accountant'),                  ctrl.openingBalances);
 r.post('/ar-settlement',    requireFinance, requireRole('company_admin','accountant'),                  ctrl.arSettlement);
 r.post('/reconcile',        requireFinance, requireRole('company_admin','accountant'),                  ctrl.reconcile);
-r.post('/daily-summaries', requireFinance, requireRole('company_admin'),                               ctrl.postDailySummary);
+r.post('/daily-summaries',  requireFinance, requireRole('company_admin'),                               ctrl.postDailySummary);
+r.get('/entries',           requireFinance, requireRole('company_admin','accountant','branch_manager'), ctrl.listEntries);
+r.get('/entries/:id',       requireFinance, requireRole('company_admin','accountant','branch_manager'), ctrl.getEntry);
 
 module.exports = r;

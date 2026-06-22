@@ -302,7 +302,7 @@ async function getMyCompany(companyId) {
             pos_allow_price_edit, pos_allow_partial_qty, pos_default_scan_mode,
             pos_allow_total_edit, pos_rounding_mode, pos_rounding_unit,
             pos_prevent_sales_below_cost, costing_method, journal_posting_mode,
-            credit_sales_enabled
+            credit_sales_enabled, default_credit_limit
        FROM companies WHERE company_id = $1`,
     [companyId]
   );
@@ -371,6 +371,10 @@ async function updateMyProfile(companyId, patch) {
   }
   if ('credit_sales_enabled' in patch) {
     setParts.push(`credit_sales_enabled = ${p(Boolean(patch.credit_sales_enabled))}`);
+  }
+  if ('default_credit_limit' in patch) {
+    const lim = parseFloat(patch.default_credit_limit);
+    setParts.push(`default_credit_limit = ${p(isNaN(lim) || lim < 0 ? 0 : lim)}`);
   }
 
   if (!setParts.length) throw AppError.badRequest('No fields to update');

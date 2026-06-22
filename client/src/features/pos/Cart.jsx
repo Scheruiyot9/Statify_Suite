@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Plus, Minus, UserCircle2, Percent, ChevronDown, Gift,
   Clock, BadgeCheck, Phone, X, Pencil,
   RotateCcw, XCircle, Wallet, ShoppingCart, Search, CreditCard,
+  CheckCircle2, AlertCircle, ArrowUpRight, ExternalLink, Printer,
 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
+import ReceiptModal from '@/components/ui/ReceiptModal';
 import toast from 'react-hot-toast';
 import { useCartStore, useAuthStore } from '@/app/store';
 import { formatCurrency, applyRounding } from '@/utils/formatters';
+import { printDraft } from '@/utils/printReceipt';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 import { ProductThumb } from './ProductGrid';
@@ -343,97 +346,277 @@ function HoldDialog({ onConfirm, onCancel }) {
   );
 }
 
-// ── Collect credit payment modal ──────────────────────────────────────────────
-function CollectCreditModal({ open, customer, onClose }) {
+// ── Credit payment modal (exported for POS menu use) ──────────────────────────
+export function CreditPaymentModal({ open, preCustomer = null, sessionId = null, onClose }) {
   const qc = useQueryClient();
-  const [amount, setAmount]       = useState('');
-  const [payMethodId, setPayMethodId] = useState('');
 
+  const [customer,    setCustomer]    = useState(null);
+  const [search,      setSearch]      = useState('');
+  const [debounced,   setDebounced]   = useState('');
+  const [showResults, setShowResults] = useState(false);
+  const [amount,        setAmount]        = useState('');
+  const [payMethodId,   setPayMethodId]   = useState('');
+  const [txnPreviewId,  setTxnPreviewId]  = useState(null);
+  const searchRef = useRef(null);
+
+  // Reset on open
+  useEffect(() => {
+    if (open) {
+      setCustomer(preCustomer || null);
+      setSearch('');
+      setDebounced('');
+      setShowResults(false);
+      setAmount('');
+      setPayMethodId('');
+      setTxnPreviewId(null);
+    }
+  }, [open, preCustomer]);
+
+  const { data: txnDetail } = useQuery({
+    queryKey: ['txn-detail', txnPreviewId],
+    queryFn: () => api.get(`/sales/transactions/${txnPreviewId}`).then((r) => r.data.data),
+    enabled: !!txnPreviewId,
+    staleTime: Infinity,
+  });
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Pre-fill amount when customer loads
+  const outstanding = parseFloat(customer?.credit_balance ?? 0);
+  useEffect(() => {
+    if (customer) setAmount(outstanding > 0 ? outstanding.toFixed(2) : '');
+  }, [customer?.customer_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Customer search (credit outstanding only)
+  const { data: searchResults = [] } = useQuery({
+    queryKey: ['credit-cust-search', debounced],
+    queryFn: () =>
+      api.get('/customers', { params: { search: debounced || undefined, creditOutstanding: 'true', limit: 8 } })
+        .then((r) => r.data.data?.customers ?? r.data.data ?? []),
+    enabled: open && !customer && showResults,
+    staleTime: 10_000,
+  });
+
+  // Outstanding transactions for selected customer
   const { data: txns = [], isLoading: txnsLoading } = useQuery({
     queryKey: ['credit-transactions', customer?.customer_id],
     queryFn: () => api.get(`/customers/${customer.customer_id}/credit-transactions`).then((r) => r.data.data),
     enabled: open && !!customer?.customer_id,
   });
 
+  // Payment methods
   const { data: payMethods = [] } = useQuery({
     queryKey: ['payment-methods'],
     queryFn: () => api.get('/pos/payment-methods').then((r) => r.data.data ?? r.data),
     staleTime: 5 * 60 * 1000,
   });
 
-  const unpaidTxns = txns.filter((t) => t.payment_status !== 'paid');
-  const outstanding = parseFloat(customer?.credit_balance ?? 0);
+  const unpaidTxns = [...txns]
+    .filter((t) => t.payment_status !== 'paid')
+    .sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
 
-  useEffect(() => {
-    if (open) { setAmount(outstanding > 0 ? String(outstanding) : ''); setPayMethodId(''); }
-  }, [open, outstanding]);
+  const payAmount    = parseFloat(amount) || 0;
+  const isOverpay    = payAmount > outstanding && outstanding > 0;
+  const advCredit    = isOverpay ? +(payAmount - outstanding).toFixed(2) : 0;
+
+  // Live FIFO preview: which transactions will be cleared?
+  const fifoPreview = useCallback(() => {
+    let rem = Math.min(payAmount, outstanding);
+    return unpaidTxns.map((t) => {
+      const txnAmt = parseFloat(t.total_amount);
+      if (rem <= 0.005) return { ...t, _preview: 'unchanged' };
+      if (rem >= txnAmt - 0.005) { rem -= txnAmt; return { ...t, _preview: 'paid' }; }
+      const partial = rem; rem = 0;
+      return { ...t, _preview: 'partial', _partialAmt: partial };
+    });
+  }, [payAmount, outstanding, unpaidTxns]);
+
+  const preview = fifoPreview();
+  const willClearCount = preview.filter((t) => t._preview === 'paid').length;
 
   const payMut = useMutation({
-    mutationFn: ({ amt, pmId }) => api.post(`/customers/${customer.customer_id}/credit-payment`, { amount: amt, paymentMethodId: pmId || null }),
+    mutationFn: () => api.post(`/customers/${customer.customer_id}/credit-payment`, {
+      amount: payAmount, paymentMethodId: payMethodId || null, sessionId: sessionId || null,
+    }),
     onSuccess: (res) => {
-      const { credit_balance, amount_paid } = res.data.data;
-      toast.success(`KES ${Number(amount_paid).toLocaleString()} received — balance: KES ${Number(credit_balance).toLocaleString()}`);
+      const { amount_paid, credit_balance, advance_credit } = res.data.data;
+      let msg = `${formatCurrency(amount_paid)} received`;
+      if (advance_credit > 0) msg += ` · ${formatCurrency(advance_credit)} stored as advance credit`;
+      else msg += ` · balance: ${formatCurrency(credit_balance)}`;
+      toast.success(msg);
       qc.invalidateQueries({ queryKey: ['credit-transactions', customer.customer_id] });
       qc.invalidateQueries({ queryKey: ['customers'] });
       onClose();
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to record payment'),
   });
 
   return (
-    <Modal open={open} onClose={onClose} title={`Collect Payment — ${customer?.customer_name ?? ''}`} size="sm">
+    <>
+    <ReceiptModal open={!!txnPreviewId} onClose={() => setTxnPreviewId(null)} txn={txnDetail} />
+    <Modal open={open} onClose={onClose} title="Collect Credit Payment" size="md">
       <div className="space-y-4">
-        <div className="rounded-lg bg-orange-50 border border-orange-200 px-4 py-3 flex items-center justify-between">
-          <span className="text-sm text-orange-700 font-medium">Outstanding Balance</span>
-          <span className="text-lg font-bold text-orange-700">{formatCurrency(outstanding)}</span>
-        </div>
 
-        {txnsLoading ? (
-          <p className="text-xs text-gray-400 text-center py-2">Loading entries…</p>
-        ) : unpaidTxns.length > 0 && (
-          <div className="space-y-1 max-h-40 overflow-y-auto">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Unpaid Entries</p>
-            {unpaidTxns.map((t) => (
-              <div key={t.transaction_id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs">
-                <div>
-                  <p className="font-mono font-semibold text-gray-700">{t.transaction_number}</p>
-                  <p className="text-gray-400">{new Date(t.transaction_date).toLocaleDateString()}</p>
-                </div>
-                <p className="font-bold text-red-600">{formatCurrency(t.total_amount)}</p>
+        {/* ── Customer selector ── */}
+        {!customer ? (
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-gray-700">Customer</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+              <input
+                ref={searchRef}
+                autoFocus
+                type="text"
+                placeholder="Search customers with outstanding balance…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setShowResults(true); }}
+                onFocus={() => setShowResults(true)}
+                className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              />
+            </div>
+            {showResults && (
+              <div className="space-y-1 max-h-52 overflow-y-auto">
+                {searchResults.length === 0 ? (
+                  <p className="text-center text-xs text-gray-400 py-4">No customers with outstanding balance found</p>
+                ) : searchResults.map((c) => (
+                  <button
+                    key={c.customer_id}
+                    onClick={() => { setCustomer(c); setShowResults(false); }}
+                    className="w-full flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5 text-left hover:bg-primary-50 hover:border-primary-200 transition-colors"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{c.customer_name}</p>
+                      {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                    </div>
+                    <span className="text-sm font-bold text-red-600">{formatCurrency(c.credit_balance)}</span>
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
+        ) : (
+          <>
+            {/* ── Selected customer card ── */}
+            <div className="flex items-center justify-between rounded-xl bg-orange-50 border border-orange-200 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">{customer.customer_name}</p>
+                <p className="text-xs text-orange-600 mt-0.5">Outstanding balance: <span className="font-bold">{formatCurrency(outstanding)}</span></p>
+              </div>
+              {!preCustomer && (
+                <button
+                  onClick={() => { setCustomer(null); setAmount(''); }}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Change
+                </button>
+              )}
+            </div>
+
+            {/* ── Outstanding transactions (FIFO preview) ── */}
+            {txnsLoading ? (
+              <p className="text-xs text-gray-400 text-center py-3">Loading transactions…</p>
+            ) : unpaidTxns.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Outstanding Sales · {unpaidTxns.length} entr{unpaidTxns.length === 1 ? 'y' : 'ies'} · payment applied oldest-first
+                </p>
+                <div className="space-y-1 max-h-44 overflow-y-auto rounded-lg border border-gray-100 divide-y divide-gray-100">
+                  {preview.map((t) => (
+                    <button key={t.transaction_id}
+                      onClick={() => setTxnPreviewId(t.transaction_id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors hover:brightness-95 ${
+                        t._preview === 'paid'    ? 'bg-green-50'  :
+                        t._preview === 'partial' ? 'bg-amber-50'  : 'bg-white'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-mono font-semibold text-gray-700 flex items-center gap-1">
+                          {t.transaction_number}<ExternalLink className="h-2.5 w-2.5 text-gray-400" />
+                        </p>
+                        <p className="text-gray-400">{new Date(t.transaction_date).toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-800">{formatCurrency(t.total_amount)}</p>
+                        {t._preview === 'paid'      && <p className="text-green-600 font-medium flex items-center gap-1 justify-end"><CheckCircle2 className="h-3 w-3" />Will clear</p>}
+                        {t._preview === 'partial'   && <p className="text-amber-600 font-medium flex items-center gap-1 justify-end"><AlertCircle className="h-3 w-3" />Partial {formatCurrency(t._partialAmt)}</p>}
+                        {t._preview === 'unchanged' && <p className="text-gray-400">Unpaid</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-2">No outstanding transactions found</p>
+            )}
+
+            {/* ── Amount ── */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Amount Received (KES)</label>
+              <input
+                type="number" min="0.01" step="0.01" autoFocus
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-right font-semibold focus:border-primary-500 focus:outline-none"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              {/* Summary line */}
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                {willClearCount > 0 && (
+                  <span className="text-green-600 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />Clears {willClearCount} invoice{willClearCount > 1 ? 's' : ''}
+                  </span>
+                )}
+                {preview.some((t) => t._preview === 'partial') && (
+                  <span className="text-amber-600 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />Partial on 1 invoice
+                  </span>
+                )}
+                {isOverpay && (
+                  <span className="text-blue-600 flex items-center gap-1">
+                    <ArrowUpRight className="h-3 w-3" />{formatCurrency(advCredit)} advance credit
+                  </span>
+                )}
+                {payAmount > 0 && !isOverpay && payAmount < outstanding && (
+                  <span className="text-gray-500">Remaining balance: {formatCurrency(outstanding - payAmount)}</span>
+                )}
+              </div>
+            </div>
+
+            {/* ── Payment method ── */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
+              <select
+                value={payMethodId}
+                onChange={(e) => setPayMethodId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              >
+                <option value="">— Cash (default) —</option>
+                {payMethods.map((m) => (
+                  <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* ── Actions ── */}
+            <div className="flex gap-3 pt-1">
+              <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+              <Button
+                variant="primary" fullWidth
+                loading={payMut.isPending}
+                disabled={payAmount <= 0 || payMut.isPending}
+                onClick={() => payMut.mutate()}
+              >
+                Record {formatCurrency(payAmount)} Payment
+              </Button>
+            </div>
+          </>
         )}
-
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Amount Received (KES)</label>
-          <input type="number" min="1" step="0.01" autoFocus
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-            value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
-          <select value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
-            <option value="">— Cash (default) —</option>
-            {payMethods.map((m) => (
-              <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex gap-3">
-          <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
-          <Button variant="primary" fullWidth
-            disabled={!amount || parseFloat(amount) <= 0 || payMut.isPending}
-            loading={payMut.isPending}
-            onClick={() => payMut.mutate({ amt: parseFloat(amount), pmId: payMethodId })}>
-            Record Payment
-          </Button>
-        </div>
       </div>
     </Modal>
+    </>
   );
 }
 
@@ -582,7 +765,7 @@ function CustomerTypeahead() {
   const creditEnabled   = !!companySettings?.credit_sales_enabled;
   return (
     <>
-      <CollectCreditModal open={collectOpen} customer={customer} onClose={() => setCollectOpen(false)} />
+      <CreditPaymentModal open={collectOpen} preCustomer={customer} onClose={() => setCollectOpen(false)} />
       <div ref={containerRef} className="relative flex items-center gap-2">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
           {customer.customer_name[0]?.toUpperCase()}
@@ -656,6 +839,28 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
   // Read company POS settings from the cached query (AppLayout already fetches this)
   const qc = useQueryClient();
   const companySettings = qc.getQueryData(['my-company']);
+  const user = useAuthStore((s) => s.user);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => api.get('/branches').then((r) => r.data.data),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const handlePrintDraft = () => {
+    const branch = branches.find((b) => b.branch_id === branchId);
+    printDraft({
+      cart: {
+        items,
+        customer: useCartStore.getState().customer,
+        orderDiscount,
+        orderDiscountType,
+      },
+      company: companySettings,
+      paymentDetails: branch?.payment_details ?? '',
+      cashierName: user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '',
+    });
+  };
   const allowPriceEdit          = companySettings?.pos_allow_price_edit          ?? false;
   const allowPartialQty         = companySettings?.pos_allow_partial_qty         ?? false;
   const allowTotalEdit          = companySettings?.pos_allow_total_edit          ?? false;
@@ -970,8 +1175,8 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
 
       {/* ── Action strip ── */}
       <div className="border-t border-gray-100 p-3 space-y-2">
-        {/* Hold · Cancel · Return */}
-        <div className="grid grid-cols-3 gap-2">
+        {/* Hold · Cancel · Return · Print Draft */}
+        <div className="grid grid-cols-4 gap-2">
           <button
             onClick={() => items.length && setHoldDialogOpen(true)}
             disabled={!items.length}
@@ -1001,6 +1206,15 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
           >
             <RotateCcw className="h-4 w-4 text-teal-500" />
             Return
+          </button>
+
+          <button
+            onClick={handlePrintDraft}
+            disabled={!items.length}
+            className="flex flex-col items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 py-3 text-[11px] font-semibold text-gray-600 hover:bg-gray-100 active:scale-[0.97] disabled:opacity-40 transition-all"
+          >
+            <Printer className="h-4 w-4 text-gray-500" />
+            Draft
           </button>
         </div>
 

@@ -130,8 +130,10 @@ export default function ReceiptModal({ open, onClose, txn }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Receipt" size="sm">
-      {txn && (
+    <Modal open={open} onClose={onClose} title={txn ? `Receipt — ${txn.transaction_number}` : 'Receipt'} size="sm">
+      {!txn ? (
+        <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
+      ) : (
         <>
           <div ref={printRef} className="bg-white p-4 rounded-lg border border-gray-100">
             <ReceiptBody txn={txn} company={company} />

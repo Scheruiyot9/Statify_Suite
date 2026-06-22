@@ -24,4 +24,10 @@ const postDailySummary  = async (req, res) => {
   created(res, { journalEntryId: result });
 };
 
-module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile, postDailySummary };
+const listEntries = async (req, res) =>
+  ok(res, await svc.listJournalEntries(req.tenantId, req.query));
+
+const getEntry = async (req, res) =>
+  ok(res, await svc.getJournalEntry(req.tenantId, req.params.id));
+
+module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile, postDailySummary, listEntries, getEntry };

@@ -41,9 +41,10 @@ async function getPlatformSummary() {
   };
 }
 
-async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) {
+async function getDashboard(companyId, role, branchIds, { period = '7d', userId } = {}) {
   if (!companyId) return getPlatformSummary();
 
+  const isCashier = role === 'cashier';
   const canViewSales = SALES_DASHBOARD_ROLES.includes(role);
   const canViewInventory = INVENTORY_DASHBOARD_ROLES.includes(role);
 
@@ -65,6 +66,14 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
   const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
   const allBranches = isCompanyWide(role);
 
+  // For cashiers: additionally scope all sales queries to their own transactions
+  let cashierClause = '';
+  let cParams = [...bParams];
+  if (isCashier && userId) {
+    cParams.push(userId);
+    cashierClause = `AND st.cashier_user_id = $${cParams.length}`;
+  }
+
   // Run all queries in parallel for speed
   const [summaryRes, lowStockRes, trendRes, recentRes, topProdsRes, categoryRes, branchRes] = await Promise.all([
 
@@ -78,10 +87,10 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         ) AS customers_served
       FROM sales_transactions st
       WHERE st.company_id = $1 AND st.status = 'completed'
-      ${bClause}
-    `, bParams),
+      ${bClause} ${cashierClause}
+    `, cParams),
 
-    // 2. Low stock count
+    // 2. Low stock count (not scoped to cashier — branch-level is fine)
     query(`
       SELECT COUNT(DISTINCT pbi.product_id) AS cnt
       FROM product_branch_inventory pbi
@@ -93,14 +102,14 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         AND pbi.quantity_available <= pbi.reorder_level
     `, bParams),
 
-    // 3. Sales trend — dynamic period, daily rows (frontend groups into week/month)
+    // 3. Sales trend — dynamic period, daily rows
     query(`
       SELECT
         gs.day::date                                                             AS sale_date,
         COALESCE(SUM(st.total_amount), 0)::numeric                              AS total,
         COALESCE(COUNT(st.transaction_id), 0)::int                              AS txn_count
       FROM generate_series(
-        CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day'),
+        CURRENT_DATE - ($${cParams.length + 1}::int * INTERVAL '1 day'),
         CURRENT_DATE,
         INTERVAL '1 day'
       ) AS gs(day)
@@ -108,12 +117,12 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         ON st.transaction_date::date = gs.day::date
         AND st.company_id = $1
         AND st.status = 'completed'
-        ${bClause}
+        ${bClause} ${cashierClause}
       GROUP BY gs.day
       ORDER BY gs.day
-    `, [...bParams, trendDays]),
+    `, [...cParams, trendDays]),
 
-    // 4. Recent 10 transactions
+    // 4. Recent transactions (cashier sees only their own)
     query(`
       SELECT
         st.transaction_id,
@@ -135,13 +144,13 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       JOIN users    u ON u.user_id    = st.cashier_user_id
       JOIN branches b ON b.branch_id  = st.branch_id
       WHERE st.company_id = $1 AND st.status = 'completed'
-      ${bClause}
+      ${bClause} ${cashierClause}
       ORDER BY st.transaction_date DESC
-      LIMIT 5
-    `, bParams),
+      LIMIT 10
+    `, cParams),
 
-    // 5. Top 5 products (period-aware)
-    canViewSales
+    // 5. Top 5 products — hidden for cashier
+    (!isCashier && canViewSales)
       ? query(`
           SELECT
             p.product_name,
@@ -160,8 +169,8 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
         `, [...bParams, trendDays])
       : Promise.resolve({ rows: [] }),
 
-    // 6. Category breakdown (period-aware)
-    canViewSales
+    // 6. Category breakdown — hidden for cashier
+    (!isCashier && canViewSales)
       ? query(`
           SELECT
             COALESCE(pc.category_name, 'Uncategorised') AS category_name,
@@ -254,11 +263,13 @@ async function getDashboard(companyId, role, branchIds, { period = '7d' } = {}) 
       todayTxns:   parseInt(r.today_txns),
       periodSales: parseFloat(r.period_sales),
     })),
+
+    isCashierView: isCashier,
   };
 }
 
 // companyId may be null for super-admin platform-wide view (all companies)
-async function getSalesReport(companyId, role, branchIds, { startDate, endDate, branchId } = {}) {
+async function getSalesReport(companyId, role, branchIds, { startDate, endDate, branchId, sessionId } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
@@ -283,6 +294,12 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
   filterParams.push(start, end);
   const dateFilter = `AND st.transaction_date::date BETWEEN $${d1} AND $${d2}`;
 
+  let sessionFilter = '';
+  if (sessionId) {
+    filterParams.push(sessionId);
+    sessionFilter = `AND st.pos_session_id = $${filterParams.length}`;
+  }
+
   const [summaryRes, trendRes, topProdsRes, categoriesRes, cashiersRes] = await Promise.all([
     query(`
       SELECT
@@ -291,7 +308,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
         COALESCE(AVG(total_amount), 0)::numeric  AS avg_txn,
         COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)::int AS unique_customers
       FROM sales_transactions st
-      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter} ${sessionFilter}
     `, filterParams),
 
     query(`
@@ -301,7 +318,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       FROM generate_series($${d1}::date, $${d2}::date, INTERVAL '1 day') gs(day)
       LEFT JOIN sales_transactions st
         ON st.transaction_date::date = gs.day::date
-        AND ${companyFilter} AND st.status = 'completed' ${filterClause}
+        AND ${companyFilter} AND st.status = 'completed' ${filterClause} ${sessionFilter}
       GROUP BY gs.day ORDER BY gs.day
     `, filterParams),
 
@@ -312,7 +329,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       FROM sales_transaction_items sti
       JOIN products p ON p.product_id = sti.product_id
       JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter} ${sessionFilter}
       GROUP BY p.product_id, p.product_name, p.sku
       ORDER BY revenue DESC LIMIT 10
     `, filterParams),
@@ -325,7 +342,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       JOIN products p ON p.product_id = sti.product_id
       LEFT JOIN categories pc ON pc.category_id = p.category_id
       JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
-      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter} ${sessionFilter}
       GROUP BY pc.category_id, pc.category_name
       ORDER BY revenue DESC
     `, filterParams),
@@ -337,7 +354,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
         AVG(st.total_amount)::numeric AS avg_txn
       FROM sales_transactions st
       JOIN users u ON u.user_id = st.cashier_user_id
-      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter}
+      WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter} ${sessionFilter}
       GROUP BY st.cashier_user_id, u.first_name, u.last_name
       ORDER BY total_sales DESC
     `, filterParams),
@@ -372,7 +389,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
         a.account_code,
         a.account_name,
         a.account_type,
-        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type = 'SALE'),   0)::numeric AS sale_credit,
+        COALESCE(SUM(jel.credit) FILTER (WHERE je.source_type IN ('SALE', 'SESSION_SALE_SUMMARY', 'DAILY_SALE_SUMMARY')), 0)::numeric AS sale_credit,
         COALESCE(SUM(jel.debit)  FILTER (WHERE je.source_type = 'RETURN'), 0)::numeric AS return_debit,
         COALESCE(SUM(jel.debit),  0)::numeric AS total_debit,
         COALESCE(SUM(jel.credit), 0)::numeric AS total_credit

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ScrollText, Plus, XCircle, RefreshCw, Download, Upload,
@@ -682,11 +682,55 @@ export default function JournalPage() {
   const [coEnd,   setCoEnd]   = useState(new Date().toISOString().slice(0, 10));
   const [coPage,  setCoPage]  = useState(1);
 
+  // ── Posted entries (auto-generated) state ──
+  const [aeStart,      setAeStart]      = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
+  const [aeEnd,        setAeEnd]        = useState(new Date().toISOString().slice(0, 10));
+  const [aeSourceType, setAeSourceType] = useState('!SALE'); // default: hide per-sale entries
+  const [aePage,       setAePage]       = useState(1);
+  const [aeSelected,   setAeSelected]   = useState(null);
+
+  // ── Post unposted state ──
+  const [postMode,      setPostMode]      = useState('combined');
+  const [postBranchId,  setPostBranchId]  = useState('');
+  const [postDate,      setPostDate]      = useState(new Date().toISOString().slice(0, 10));
+  const [showPostPanel, setShowPostPanel] = useState(false);
+  const postPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (!showPostPanel) return;
+    const handler = (e) => { if (postPanelRef.current && !postPanelRef.current.contains(e.target)) setShowPostPanel(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPostPanel]);
+
   const qc = useQueryClient();
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.get('/accounts').then((r) => r.data.data),
+  });
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => api.get('/branches').then((r) => r.data.data),
+  });
+
+  const postMut = useMutation({
+    mutationFn: ({ branchId, date, mode }) =>
+      api.post('/journal/daily-summaries', { branchId, date, mode }).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['journal-entries'] });
+      if (data?.data?.posted !== undefined) {
+        const { posted, skipped, remaining } = data.data;
+        if (posted === 0 && skipped === 0) toast.success('No unposted transactions found for this date');
+        else if (posted === 0) toast.error(`0 posted — ${skipped} failed (check chart of accounts setup)`);
+        else if (remaining > 0) toast(`Posted ${posted} · ${remaining} still unposted`, { icon: '⚠️' });
+        else toast.success(`Posted ${posted} transaction${posted !== 1 ? 's' : ''}${skipped ? ` · ${skipped} failed` : ''}`);
+      } else {
+        toast.success('Summary posted to journal');
+      }
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to post'),
   });
 
   const { data, isLoading } = useQuery({
@@ -704,6 +748,32 @@ export default function JournalPage() {
     }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
     enabled: activeTab === 'cash-outs',
+  });
+
+  const { data: trData, isLoading: trLoading } = useQuery({
+    queryKey: ['pos-transfers-all', coStart, coEnd, coPage],
+    queryFn: () => api.get('/pos/transfers', {
+      params: { startDate: coStart, endDate: coEnd, page: coPage, limit: 30 },
+    }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+    enabled: activeTab === 'cash-outs',
+  });
+
+  const aeParams = aeSourceType === '!SALE'
+    ? { startDate: aeStart, endDate: aeEnd, excludeSourceType: 'SALE', page: aePage, limit: 25 }
+    : { startDate: aeStart, endDate: aeEnd, sourceType: aeSourceType || undefined, page: aePage, limit: 25 };
+
+  const { data: aeData, isLoading: aeLoading } = useQuery({
+    queryKey: ['journal-entries', aeStart, aeEnd, aeSourceType, aePage],
+    queryFn: () => api.get('/journal/entries', { params: aeParams }).then((r) => r.data.data),
+    placeholderData: (prev) => prev,
+    enabled: activeTab === 'posted-entries',
+  });
+
+  const { data: aeDetail, isLoading: aeDetailLoading } = useQuery({
+    queryKey: ['journal-entry-detail', aeSelected],
+    queryFn: () => api.get(`/journal/entries/${aeSelected}`).then((r) => r.data.data),
+    enabled: !!aeSelected,
   });
 
   const journals   = data?.journals ?? [];
@@ -739,6 +809,14 @@ export default function JournalPage() {
             >
               <ArrowDownLeft className="h-3.5 w-3.5" />Cash Outs
             </button>
+            <button
+              onClick={() => setActiveTab('posted-entries')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === 'posted-entries' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />Sales Entries
+            </button>
           </div>
         </div>
         {activeTab === 'journals' && (
@@ -755,6 +833,60 @@ export default function JournalPage() {
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
               <Plus className="h-4 w-4" />New Journal
             </button>
+          </div>
+        )}
+        {activeTab === 'posted-entries' && (
+          <div className="relative" ref={postPanelRef}>
+            <button
+              onClick={() => setShowPostPanel((v) => !v)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700"
+            >
+              <CheckCircle2 className="h-4 w-4" />Post Sales Entries
+            </button>
+            {showPostPanel && (
+              <div className="absolute right-0 top-full mt-2 z-30 w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-5 space-y-4">
+                <p className="text-sm font-semibold text-gray-800">Post Sales Entries</p>
+
+                {/* Mode toggle */}
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs w-fit">
+                  {[{ value: 'combined', label: 'Combined' }, { value: 'per_transaction', label: 'Per Transaction' }].map((opt, i) => (
+                    <button key={opt.value} onClick={() => setPostMode(opt.value)}
+                      className={['px-3 py-1.5 transition-colors', i > 0 ? 'border-l border-gray-200' : '',
+                        postMode === opt.value ? 'bg-primary-600 text-white font-medium' : 'bg-white text-gray-600 hover:bg-gray-50',
+                      ].join(' ')}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 -mt-2">
+                  {postMode === 'combined'
+                    ? 'One aggregate entry covering all unposted sales for the branch and date.'
+                    : 'One entry per unposted sale — full audit trail.'}
+                </p>
+
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                    <select value={postBranchId} onChange={(e) => setPostBranchId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs bg-white focus:border-primary-500 focus:outline-none">
+                      <option value="">— Select —</option>
+                      {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                    <input type="date" value={postDate} onChange={(e) => setPostDate(e.target.value)}
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-primary-500 focus:outline-none" />
+                  </div>
+                  <button
+                    disabled={!postBranchId || !postDate || postMut.isPending}
+                    onClick={() => postMut.mutate({ branchId: postBranchId, date: postDate, mode: postMode }, { onSuccess: () => setShowPostPanel(false) })}
+                    className="rounded-lg bg-primary-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-40 transition-colors whitespace-nowrap">
+                    {postMut.isPending ? 'Posting…' : 'Post'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -782,7 +914,7 @@ export default function JournalPage() {
             <RefreshCw className="h-4 w-4" />Refresh
           </button>
         </div>
-      ) : (
+      ) : activeTab === 'cash-outs' ? (
         <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
           <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
           <div className="flex items-center gap-2 text-sm">
@@ -797,10 +929,89 @@ export default function JournalPage() {
             <RefreshCw className="h-4 w-4" />Refresh
           </button>
         </div>
+      ) : (
+        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm">
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={aeStart} onChange={(e) => { setAeStart(e.target.value); setAePage(1); }} />
+            <span className="text-gray-400">—</span>
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={aeEnd} onChange={(e) => { setAeEnd(e.target.value); setAePage(1); }} />
+          </div>
+          <select className="border rounded-lg px-3 py-1.5 text-sm"
+            value={aeSourceType} onChange={(e) => { setAeSourceType(e.target.value); setAePage(1); }}>
+            <option value="!SALE">Summaries Only</option>
+            <option value="">All (incl. per-sale)</option>
+            <option value="SALE">Per-Sale Only</option>
+            <option value="SESSION_SALE_SUMMARY">Session Summary</option>
+            <option value="DAILY_SALE_SUMMARY">Daily Summary</option>
+            <option value="OPENING_BALANCE">Opening Balance</option>
+            <option value="AR_SETTLEMENT">AR Settlement</option>
+          </select>
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['journal-entries'] })}
+            className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
+            <RefreshCw className="h-4 w-4" />Refresh
+          </button>
+        </div>
       )}
 
       {/* Table */}
-      {activeTab === 'journals' ? (
+      {activeTab === 'posted-entries' ? (
+        <div className="flex-1 overflow-auto">
+          {aeLoading ? (
+            <div className="py-24 text-center text-gray-400">Loading…</div>
+          ) : (aeData?.entries ?? []).length === 0 ? (
+            <div className="py-24 text-center text-gray-400">
+              <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p>No posted entries in this period.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 border-b z-10">
+                <tr>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-36">Number</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-28">Date</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-40">Type</th>
+                  <th className="hidden md:table-cell text-left px-3 py-1.5 font-medium text-gray-600">Description</th>
+                  <th className="text-right px-3 py-1.5 font-medium text-gray-600 w-32">Debit</th>
+                  <th className="hidden sm:table-cell text-right px-3 py-1.5 font-medium text-gray-600 w-32">Credit</th>
+                  <th className="text-center px-3 py-1.5 font-medium text-gray-600 w-20">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(aeData?.entries ?? []).map((e) => (
+                  <tr key={e.journalEntryId} className="border-b hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setAeSelected(e.journalEntryId)}>
+                    <td className="px-3 py-1.5 font-mono text-xs text-gray-700">{e.entryNumber}</td>
+                    <td className="px-3 py-1.5 text-xs text-gray-600">{String(e.entryDate).slice(0, 10)}</td>
+                    <td className="px-3 py-1.5">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        e.sourceType === 'SALE'                 ? 'bg-green-100 text-green-700' :
+                        e.sourceType === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
+                        e.sourceType === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
+                        e.sourceType === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {e.sourceType?.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="hidden md:table-cell px-3 py-1.5 text-xs text-gray-800 truncate max-w-xs">{e.description ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalDebit)}</td>
+                    <td className="hidden sm:table-cell px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalCredit)}</td>
+                    <td className="px-3 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
+                      <button onClick={() => setAeSelected(e.journalEntryId)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : activeTab === 'journals' ? (
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="py-24 text-center text-gray-400">Loading…</div>
@@ -902,6 +1113,54 @@ export default function JournalPage() {
               </tbody>
             </table>
           )}
+
+          {/* Transfers section */}
+          {!trLoading && (trData?.transfers ?? []).length > 0 && (
+            <>
+              <div className="px-4 py-2 border-t border-b bg-gray-50">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pay Mode Transfers</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
+                    <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
+                    <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">From → To</th>
+                    <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
+                    <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
+                    <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
+                    <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(trData?.transfers ?? []).map((t) => (
+                    <tr key={t.transfer_id} className="border-b hover:bg-gray-50">
+                      <td className="px-2 py-1.5 text-xs text-gray-600">{String(t.created_at).slice(0, 10)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
+                          t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {t.transfer_type === 'float_topup' ? 'Float Top-up' :
+                           t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(t.amount)}</td>
+                      <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800">
+                        {t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}
+                      </td>
+                      <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{t.notes ?? '—'}</td>
+                      <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
+                      <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
+                      <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
 
@@ -919,7 +1178,7 @@ export default function JournalPage() {
             </div>
           </div>
         )
-      ) : (
+      ) : activeTab === 'cash-outs' ? (
         coTotal > 0 && (
           <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
             <span>{coTotal} cash out{coTotal !== 1 ? 's' : ''}</span>
@@ -928,6 +1187,19 @@ export default function JournalPage() {
                 className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
               <span>Page {coPage} of {coPages}</span>
               <button onClick={() => setCoPage((p) => Math.min(coPages, p + 1))} disabled={coPage >= coPages}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+            </div>
+          </div>
+        )
+      ) : (
+        (aeData?.total ?? 0) > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
+            <span>{aeData.total} entr{aeData.total !== 1 ? 'ies' : 'y'}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setAePage((p) => Math.max(1, p - 1))} disabled={aePage <= 1}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
+              <span>Page {aePage} of {aeData.pages ?? 1}</span>
+              <button onClick={() => setAePage((p) => Math.min(aeData.pages ?? 1, p + 1))} disabled={aePage >= (aeData.pages ?? 1)}
                 className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
             </div>
           </div>
@@ -944,6 +1216,71 @@ export default function JournalPage() {
           onClose={() => { setShowNew(false); setEditTarget(null); }} />
       )}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+
+      {/* Posted entry detail modal */}
+      {aeSelected && (
+        <Modal open title={aeDetail?.entry_number ?? 'Entry Detail'} onClose={() => setAeSelected(null)} size="lg">
+          {aeDetailLoading ? (
+            <div className="py-16 text-center text-gray-400">Loading…</div>
+          ) : aeDetail ? (
+            <div className="space-y-4 p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-lg font-bold text-gray-900 font-mono">{aeDetail.entry_number}</p>
+                  <p className="text-sm text-gray-500">{String(aeDetail.entry_date).slice(0, 10)} · {aeDetail.description}</p>
+                </div>
+                <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  aeDetail.source_type === 'SALE'                 ? 'bg-green-100 text-green-700' :
+                  aeDetail.source_type === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
+                  aeDetail.source_type === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
+                  aeDetail.source_type === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {aeDetail.source_type?.replace(/_/g, ' ')}
+                </span>
+              </div>
+              <table className="w-full text-sm border rounded-xl overflow-hidden">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
+                    <th className="hidden sm:table-cell text-left px-3 py-2 font-medium text-gray-600">Description</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Debit</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-600">Credit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(aeDetail.lines ?? []).map((l) => (
+                    <tr key={l.lineId}>
+                      <td className="px-3 py-2 text-xs">
+                        <span className="font-mono text-gray-500 mr-1">{l.accountCode}</span>
+                        <span className="text-gray-800">{l.accountName}</span>
+                        {l.entityName && <span className="ml-1 text-gray-400">({l.entityName})</span>}
+                      </td>
+                      <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{l.description ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs text-right font-mono">{l.debit > 0 ? fmt(l.debit) : '—'}</td>
+                      <td className="px-3 py-2 text-xs text-right font-mono">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 border-t">
+                  <tr>
+                    <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-600">Total</td>
+                    <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
+                      {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.debit, 0))}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
+                      {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+              {aeDetail.created_by && (
+                <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
+              )}
+            </div>
+          ) : null}
+        </Modal>
+      )}
     </div>
   );
 }

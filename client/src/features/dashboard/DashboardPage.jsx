@@ -761,8 +761,9 @@ export default function DashboardPage() {
   });
 
   const { hasCapability, hasRole, user } = usePermission();
-  const isSuperAdmin = user?.role === 'super_admin';
-  const canViewSales = hasCapability('sales.view') || ['super_admin', 'company_admin', 'branch_manager', 'accountant'].includes(user?.role);
+  const isSuperAdmin   = user?.role === 'super_admin';
+  const isCashier      = user?.role === 'cashier';
+  const canViewSales   = hasCapability('sales.view') || ['super_admin', 'company_admin', 'branch_manager', 'accountant'].includes(user?.role);
   const canViewInventory = hasCapability('inventory.view');
   const canViewCustomers = hasCapability('customers.view');
   const canCompareBranches = hasCapability('settings.manage') || hasCapability('platform.admin');
@@ -774,6 +775,61 @@ export default function DashboardPage() {
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
         <AlertTriangle className="h-10 w-10 text-red-400" />
         <p className="text-gray-500">Could not load dashboard. Check that the server is running.</p>
+      </div>
+    );
+  }
+
+  if (isCashier) {
+    const today = new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-400">{today}</p>
+            <h1 className="text-xl font-extrabold text-gray-900">My Sales Today</h1>
+          </div>
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-500 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-40">
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {/* Cashier stats — no revenue totals, just counts */}
+        <div className="grid grid-cols-2 gap-4">
+          <StatCard
+            label="My Transactions Today"
+            value={data?.todayTransactions ?? 0}
+            Icon={ShoppingCart}
+            gradient="bg-gradient-to-br from-primary-600 to-primary-800"
+            iconColor="text-white"
+            accent="text-primary-200"
+            sub="completed today"
+          />
+          <StatCard
+            label="Customers Served"
+            value={data?.customersServed ?? 0}
+            Icon={Users}
+            gradient="bg-gradient-to-br from-secondary-500 to-secondary-700"
+            iconColor="text-white"
+            accent="text-secondary-200"
+            sub="today"
+          />
+        </div>
+
+        {/* Quick actions */}
+        <div className="flex gap-3">
+          <button onClick={() => navigate('/app/pos')}
+            className="flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors">
+            <Monitor className="h-4 w-4" /> Open POS
+          </button>
+          <button onClick={() => navigate('/app/sales')}
+            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
+            <ShoppingCart className="h-4 w-4" /> My Sales History
+          </button>
+        </div>
+
+        {/* My recent transactions */}
+        <RecentTransactionsCard transactions={data?.recentTransactions} />
       </div>
     );
   }
@@ -886,7 +942,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Row 2: Sales by Category + Branch Performance ── */}
-      {(canViewSales || canCompareBranches) && (
+      {!isCashier && (canViewSales || canCompareBranches) && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {canViewSales && (
             <CategoryBreakdownCard
@@ -906,7 +962,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Row 3: Top Products (1/2) + Revenue Trend (1/2) ── */}
-      {canViewSales && (
+      {!isCashier && canViewSales && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div>
             <TopProductsCard

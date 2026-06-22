@@ -22,6 +22,7 @@ async function listSellableProducts(companyId, { branchId, search, categoryId, p
 async function listPaymentMethods(companyId, includeInactive = false) {
   const { rows } = await query(
     `SELECT pm.payment_method_id, pm.method_name, pm.is_active, pm.requires_reference,
+            pm.account_number,
             pm.bank_account_id, ba.account_name AS bank_account_name, ba.bank_name
      FROM payment_methods pm
      LEFT JOIN bank_accounts ba ON ba.bank_account_id = pm.bank_account_id
@@ -32,28 +33,29 @@ async function listPaymentMethods(companyId, includeInactive = false) {
   return rows;
 }
 
-async function createPaymentMethod(companyId, { methodName, requiresReference = false, bankAccountId }) {
+async function createPaymentMethod(companyId, { methodName, requiresReference = false, bankAccountId, accountNumber }) {
   const { rows } = await query(`
-    INSERT INTO payment_methods (company_id, method_name, requires_reference, bank_account_id)
-    VALUES ($1, $2, $3, $4)
-    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id
-  `, [companyId, methodName.trim(), requiresReference, bankAccountId || null]);
+    INSERT INTO payment_methods (company_id, method_name, requires_reference, bank_account_id, account_number)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id, account_number
+  `, [companyId, methodName.trim(), requiresReference, bankAccountId || null, accountNumber?.trim() || null]);
   return rows[0];
 }
 
-async function updatePaymentMethod(companyId, methodId, { methodName, requiresReference, isActive, bankAccountId }) {
+async function updatePaymentMethod(companyId, methodId, { methodName, requiresReference, isActive, bankAccountId, accountNumber }) {
   const qb = new QueryBuilder([methodId, companyId]);
   const fields = [];
   if (methodName        !== undefined) fields.push(`method_name = $${qb.add(methodName.trim())}`);
   if (requiresReference !== undefined) fields.push(`requires_reference = $${qb.add(requiresReference)}`);
   if (isActive          !== undefined) fields.push(`is_active = $${qb.add(isActive)}`);
   if (bankAccountId     !== undefined) fields.push(`bank_account_id = $${qb.add(bankAccountId || null)}`);
+  if (accountNumber     !== undefined) fields.push(`account_number = $${qb.add(accountNumber?.trim() || null)}`);
   if (!fields.length) throw AppError.badRequest('Nothing to update');
 
   const { rows } = await query(`
     UPDATE payment_methods SET ${fields.join(', ')}
     WHERE payment_method_id = $1 AND company_id = $2
-    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id
+    RETURNING payment_method_id, method_name, is_active, requires_reference, bank_account_id, account_number
   `, qb.params);
   if (!rows.length) throw AppError.notFound('Payment method');
   return rows[0];
@@ -850,6 +852,49 @@ async function deleteHold(companyId, holdId) {
 
 // ── Pay Mode Transfers ────────────────────────────────────────────────────────
 
+async function listAllTransfers(companyId, { startDate, endDate, branchId, page = 1, limit = 30 } = {}) {
+  const params = [companyId];
+  const where  = ['t.company_id = $1'];
+
+  if (startDate) { params.push(startDate); where.push(`t.created_at >= $${params.length}::date`); }
+  if (endDate)   { params.push(endDate);   where.push(`t.created_at <  ($${params.length}::date + INTERVAL '1 day')`); }
+  if (branchId)  { params.push(branchId);  where.push(`t.branch_id = $${params.length}`); }
+
+  const offset = (page - 1) * limit;
+  params.push(limit, offset);
+
+  const { rows } = await query(`
+    SELECT t.transfer_id, t.transfer_type, t.amount::numeric, t.notes, t.created_at,
+           t.session_id,
+           fm.method_name AS from_method_name,
+           tm.method_name AS to_method_name,
+           pt.terminal_name,
+           b.branch_name,
+           u.first_name || ' ' || u.last_name AS created_by_name
+    FROM session_transfers t
+    LEFT JOIN payment_methods fm ON fm.payment_method_id = t.from_method_id
+    LEFT JOIN payment_methods tm ON tm.payment_method_id = t.to_method_id
+    LEFT JOIN pos_sessions    ps ON ps.session_id        = t.session_id
+    LEFT JOIN pos_terminals   pt ON pt.terminal_id       = ps.terminal_id
+    LEFT JOIN branches        b  ON b.branch_id          = t.branch_id
+    LEFT JOIN users           u  ON u.user_id            = t.created_by_user_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY t.created_at DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `, params);
+
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*)::int AS total FROM session_transfers t WHERE ${where.slice(0, where.length).join(' AND ')}`,
+    params.slice(0, params.length - 2)
+  );
+
+  return {
+    transfers: rows.map((r) => ({ ...r, amount: parseFloat(r.amount) })),
+    total:     countRows[0].total,
+    pages:     Math.ceil(countRows[0].total / limit),
+  };
+}
+
 async function createTransfer(companyId, sessionId, userId, { transferType, fromMethodId, toMethodId, amount, notes, referenceTxnId }) {
   const { rows: sessionRows } = await query(
     `SELECT session_id, branch_id FROM pos_sessions
@@ -999,7 +1044,7 @@ module.exports = {
   getActiveSession, openSession, getSessionSummary, closeSession,
   listSessions, getSessionDetail, forceCloseSession,
   correctSession,
-  recordCashOut, listCashOuts, listAllCashOuts,
+  recordCashOut, listCashOuts, listAllCashOuts, listAllTransfers,
   createTransfer, listTransfers,
   createHold, listHolds, deleteHold,
 };

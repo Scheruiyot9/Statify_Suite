@@ -72,7 +72,7 @@ function ShiftDetail({ sessionId, onForceClose }) {
           label="Cash Variance"
           value={formatCurrency(Math.abs(variance))}
           color={Math.abs(variance) < 0.5 ? 'green' : variance > 0 ? 'blue' : 'red'}
-          sub={variance > 0 ? 'Over' : variance < 0 ? 'Short' : 'Balanced'}
+          sub={variance > 0 ? 'Cash Over' : variance < 0 ? 'Cash Short' : 'Cash Balanced'}
         />
       </div>
 
@@ -108,19 +108,36 @@ function ShiftDetail({ sessionId, onForceClose }) {
                   {payModeOpen.length > 0  && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Sales</th>
                   {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
+                  {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Txns</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.payment_breakdown.map((p) => {
-                  const open  = payModeOpen.find((a) => a.method_name === p.method_name);
-                  const close = payModeClose.find((a) => a.method_name === p.method_name);
+                  const open   = payModeOpen.find((a)  => a.method_name === p.method_name);
+                  const close  = payModeClose.find((a) => a.method_name === p.method_name);
+                  const isCash = p.method_name === 'Cash';
+                  const pmVar  = isCash
+                    ? variance
+                    : close != null ? close.amount - p.total : null;
                   return (
                     <tr key={p.method_name}>
                       <td className="px-4 py-3 font-medium text-gray-800">{p.method_name}</td>
                       {payModeOpen.length > 0  && <td className="px-4 py-3 text-right text-gray-500">{open  ? formatCurrency(open.amount)  : '—'}</td>}
                       <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(p.total)}</td>
                       {payModeClose.length > 0 && <td className="px-4 py-3 text-right text-gray-700">{close ? formatCurrency(close.amount) : '—'}</td>}
+                      {payModeClose.length > 0 && (
+                        <td className="px-4 py-3 text-right">
+                          {pmVar !== null ? (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              Math.abs(pmVar) < 0.5 ? 'bg-green-100 text-green-700' :
+                              pmVar > 0 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {Math.abs(pmVar) < 0.5 ? '✓' : pmVar > 0 ? `+${formatCurrency(pmVar)}` : formatCurrency(pmVar)}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right text-gray-500">{p.count}</td>
                     </tr>
                   );

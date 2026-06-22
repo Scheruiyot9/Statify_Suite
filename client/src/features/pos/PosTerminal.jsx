@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft, ArrowLeftRight, UserCog } from 'lucide-react';
+import { MonitorDot, Monitor, X, CheckCircle, BarChart3, BookmarkCheck, CloudOff, Wifi, WifiOff, LogOut, TrendingUp, Wallet, Receipt, Menu, ChevronDown, Printer, Search, ArrowDownLeft, ArrowLeftRight, UserCog, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore, useCartStore, usePosDataStore } from '@/app/store';
 import { formatCurrency, formatDateTime } from '@/utils/formatters';
 import ProductGrid        from './ProductGrid';
-import Cart               from './Cart';
+import Cart, { CreditPaymentModal } from './Cart';
 import PaymentModal       from './PaymentModal';
 import HoldModal          from './HoldModal';
 import OfflineQueueModal  from './OfflineQueueModal';
@@ -907,7 +907,7 @@ function TransferModal({ session, methods, onClose }) {
 
 // ── Close Session Modal ───────────────────────────────────────────────────────
 function CloseSessionModal({ session, onClose, onClosed }) {
-  const [closingAmount, setClosingAmount] = useState('0');
+  const [closingAmount, setClosingAmount] = useState('');
   const [notes,         setNotes]         = useState('');
   const [pmClosing,     setPmClosing]     = useState({});
 
@@ -1132,26 +1132,51 @@ function CloseSessionModal({ session, onClose, onClosed }) {
             </div>
           )}
 
-          {/* Overall variance summary */}
-          {variance !== null && Math.abs(variance) >= 0.5 && (
-            <div className={`flex items-center gap-3 rounded-xl p-4 ${
-              variance > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'
-            }`}>
-              <CheckCircle className={`h-5 w-5 flex-shrink-0 ${variance > 0 ? 'text-blue-500' : 'text-red-500'}`} />
-              <div>
-                <p className={`text-sm font-semibold ${variance > 0 ? 'text-blue-800' : 'text-red-800'}`}>
-                  Cash {variance > 0 ? 'Over' : 'Short'}: {formatCurrency(Math.abs(variance))}
-                </p>
-                <p className="text-xs text-gray-500">Expected {formatCurrency(expectedCash)} · Counted {formatCurrency(closingCounted)}</p>
-              </div>
-            </div>
-          )}
-          {variance !== null && Math.abs(variance) < 0.5 && (
-            <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-200 p-4">
-              <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
-              <p className="text-sm font-semibold text-green-800">Cash balanced!</p>
-            </div>
-          )}
+          {/* Overall variance summary — cash + non-cash methods */}
+          {(() => {
+            const nonCashVarIssues = breakdown
+              .filter((p) => p.method_name !== 'Cash')
+              .map((p) => {
+                const methodOuts = cashOutsByMethod[p.payment_method_id] || 0;
+                const expected   = p.total - methodOuts;
+                const counted    = parseFloat(pmClosing[p.method_name] ?? '');
+                return isNaN(counted) ? null : { name: p.method_name, variance: counted - expected };
+              })
+              .filter((v) => v !== null && Math.abs(v.variance) >= 0.5);
+
+            const allBalanced = variance !== null && Math.abs(variance) < 0.5 && nonCashVarIssues.length === 0;
+            const anyIssue    = (variance !== null && Math.abs(variance) >= 0.5) || nonCashVarIssues.length > 0;
+
+            return (
+              <>
+                {anyIssue && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-1.5">
+                    <p className="text-sm font-semibold text-red-800 flex items-center gap-1.5">
+                      <CheckCircle className="h-4 w-4 text-red-500" />
+                      Variance detected
+                    </p>
+                    {variance !== null && Math.abs(variance) >= 0.5 && (
+                      <p className="text-xs text-red-700">
+                        Cash {variance > 0 ? 'over' : 'short'}: {variance > 0 ? '+' : ''}{formatCurrency(variance)}
+                        <span className="text-gray-500 ml-1">(expected {formatCurrency(expectedCash)} · counted {formatCurrency(closingCounted)})</span>
+                      </p>
+                    )}
+                    {nonCashVarIssues.map((v) => (
+                      <p key={v.name} className="text-xs text-red-700">
+                        {v.name} {v.variance > 0 ? 'over' : 'short'}: {v.variance > 0 ? '+' : ''}{formatCurrency(v.variance)}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {allBalanced && (
+                  <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-200 p-4">
+                    <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
+                    <p className="text-sm font-semibold text-green-800">All payment methods balanced!</p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Notes */}
           <div>
@@ -1171,7 +1196,7 @@ function CloseSessionModal({ session, onClose, onClosed }) {
           <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
           <Button
             variant="danger" fullWidth loading={isPending}
-            disabled={closingAmount === ''}
+            disabled={isPending}
             onClick={() => {
               const closingPayModeAmounts = breakdown
                 .filter((p) => p.method_name !== 'Cash' && pmClosing[p.method_name] !== undefined)
@@ -1204,11 +1229,12 @@ export default function PosTerminal() {
 
   // Populate ['my-company'] cache so Cart.jsx can read pos_allow_partial_qty / pos_allow_price_edit.
   // PosLayout does not use AppLayout, so this fetch would otherwise never happen on the /pos route.
-  useQuery({
+  const { data: companySettings } = useQuery({
     queryKey: ['my-company'],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
     staleTime: 5 * 60 * 1000,
   });
+  const creditSalesEnabled = !!companySettings?.credit_sales_enabled;
 
   // Fetch and apply the default tax rate for this company
   // onSuccess was removed in TanStack Query v5 — use useEffect instead
@@ -1251,6 +1277,7 @@ export default function PosTerminal() {
   const [queueOpen,        setQueueOpen]        = useState(false);
   const [salesReturnOpen,  setSalesReturnOpen]  = useState(false);
   const [salesDrillOpen,   setSalesDrillOpen]   = useState(false);
+  const [creditPayOpen,    setCreditPayOpen]    = useState(false);
   const [receiptTxnId,     setReceiptTxnId]     = useState(null);
   const [menuOpen,         setMenuOpen]         = useState(false);
   const [scanResetKey,     setScanResetKey]      = useState(0);
@@ -1544,6 +1571,15 @@ export default function PosTerminal() {
                 sub="Sweep, float top-up or payment correction"
                 onClick={() => { setTransferOpen(true); setMenuOpen(false); }}
               />
+              {creditSalesEnabled && (
+                <MenuAction
+                  icon={CreditCard}
+                  iconBg="bg-blue-100 text-blue-600"
+                  label="Collect Credit Payment"
+                  sub="Record payment against outstanding credit balance"
+                  onClick={() => { setCreditPayOpen(true); setMenuOpen(false); }}
+                />
+              )}
               <div className="my-1 h-px bg-gray-100" />
               <MenuAction
                 icon={LogOut}
@@ -1670,6 +1706,14 @@ export default function PosTerminal() {
         onClose={() => setSalesReturnOpen(false)}
         session={session}
       />
+
+      {creditSalesEnabled && (
+        <CreditPaymentModal
+          open={creditPayOpen}
+          sessionId={session?.session_id}
+          onClose={() => setCreditPayOpen(false)}
+        />
+      )}
 
       {salesDrillOpen && (
         <SessionSalesModal

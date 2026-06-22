@@ -100,7 +100,8 @@ async function getCustomer(companyId, customerId) {
   if (!rows.length) throw AppError.notFound('Customer');
 
   const { rows: txns } = await query(`
-    SELECT st.transaction_number, st.transaction_date, st.total_amount::numeric, st.status, b.branch_name
+    SELECT st.transaction_id, st.transaction_number, st.transaction_date,
+           st.total_amount::numeric, st.status, st.is_credit_sale, st.payment_status, b.branch_name
     FROM sales_transactions st
     JOIN branches b ON b.branch_id = st.branch_id
     WHERE st.customer_id = $1
@@ -113,9 +114,22 @@ async function getCustomer(companyId, customerId) {
 
 async function createCustomer(companyId, data) {
   const { customer_name, phone, email, customer_group_id, customer_code, date_of_birth, notes,
-          kra_pin, id_number, allow_credit = false, credit_limit = 0 } = data;
+          kra_pin, id_number, allow_credit, credit_limit } = data;
   const code        = customer_code || await _generateCode(companyId);
   const normalPhone = normalizePhone(phone);
+
+  // Fetch company credit settings to auto-apply defaults
+  const { rows: coRows } = await query(
+    `SELECT credit_sales_enabled, default_credit_limit FROM companies WHERE company_id = $1`,
+    [companyId]
+  );
+  const creditEnabled        = coRows[0]?.credit_sales_enabled ?? false;
+  const defaultCreditLimit   = parseFloat(coRows[0]?.default_credit_limit || 0);
+
+  // When credit is enabled and caller didn't explicitly set allow_credit/credit_limit, auto-apply defaults
+  const resolvedAllowCredit  = allow_credit  != null ? Boolean(allow_credit)              : creditEnabled;
+  const resolvedCreditLimit  = credit_limit  != null ? parseFloat(credit_limit) || 0      :
+                               (creditEnabled ? defaultCreditLimit : 0);
 
   // Duplicate checks
   if (normalPhone) {
@@ -150,7 +164,7 @@ async function createCustomer(companyId, data) {
   `, [companyId, customer_name, normalPhone, email || null,
     customer_group_id || null, code, date_of_birth || null,
     kra_pin?.trim() || null, id_number?.trim() || null, notes || null,
-    allow_credit, parseFloat(credit_limit) || 0]);
+    resolvedAllowCredit, resolvedCreditLimit]);
 
   return rows[0];
 }
@@ -269,7 +283,7 @@ async function listCreditTransactions(companyId, customerId) {
   }));
 }
 
-async function recordCreditPayment(companyId, customerId, amount, paymentMethodId) {
+async function recordCreditPayment(companyId, customerId, amount, paymentMethodId, sessionId = null) {
   if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
 
   return transaction(async (client) => {
@@ -279,39 +293,49 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     `, [companyId, customerId]);
     if (!custRows.length) throw AppError.notFound('Customer');
 
-    const actualPayment  = Math.min(amount, parseFloat(custRows[0].credit_balance));
+    const currentBalance = parseFloat(custRows[0].credit_balance);
     const customerName   = custRows[0].customer_name;
+    // Overpayment: excess stored as negative balance (advance credit for future purchases)
+    const advanceCredit  = amount > currentBalance ? +(amount - currentBalance).toFixed(2) : 0;
 
-    // Reduce credit balance
+    // Reduce credit balance — allow going negative for advance credit
     const { rows: updated } = await client.query(`
       UPDATE customers
-      SET credit_balance = GREATEST(0, credit_balance - $3), updated_at = now()
+      SET credit_balance = credit_balance - $3, updated_at = now()
       WHERE company_id = $1 AND customer_id = $2
       RETURNING customer_id, customer_name, credit_balance, credit_limit
-    `, [companyId, customerId, actualPayment]);
+    `, [companyId, customerId, amount]);
 
-    // Mark oldest unpaid credit transactions as paid (FIFO)
+    // FIFO: mark oldest unpaid/partial credit transactions as paid
     const { rows: txns } = await client.query(`
       SELECT transaction_id, total_amount FROM sales_transactions
-      WHERE customer_id = $1 AND is_credit_sale = TRUE AND payment_status = 'partial' AND status = 'completed'
+      WHERE customer_id = $1
+        AND is_credit_sale = TRUE
+        AND payment_status IN ('partial', 'unpaid')
+        AND status = 'completed'
       ORDER BY transaction_date ASC
     `, [customerId]);
 
-    let remaining = actualPayment;
+    // Only apply up to the actual balance (advance credit doesn't clear extra invoices)
+    let remaining = Math.min(amount, currentBalance);
     for (const txn of txns) {
       if (remaining <= 0.005) break;
-      if (remaining >= parseFloat(txn.total_amount) - 0.005) {
+      const txnAmt = parseFloat(txn.total_amount);
+      if (remaining >= txnAmt - 0.005) {
         await client.query(
           `UPDATE sales_transactions SET payment_status = 'paid', updated_at = now() WHERE transaction_id = $1`,
           [txn.transaction_id]
         );
-        remaining -= parseFloat(txn.total_amount);
+        remaining -= txnAmt;
+      } else {
+        // Partial coverage of this transaction — leave as 'partial' (balance already reduced)
+        break;
       }
     }
 
     // Post journal entry: DR Cash/Bank  CR AR (1100)
     await postCreditReceiptEntry(client, companyId, {
-      customerId, customerName, amount: actualPayment, paymentMethodId,
+      customerId, customerName, amount, paymentMethodId,
     });
 
     return {
@@ -319,7 +343,8 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
       customer_name:  updated[0].customer_name,
       credit_balance: parseFloat(updated[0].credit_balance),
       credit_limit:   parseFloat(updated[0].credit_limit),
-      amount_paid:    actualPayment,
+      amount_paid:    amount,
+      advance_credit: advanceCredit,
     };
   });
 }

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Pause, RotateCcw, Trash2, ShoppingCart, UserCircle, Loader2 } from 'lucide-react';
+import { X, Pause, RotateCcw, Trash2, ShoppingCart, UserCircle, Loader2, Printer } from 'lucide-react';
 import { useCartStore, useAuthStore } from '@/app/store';
 import { formatCurrency } from '@/utils/formatters';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
+import { printDraft } from '@/utils/printReceipt';
 
 function holdTotal(cartData) {
   const subtotal = (cartData.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
@@ -26,8 +27,28 @@ export default function HoldModal({ open, onClose, branchId }) {
   const qc           = useQueryClient();
   const loadFromHold = useCartStore((s) => s.loadFromHold);
   const cartItems    = useCartStore((s) => s.items);
+  const user         = useAuthStore((s) => s.user);
   const fallbackBranchId = useAuthStore((s) => s.user?.branchIds?.[0]);
   const effectiveBranchId = branchId ?? fallbackBranchId;
+
+  const companySettings = qc.getQueryData(['my-company']);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => api.get('/branches').then((r) => r.data.data),
+    enabled:  open,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const handlePrintHold = (hold) => {
+    const branch = branches.find((b) => b.branch_id === effectiveBranchId);
+    printDraft({
+      cart: hold.cart_data,
+      company: companySettings,
+      paymentDetails: branch?.payment_details ?? '',
+      cashierName: user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '',
+    });
+  };
 
   const [confirmRecall, setConfirmRecall] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -155,6 +176,13 @@ export default function HoldModal({ open, onClose, branchId }) {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
+                  </button>
+                  <button
+                    onClick={() => handlePrintHold(hold)}
+                    className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-500 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    Draft
                   </button>
                   <button
                     onClick={() => handleRecall(hold)}

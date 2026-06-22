@@ -375,7 +375,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
       SELECT 1 FROM journal_entries
       WHERE company_id=$1 AND source_type='DAILY_SALE_SUMMARY' AND source_id=$2 AND entry_date=$3 AND status='posted'
     `, [companyId, branchId, date]);
-    if (existing.length) throw new Error(`Daily summary for ${date} already posted for this branch`);
+    if (existing.length) throw AppError.badRequest(`Daily summary for ${date} already posted for this branch`);
 
     // Exclude transactions already covered by a session summary OR posted individually
     const UNPOSTED = `
@@ -398,7 +398,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
         AND st.transaction_date::date = $3 AND st.status = 'completed'
         ${UNPOSTED}
     `, [companyId, branchId, date]);
-    if (!agg || parseFloat(agg.total_amount) <= 0.005) throw new Error('No unposted sales found for this date/branch');
+    if (!agg || parseFloat(agg.total_amount) <= 0.005) throw AppError.badRequest('All sales for this date are already posted (via session summaries or individually)');
 
     const { rows: pmtRows } = await client.query(`
       SELECT pm.method_name, ba.account_id AS gl_account_id,
@@ -1404,7 +1404,7 @@ async function reconcileLines(companyId, userId, lineIds) {
 }
 
 // ── List Journal Entries ───────────────────────────────────────────────────────
-async function listJournalEntries(companyId, { startDate, endDate, sourceType, status, page = 1, limit = 25 } = {}) {
+async function listJournalEntries(companyId, { startDate, endDate, sourceType, excludeSourceType, status, page = 1, limit = 25 } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
   const pg = parseInt(page,  10);
@@ -1413,8 +1413,9 @@ async function listJournalEntries(companyId, { startDate, endDate, sourceType, s
   const conds = ['je.company_id = $1', 'je.entry_date BETWEEN $2 AND $3'];
   const vals  = [companyId, start, end];
 
-  if (sourceType) { vals.push(sourceType); conds.push(`je.source_type = $${vals.length}`); }
-  if (status)     { vals.push(status);     conds.push(`je.status = $${vals.length}`);       }
+  if (sourceType)        { vals.push(sourceType);        conds.push(`je.source_type = $${vals.length}`);  }
+  if (excludeSourceType) { vals.push(excludeSourceType); conds.push(`je.source_type <> $${vals.length}`); }
+  if (status)            { vals.push(status);            conds.push(`je.status = $${vals.length}`);        }
 
   vals.push(lm, (pg - 1) * lm);
 

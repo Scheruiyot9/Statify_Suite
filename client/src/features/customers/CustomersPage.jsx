@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw, CreditCard } from 'lucide-react';
+import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw, CreditCard, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
+import ReceiptModal from '@/components/ui/ReceiptModal';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { usePermission } from '@/hooks/usePermission';
 import { exportToExcel } from '@/utils/exportExcel';
@@ -88,7 +89,7 @@ function CustomerForm({ initial, groups, creditEnabled, onSave, onClose }) {
   );
 }
 
-function CustomerDetail({ customer, creditEnabled, onRecordPayment }) {
+function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransaction }) {
   const showCredit = creditEnabled && !!customer?.allow_credit;
   const { data: creditTxns = [] } = useQuery({
     queryKey: ['credit-transactions', customer?.customer_id],
@@ -136,10 +137,13 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment }) {
           {creditTxns.length > 0 && (
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {creditTxns.map((t) => (
-                <div key={t.transaction_id}
-                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${t.payment_status === 'paid' ? 'border-green-100 bg-green-50 text-gray-400' : 'border-amber-100 bg-white'}`}>
+                <button key={t.transaction_id}
+                  onClick={() => onViewTransaction?.(t.transaction_id)}
+                  className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-xs text-left transition-colors hover:bg-gray-50 ${t.payment_status === 'paid' ? 'border-green-100 bg-green-50' : 'border-amber-100 bg-white'}`}>
                   <div className="min-w-0">
-                    <p className="font-mono font-semibold text-gray-700">{t.transaction_number}</p>
+                    <p className="font-mono font-semibold text-gray-700 flex items-center gap-1">
+                      {t.transaction_number}<ExternalLink className="h-2.5 w-2.5 text-gray-400" />
+                    </p>
                     <p className="text-gray-400">{formatDate(t.transaction_date)}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -150,7 +154,7 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment }) {
                       {t.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
                     </p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -179,11 +183,19 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment }) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Recent Purchases</p>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {customer.recent_transactions.map((t) => (
-              <div key={t.transaction_number} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm">
-                <span className="font-mono text-xs text-gray-500">{t.transaction_number}</span>
+              <button
+                key={t.transaction_id ?? t.transaction_number}
+                onClick={() => onViewTransaction?.(t.transaction_id)}
+                className="w-full flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50 hover:border-gray-200 transition-colors text-left"
+              >
+                <span className="font-mono text-xs text-gray-500 flex items-center gap-1">
+                  {t.transaction_number}
+                  {t.is_credit_sale && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-600">Credit</span>}
+                  <ExternalLink className="h-2.5 w-2.5 text-gray-300" />
+                </span>
                 <span className="text-gray-400 text-xs">{formatDate(t.transaction_date)}</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(t.total_amount)}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -204,6 +216,7 @@ export default function CustomersPage() {
   const [creditPay, setCreditPay]       = useState(null);
   const [payAmount, setPayAmount]       = useState('');
   const [payMethodId, setPayMethodId]   = useState('');
+  const [txnPreviewId, setTxnPreviewId] = useState(null);
   const [outstandingOnly, setOutstandingOnly] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -222,6 +235,13 @@ export default function CustomersPage() {
     queryFn: () => api.get('/companies/mine').then((r) => r.data.data),
   });
   const creditEnabled = !!companyData?.credit_sales_enabled;
+
+  const { data: txnDetail, isLoading: txnDetailLoading } = useQuery({
+    queryKey: ['txn-detail', txnPreviewId],
+    queryFn: () => api.get(`/sales/transactions/${txnPreviewId}`).then((r) => r.data.data),
+    enabled: !!txnPreviewId,
+    staleTime: Infinity,
+  });
 
   const { data: customerDetail } = useQuery({
     queryKey: ['customer-detail', detail],
@@ -400,8 +420,15 @@ export default function CustomersPage() {
         )}
       >
         <CustomerDetail customer={customerDetail} creditEnabled={creditEnabled}
-          onRecordPayment={() => setCreditPay({ id: customerDetail.customer_id, name: customerDetail.customer_name, balance: customerDetail.credit_balance })} />
+          onRecordPayment={() => setCreditPay({ id: customerDetail.customer_id, name: customerDetail.customer_name, balance: customerDetail.credit_balance })}
+          onViewTransaction={(txnId) => setTxnPreviewId(txnId)} />
       </Modal>
+
+      <ReceiptModal
+        open={!!txnPreviewId}
+        onClose={() => setTxnPreviewId(null)}
+        txn={txnDetail}
+      />
 
       <Modal open={!!creditPay} onClose={() => { setCreditPay(null); setPayAmount(''); setPayMethodId(''); }}
         title={`Record Payment — ${creditPay?.name ?? ''}`} size="sm">

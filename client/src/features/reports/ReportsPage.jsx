@@ -232,21 +232,37 @@ function BarChart({ data, height = 130 }) {
 // ── Tab: Sales Summary ────────────────────────────────────────────────────────
 
 function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
-  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
-  const [endDate,   setEnd]   = useState(today);
-  const [preset,    setPreset] = useState('Last 30d');
+  const [startDate,  setStart]    = useState(toISO(new Date(Date.now() - 29 * 86400000)));
+  const [endDate,    setEnd]      = useState(today);
+  const [preset,     setPreset]   = useState('Last 30d');
+  const [sessionId,  setSessionId] = useState('');
+
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canFilterByShift = ['company_admin', 'super_admin', 'branch_manager'].includes(userRole);
 
   const applyPreset = (p) => {
     const end = new Date(); const start = new Date();
     start.setDate(end.getDate() - p.days);
     setStart(toISO(start)); setEnd(toISO(end)); setPreset(p.label);
+    setSessionId('');
   };
 
+  const { data: sessionsData } = useQuery({
+    queryKey: ['sales-sessions-filter', startDate, endDate],
+    queryFn:  () => api.get('/pos/sessions', { params: { startDate, endDate, limit: 200 } }).then((r) => r.data.data?.sessions ?? []),
+    enabled:  canFilterByShift && !isSuperAdmin,
+  });
+  const sessionsList = sessionsData ?? [];
+
   const endpoint = isSuperAdmin ? '/platform/reports/sales' : '/reports/sales';
-  const params   = { startDate, endDate, ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}) };
+  const params   = {
+    startDate, endDate,
+    ...(sessionId ? { sessionId } : {}),
+    ...(isSuperAdmin && filterCompanyId ? { companyId: filterCompanyId } : {}),
+  };
 
   const { data, isLoading, refetch: refetchSales, isFetching: isFetchingSales } = useQuery({
-    queryKey: ['reports-sales', startDate, endDate, isSuperAdmin ? (filterCompanyId || 'all') : null],
+    queryKey: ['reports-sales', startDate, endDate, sessionId, isSuperAdmin ? (filterCompanyId || 'all') : null],
     queryFn:  () => api.get(endpoint, { params }).then((r) => r.data.data),
   });
 
@@ -288,9 +304,26 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <DateRange startDate={startDate} endDate={endDate} preset={preset}
-          onStart={(v) => { setStart(v); setPreset(''); }}
-          onEnd={(v) => { setEnd(v); setPreset(''); }}
+          onStart={(v) => { setStart(v); setPreset(''); setSessionId(''); }}
+          onEnd={(v) => { setEnd(v); setPreset(''); setSessionId(''); }}
           onPreset={applyPreset} />
+        {canFilterByShift && !isSuperAdmin && (
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1">
+            <ShoppingCart className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <select
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+              className="text-xs text-gray-700 bg-transparent border-none outline-none cursor-pointer max-w-[180px]"
+            >
+              <option value="">All Shifts</option>
+              {sessionsList.map((s) => (
+                <option key={s.session_id} value={s.session_id}>
+                  {s.terminal_name} · {new Date(s.session_start).toLocaleDateString('en', { day: 'numeric', month: 'short' })} · {s.cashier_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {isSuperAdmin && (
           <CompanyPicker companies={companies} value={filterCompanyId} onChange={setFilterCompanyId} />
         )}
