@@ -248,7 +248,7 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-stock-count', branchId, categoryId],
     queryFn: () => api.get('/inventory', {
-      params: { branchId: branchId || undefined, categoryId: categoryId || undefined, limit: 500, page: 1 },
+      params: { branchId: branchId || undefined, categoryId: categoryId || undefined, limit: 500, page: 1, sortBy: 'sku' },
     }).then((r) => r.data.data),
     staleTime: 0,   // always fresh — this is a live count
   });
