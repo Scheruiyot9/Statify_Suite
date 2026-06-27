@@ -408,8 +408,8 @@ async function getLoyaltySettings(companyId) {
 }
 
 async function updateLoyaltySettings(companyId, { points_earn_rate, points_redeem_rate }) {
-  if (points_earn_rate   <= 0) throw AppError.badRequest('Earn rate must be greater than 0');
-  if (points_redeem_rate <= 0) throw AppError.badRequest('Redeem rate must be greater than 0');
+  if (points_earn_rate   < 0) throw AppError.badRequest('Earn rate cannot be negative');
+  if (points_redeem_rate < 0) throw AppError.badRequest('Redeem rate cannot be negative');
   const { rows } = await query(`
     UPDATE companies
     SET points_earn_rate = $2, points_redeem_rate = $3, updated_at = now()

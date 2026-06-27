@@ -282,7 +282,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     // Award & deduct loyalty points — atomic WHERE guards against concurrent overdraft
     let pointsEarned = 0;
     if (customerId) {
-      pointsEarned = Math.floor(totalAmount / earnRate);
+      pointsEarned = earnRate > 0 ? Math.floor(totalAmount / earnRate) : 0;
       const { rowCount } = await client.query(`
         UPDATE customers
         SET loyalty_points_balance = loyalty_points_balance + $2 - $3,

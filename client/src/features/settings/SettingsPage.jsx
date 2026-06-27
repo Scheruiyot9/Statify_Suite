@@ -708,10 +708,10 @@ function LoyaltyTab() {
   });
 
   const handle = (setter) => (e) => { setter(e.target.value); setDirty(true); };
-  const valid  = parseFloat(earnRate) > 0 && parseFloat(redeemRate) > 0;
-
   const earnNum   = parseFloat(earnRate)   || 0;
   const redeemNum = parseFloat(redeemRate) || 0;
+  const disabled  = earnNum === 0 && redeemNum === 0;
+  const valid     = earnRate !== '' && redeemRate !== '' && earnNum >= 0 && redeemNum >= 0;
 
   return (
     <div className="space-y-6 max-w-lg">
@@ -724,11 +724,11 @@ function LoyaltyTab() {
               <label className="mb-1 block text-sm font-medium text-gray-700">Earn Rate</label>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500 whitespace-nowrap">Spend</span>
-                <input type="number" step="1" min="1" value={earnRate} onChange={handle(setEarnRate)}
+                <input type="number" step="1" min="0" value={earnRate} onChange={handle(setEarnRate)}
                   className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-semibold focus:border-primary-500 focus:outline-none" />
                 <span className="text-sm text-gray-500 whitespace-nowrap">currency units to earn 1 point</span>
               </div>
-              <p className="mt-1 text-xs text-gray-400">e.g. {earnNum} = a KES {earnNum} purchase earns 1 point</p>
+              <p className="mt-1 text-xs text-gray-400">{earnNum > 0 ? `e.g. ${earnNum} = a KES ${earnNum} purchase earns 1 point` : '0 = loyalty points disabled'}</p>
             </div>
 
             <div className="border-t border-gray-50" />
@@ -737,16 +737,20 @@ function LoyaltyTab() {
               <label className="mb-1 block text-sm font-medium text-gray-700">Redeem Rate</label>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500 whitespace-nowrap">1 point =</span>
-                <input type="number" step="0.01" min="0.01" value={redeemRate} onChange={handle(setRedeemRate)}
+                <input type="number" step="0.01" min="0" value={redeemRate} onChange={handle(setRedeemRate)}
                   className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-semibold focus:border-primary-500 focus:outline-none" />
                 <span className="text-sm text-gray-500 whitespace-nowrap">currency units on redemption</span>
               </div>
-              <p className="mt-1 text-xs text-gray-400">e.g. {redeemNum} = 100 points redeems for {(100 * redeemNum).toFixed(2)} off</p>
+              <p className="mt-1 text-xs text-gray-400">{redeemNum > 0 ? `e.g. ${redeemNum} = 100 points redeems for ${(100 * redeemNum).toFixed(2)} off` : '0 = redemption disabled'}</p>
             </div>
           </div>
 
-          {/* Live preview */}
-          {earnNum > 0 && redeemNum > 0 && (
+          {/* Live preview / disabled notice */}
+          {disabled ? (
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 text-sm text-gray-500">
+              Loyalty points are <strong>disabled</strong> — no points will be earned or redeemed at checkout.
+            </div>
+          ) : earnNum > 0 && redeemNum > 0 && (
             <div className="rounded-xl bg-primary-50 border border-primary-100 p-4 text-sm text-primary-800 space-y-1">
               <p className="font-semibold">Preview</p>
               <p>A KES 1,000 sale earns <strong>{Math.floor(1000 / earnNum)} points</strong></p>
