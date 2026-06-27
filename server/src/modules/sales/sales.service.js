@@ -564,7 +564,8 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
     accessConds.push(`branch_id = ANY($${accessParams.length})`);
   }
   const { rows } = await query(
-    `SELECT branch_id, transaction_number, transaction_date, cashier_user_id, status, is_credit_sale
+    `SELECT branch_id, transaction_number, transaction_date, cashier_user_id, status, is_credit_sale,
+            total_amount, customer_id AS orig_customer_id
      FROM sales_transactions WHERE ${accessConds.join(' AND ')}`,
     accessParams
   );
@@ -722,6 +723,36 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
           parseFloat(p.amountApplied),
           parseFloat(p.changeGiven || 0),
           p.referenceNumber || null, i + 1]);
+    }
+
+    // 6.5 Keep customer credit_balance in sync with the edited total
+    if (isCreditSale) {
+      const origTotal      = parseFloat(rows[0].total_amount);
+      const origCustomerId = rows[0].orig_customer_id;
+      if (origCustomerId && origCustomerId !== customerId) {
+        // Customer changed — undo old charge, apply new
+        await client.query(
+          `UPDATE customers SET credit_balance = credit_balance - $1, updated_at = now()
+           WHERE customer_id = $2 AND company_id = $3`,
+          [origTotal, origCustomerId, companyId]
+        );
+        if (customerId) {
+          await client.query(
+            `UPDATE customers SET credit_balance = credit_balance + $1, updated_at = now()
+             WHERE customer_id = $2 AND company_id = $3`,
+            [totalAmount, customerId, companyId]
+          );
+        }
+      } else if (customerId) {
+        const delta = totalAmount - origTotal;
+        if (Math.abs(delta) > 0.001) {
+          await client.query(
+            `UPDATE customers SET credit_balance = credit_balance + $1, updated_at = now()
+             WHERE customer_id = $2 AND company_id = $3`,
+            [delta, customerId, companyId]
+          );
+        }
+      }
     }
 
     // 7. Re-post journal with new figures
