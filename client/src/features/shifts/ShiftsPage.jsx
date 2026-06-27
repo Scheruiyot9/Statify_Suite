@@ -51,6 +51,7 @@ function ShiftDetail({ sessionId, onForceClose }) {
   const variance = data.cash_variance ?? 0;
   const payModeOpen  = data.pay_mode_amounts?.filter((a) => a.count_type === 'opening') ?? [];
   const payModeClose = data.pay_mode_amounts?.filter((a) => a.count_type === 'closing') ?? [];
+  const showOpenCol  = payModeOpen.length > 0 || (data.opening_cash_amount ?? 0) > 0;
 
   return (
     <div className="space-y-5">
@@ -105,7 +106,7 @@ function ShiftDetail({ sessionId, onForceClose }) {
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Method</th>
-                  {payModeOpen.length > 0  && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
+                  {showOpenCol && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Sales</th>
                   {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
                   {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
@@ -114,16 +115,18 @@ function ShiftDetail({ sessionId, onForceClose }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.payment_breakdown.map((p) => {
-                  const open   = payModeOpen.find((a)  => a.method_name === p.method_name);
-                  const close  = payModeClose.find((a) => a.method_name === p.method_name);
                   const isCash = p.method_name === 'Cash';
+                  const open   = payModeOpen.find((a) => a.method_name === p.method_name)
+                               ?? (isCash && data.opening_cash_amount > 0
+                                   ? { amount: data.opening_cash_amount } : undefined);
+                  const close  = payModeClose.find((a) => a.method_name === p.method_name);
                   const pmVar  = isCash
                     ? variance
                     : close != null ? close.amount - p.total : null;
                   return (
                     <tr key={p.method_name}>
                       <td className="px-4 py-3 font-medium text-gray-800">{p.method_name}</td>
-                      {payModeOpen.length > 0  && <td className="px-4 py-3 text-right text-gray-500">{open  ? formatCurrency(open.amount)  : '—'}</td>}
+                      {showOpenCol && <td className="px-4 py-3 text-right text-gray-500">{open ? formatCurrency(open.amount) : '—'}</td>}
                       <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(p.total)}</td>
                       {payModeClose.length > 0 && <td className="px-4 py-3 text-right text-gray-700">{close ? formatCurrency(close.amount) : '—'}</td>}
                       {payModeClose.length > 0 && (

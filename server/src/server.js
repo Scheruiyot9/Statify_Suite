@@ -40,9 +40,12 @@ function scheduleDailySummaryPost() {
     }
   };
 
-  // Fire at the next midnight, then every 24 h thereafter
-  const now       = new Date();
-  const midnight  = new Date(now);
+  // Run once immediately on startup (catches any day missed due to a restart),
+  // then schedule the next midnight and repeat every 24 h from there.
+  run();
+
+  const now          = new Date();
+  const midnight     = new Date(now);
   midnight.setDate(midnight.getDate() + 1);
   midnight.setHours(0, 0, 0, 0);
   const msToMidnight = midnight - now;
@@ -52,7 +55,7 @@ function scheduleDailySummaryPost() {
     setInterval(run, 24 * 60 * 60 * 1000);
   }, msToMidnight);
 
-  console.log(`[daily-summary] Scheduled — first run at midnight (in ${Math.round(msToMidnight / 60000)} min)`);
+  console.log(`[daily-summary] Scheduled — next midnight run in ${Math.round(msToMidnight / 60000)} min`);
 }
 
 // ── Auto-suspend scheduler ────────────────────────────────────────────────────
