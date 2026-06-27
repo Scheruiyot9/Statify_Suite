@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, ClipboardCheck, X } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, ClipboardCheck, X, Download, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -244,6 +244,7 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
   const [search,      setSearch]      = useState('');
   const [counts,      setCounts]      = useState({});   // "productId:branchId" → string
   const [notes,       setNotes]       = useState('Stock count');
+  const fileInputRef = useRef(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-stock-count', branchId, categoryId],
@@ -282,6 +283,83 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
   const losses = changedItems.filter((i) => i.adjustment < 0).length;
   const countedTotal = Object.keys(counts).filter((k) => counts[k] !== '' && counts[k] !== undefined).length;
 
+  const handleExport = () => {
+    if (!inventory.length) return toast.error('No inventory loaded to export');
+    import('xlsx').then(({ utils, writeFile }) => {
+      const rows = filtered.map((i) => {
+        const key = `${i.product_id}:${i.branch_id}`;
+        const entered = counts[key];
+        return {
+          SKU:           i.sku || '',
+          Product:       i.product_name,
+          Branch:        i.branch_name,
+          'System Qty':  parseFloat(i.quantity_available),
+          Unit:          i.unit_of_measure || '',
+          'Counted Qty': entered !== undefined && entered !== '' ? parseFloat(entered) : '',
+        };
+      });
+      const ws = utils.json_to_sheet(rows);
+      ws['!cols'] = [{ wch: 14 }, { wch: 36 }, { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 14 }];
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, 'Stock Count');
+      writeFile(wb, `stock_count_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    });
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    import('xlsx').then(({ read, utils }) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const wb   = read(new Uint8Array(ev.target.result), { type: 'array' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = utils.sheet_to_json(ws, { defval: '' });
+
+          // Build lookup: "sku_lower:branch_lower" → item, and "sku_lower" → item (single-branch fallback)
+          const bySkuBranch = {};
+          const bySku       = {};
+          for (const item of inventory) {
+            const skuKey = (item.sku || '').toLowerCase();
+            const bbKey  = `${skuKey}:${item.branch_name.toLowerCase()}`;
+            bySkuBranch[bbKey] = bySkuBranch[bbKey] || item;
+            bySku[skuKey]      = bySku[skuKey]      || item;
+          }
+
+          let matched = 0;
+          let blanks  = 0;
+          const newCounts = { ...counts };
+
+          for (const row of rows) {
+            const sku      = String(row['SKU']          ?? row['sku']        ?? '').trim().toLowerCase();
+            const branch   = String(row['Branch']       ?? row['branch']     ?? '').trim().toLowerCase();
+            const rawCount = row['Counted Qty']         ?? row['counted_qty'] ?? row['Counted'] ?? '';
+            if (rawCount === '' || rawCount === null || rawCount === undefined) { blanks++; continue; }
+
+            const counted = parseFloat(String(rawCount));
+            if (isNaN(counted) || counted < 0)              { blanks++; continue; }
+
+            const item = bySkuBranch[`${sku}:${branch}`] || bySku[sku];
+            if (!item) { blanks++; continue; }
+
+            newCounts[`${item.product_id}:${item.branch_id}`] = String(counted);
+            matched++;
+          }
+
+          setCounts(newCounts);
+          if (matched)        toast.success(`Imported ${matched} count${matched !== 1 ? 's' : ''}`);
+          else if (!blanks)   toast.error('No matching items found in file');
+          else                toast('All rows were blank or unmatched', { icon: 'ℹ️' });
+        } catch {
+          toast.error('Could not read file — use a valid Excel (.xlsx) file');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
   const handleSubmit = () => {
     if (!changedItems.length) return toast.error('No stock changes to apply');
     onSave(changedItems.map(({ product_id, branch_id, adjustment, notes }) => ({ product_id, branch_id, adjustment, notes })));
@@ -291,7 +369,7 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
     <Modal open onClose={onClose} title="Stock Count / Balance Update" size="xl">
       <div className="space-y-4">
 
-        {/* Filters */}
+        {/* Filters + Export/Import */}
         <div className="flex flex-wrap gap-2">
           {branches.length > 1 && (
             <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
@@ -318,6 +396,15 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
               </button>
             )}
           </div>
+          <button onClick={handleExport} disabled={isLoading || !inventory.length}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+            <Download className="h-3.5 w-3.5" /> Export
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={isLoading || !inventory.length}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+            <Upload className="h-3.5 w-3.5" /> Import
+          </button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
         </div>
 
         {/* Instruction banner */}
