@@ -21,7 +21,7 @@ export default function CustomerSelectModal({ open, onClose }) {
   const [search,      setSearch]      = useState('');
   const [debounced,   setDebounced]   = useState('');
   const [quickCreate, setQuickCreate] = useState(false);
-  const [form,        setForm]        = useState({ customer_name: '', phone: '', email: '', id_number: '', kra_pin: '' });
+  const [form,        setForm]        = useState({ customer_name: '', phone: '', email: '', id_number: '', kra_pin: '', customer_group_id: '' });
 
   const searchRef = useRef(null);
 
@@ -31,13 +31,28 @@ export default function CustomerSelectModal({ open, onClose }) {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Fetch customer posting groups
+  const { data: groups = [] } = useQuery({
+    queryKey: ['customer-groups'],
+    queryFn:  () => api.get('/customers/groups').then((r) => r.data.data),
+    enabled:  open,
+    staleTime: 5 * 60_000,
+  });
+
+  // Default the posting group once groups load and quick-create is open
+  useEffect(() => {
+    if (quickCreate && groups.length && !form.customer_group_id) {
+      setForm((f) => ({ ...f, customer_group_id: groups[0].group_id }));
+    }
+  }, [quickCreate, groups]);
+
   // Reset on open / mode switch
   useEffect(() => {
     if (open) {
       setSearch('');
       setDebounced('');
       setQuickCreate(false);
-      setForm({ customer_name: '', phone: '', email: '', id_number: '', kra_pin: '' });
+      setForm({ customer_name: '', phone: '', email: '', id_number: '', kra_pin: '', customer_group_id: '' });
       setTimeout(() => searchRef.current?.focus(), 80);
     }
   }, [open]);
@@ -112,11 +127,22 @@ export default function CustomerSelectModal({ open, onClose }) {
   const handleCreate = () => {
     if (!form.customer_name.trim()) { toast.error('Name is required'); return; }
     createCustomer({
-      customer_name: form.customer_name.trim(),
-      phone:         form.phone.trim()     || undefined,
-      email:         form.email.trim()     || undefined,
-      id_number:     form.id_number.trim() || undefined,
-      kra_pin:       form.kra_pin.trim()   || undefined,
+      customer_name:     form.customer_name.trim(),
+      phone:             form.phone.trim()          || undefined,
+      email:             form.email.trim()          || undefined,
+      id_number:         form.id_number.trim()      || undefined,
+      kra_pin:           form.kra_pin.trim()        || undefined,
+      customer_group_id: form.customer_group_id     || undefined,
+    });
+  };
+
+  const toggleQuickCreate = () => {
+    setQuickCreate((v) => {
+      const next = !v;
+      if (next && groups.length && !form.customer_group_id) {
+        setForm((f) => ({ ...f, customer_group_id: groups[0].group_id }));
+      }
+      return next;
     });
   };
 
@@ -295,7 +321,7 @@ export default function CustomerSelectModal({ open, onClose }) {
 
           {/* Quick-create toggle */}
           <button
-            onClick={() => setQuickCreate((v) => !v)}
+            onClick={toggleQuickCreate}
             className="flex w-full items-center gap-2 rounded-xl border border-dashed border-gray-200 p-3 text-sm text-gray-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600 transition-all"
           >
             <UserPlus className="h-4 w-4" />
@@ -346,6 +372,19 @@ export default function CustomerSelectModal({ open, onClose }) {
                     onChange={(e) => setForm((f) => ({ ...f, kra_pin: e.target.value }))}
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-400"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Customer Posting Group</label>
+                  <select
+                    value={form.customer_group_id}
+                    onChange={(e) => setForm((f) => ({ ...f, customer_group_id: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                  >
+                    {groups.length === 0 && <option value="">— no groups defined —</option>}
+                    {groups.map((g) => (
+                      <option key={g.group_id} value={g.group_id}>{g.group_name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <Button
