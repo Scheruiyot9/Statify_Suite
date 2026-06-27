@@ -254,11 +254,13 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
   });
 
   const inventory = data?.inventory ?? [];
-  const filtered  = inventory.filter((i) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return i.product_name.toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q);
-  });
+  const filtered  = inventory
+    .filter((i) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return i.product_name.toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q);
+    })
+    .sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { numeric: true, sensitivity: 'base' }));
 
   const setCount = (key, val) => setCounts((prev) => ({ ...prev, [key]: val }));
   const clearCount = (key) => setCounts((prev) => { const n = { ...prev }; delete n[key]; return n; });
