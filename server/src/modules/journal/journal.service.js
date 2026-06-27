@@ -573,6 +573,41 @@ async function postUnpostedPerTransaction(companyId, branchId, date, userId) {
   return { posted, skipped, remaining: stillUnposted[0].cnt };
 }
 
+// ── Stock Adjustment Entry ────────────────────────────────────────────────────
+// Posted when stock count / manual adjustment changes quantity_available.
+// qty > 0 (gain):  DR Inventory 1200  / CR COGS 5000
+// qty < 0 (loss):  DR COGS 5000       / CR Inventory 1200
+async function postStockAdjustmentEntry(client, companyId, { productId, qty, costPrice, userId, notes, date }) {
+  await client.query('SAVEPOINT post_stock_adjustment');
+  try {
+    const value = Math.abs(parseFloat(qty) * parseFloat(costPrice || 0));
+    if (!value || value < 0.005) { await client.query('RELEASE SAVEPOINT post_stock_adjustment'); return; }
+
+    const accIds = await findAccIds(client, companyId, ['1200', '5000']);
+    if (!accIds['1200'] || !accIds['5000']) { await client.query('RELEASE SAVEPOINT post_stock_adjustment'); return; }
+
+    const [drAcc, crAcc] = parseFloat(qty) > 0
+      ? [accIds['1200'], accIds['5000']]  // gain: DR Inventory / CR COGS
+      : [accIds['5000'], accIds['1200']]; // loss: DR COGS / CR Inventory
+
+    await _post(client, companyId, {
+      entryDate:   date || new Date().toISOString().slice(0, 10),
+      description: notes || `Stock adjustment (${parseFloat(qty) > 0 ? '+' : ''}${qty})`,
+      sourceType:  'STOCK_ADJUSTMENT',
+      sourceId:    productId,
+      userId:      userId || null,
+      lines: [
+        { accountId: drAcc, debit: +value.toFixed(4), credit: 0 },
+        { accountId: crAcc, debit: 0, credit: +value.toFixed(4) },
+      ],
+    });
+    await client.query('RELEASE SAVEPOINT post_stock_adjustment');
+  } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT post_stock_adjustment');
+    console.error('[ledger] postStockAdjustmentEntry skipped:', err.message);
+  }
+}
+
 // ── Sale Void Entry ───────────────────────────────────────────────────────────
 // Reversal of the original SALE journal entry — mirrors postVoidPaymentEntry pattern.
 // Looks up the posted SALE entry by source_id and swaps all Dr/Cr sides.
@@ -1569,6 +1604,7 @@ async function postCreditReceiptEntry(client, companyId, { customerId, customerN
 module.exports = {
   findAccIds, _post,
   postCreditReceiptEntry,
+  postStockAdjustmentEntry,
   postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
   postSessionSummaryEntry, postDailySummaryEntry, postUnpostedPerTransaction,
   postPaymentEntry, postVoidPaymentEntry,

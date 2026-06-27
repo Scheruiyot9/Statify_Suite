@@ -4,6 +4,7 @@ const { isCompanyWide } = require('../../shared/roles');
 const { sendMail } = require('../../shared/mailer');
 const QueryBuilder = require('../../shared/qb');
 const { recordMovement } = require('./movements.service');
+const jrn = require('../journal/journal.service');
 
 const INVENTORY_SORT = {
   name:     'p.product_name',
@@ -111,7 +112,7 @@ async function adjustStock(companyId, userId, data) {
   return transaction(async (client) => {
     const { rows } = await client.query(`
       SELECT pbi.quantity_available, pbi.reorder_level,
-             p.product_name, p.sku,
+             p.product_name, p.sku, p.cost_price,
              b.branch_name,
              c.contact_email, c.company_name
       FROM product_branch_inventory pbi
@@ -125,6 +126,7 @@ async function adjustStock(companyId, userId, data) {
     if (!rows.length) throw AppError.notFound('Inventory record');
 
     const { product_name, sku, branch_name, contact_email, company_name } = rows[0];
+    const costPrice    = parseFloat(rows[0].cost_price || 0);
     const reorderLevel = parseInt(rows[0].reorder_level) || 0;
     const current = parseFloat(rows[0].quantity_available);
     const newQty  = current + qty;
@@ -146,6 +148,10 @@ async function adjustStock(companyId, userId, data) {
       referenceType: 'ADJUSTMENT',
       notes:         notes || null,
       userId,
+    });
+
+    await jrn.postStockAdjustmentEntry(client, companyId, {
+      productId: product_id, qty, costPrice, userId, notes,
     });
 
     // Fire low-stock alert when stock crosses (or stays below) the reorder threshold
@@ -186,7 +192,7 @@ async function adjustStockBulk(companyId, userId, items) {
 
       const { rows } = await client.query(`
         SELECT pbi.quantity_available, pbi.reorder_level,
-               p.product_name, p.sku,
+               p.product_name, p.sku, p.cost_price,
                b.branch_name,
                c.contact_email, c.company_name
         FROM product_branch_inventory pbi
@@ -200,6 +206,7 @@ async function adjustStockBulk(companyId, userId, items) {
       if (!rows.length) throw AppError.notFound(`Inventory record for product ${product_id}`);
 
       const { product_name, sku, branch_name, contact_email, company_name } = rows[0];
+      const costPrice    = parseFloat(rows[0].cost_price || 0);
       const reorderLevel = parseInt(rows[0].reorder_level) || 0;
       const current = parseFloat(rows[0].quantity_available);
       const newQty  = current + qty;
@@ -221,6 +228,10 @@ async function adjustStockBulk(companyId, userId, items) {
         referenceType: 'ADJUSTMENT',
         notes:         notes || null,
         userId,
+      });
+
+      await jrn.postStockAdjustmentEntry(client, companyId, {
+        productId: product_id, qty, costPrice, userId, notes,
       });
 
       if (reorderLevel > 0 && newQty <= reorderLevel && contact_email) {
