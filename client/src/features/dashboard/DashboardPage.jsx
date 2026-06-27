@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -9,6 +9,7 @@ import {
   Globe, BarChart3, CreditCard, Layers,
   RefreshCw, Calendar, X, Wallet,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
 import { formatCurrency, formatCurrencyCompact } from '@/utils/formatters';
@@ -708,8 +709,17 @@ export default function DashboardPage() {
     queryFn:  () => api.get('/reports/dashboard', { params: queryParams }).then((r) => r.data.data),
     staleTime: 60_000,
     refetchInterval: 120_000,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
+
+  // Show a non-disruptive toast when a background/manual refetch fails but we
+  // have cached data to show — instead of replacing the whole dashboard with
+  // the error page.
+  const hadData = useRef(false);
+  useEffect(() => { if (data) hadData.current = true; }, [data]);
+  useEffect(() => {
+    if (isError && hadData.current) toast.error('Could not refresh dashboard data');
+  }, [isError]);
 
   const { hasCapability, hasRole, user } = usePermission();
   const isSuperAdmin     = user?.role === 'super_admin';
@@ -733,11 +743,15 @@ export default function DashboardPage() {
 
   if (isLoading && !isSuperAdmin) return <PageSpinner />;
 
-  if (isError && !isSuperAdmin) {
+  if (isError && !data && !isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
         <AlertTriangle className="h-10 w-10 text-red-400" />
         <p className="text-gray-500">Could not load dashboard. Check that the server is running.</p>
+        <button onClick={() => refetch()} disabled={isFetching}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Try again
+        </button>
       </div>
     );
   }
