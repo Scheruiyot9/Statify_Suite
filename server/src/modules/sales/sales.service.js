@@ -643,9 +643,7 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
     const discountAmt   = itemDiscounts + parseFloat(orderDiscount);
     const totalAmount   = Math.max(0, subtotal - parseFloat(orderDiscount));
     const totalPaid     = payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
-    const paymentStatus = totalPaid >= totalAmount ? 'paid'
-      : (isCreditSale && totalPaid === 0) ? 'credit'
-      : 'partial';
+    const paymentStatus = totalPaid >= totalAmount ? 'paid' : 'partial';
 
     // 4. Update transaction header
     await client.query(`

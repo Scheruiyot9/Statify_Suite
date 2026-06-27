@@ -68,9 +68,10 @@ async function _post(client, companyId, { entryDate, description, sourceType, so
 // DR Cash/Bank (per payment method) + DR COGS + DR AR (unpaid portion)
 // CR Revenue (net of VAT) + CR VAT Payable + CR Inventory
 async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap = null) {
+  await client.query('SAVEPOINT post_sale_entry');
   try {
     const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
-    if (!accIds['4000']) return; // CoA not seeded
+    if (!accIds['4000']) { await client.query('RELEASE SAVEPOINT post_sale_entry'); return; }
 
     let costMap = {};
     if (!cogsMap) {
@@ -167,7 +168,7 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
       }
     }
 
-    if (lines.length < 2) return;
+    if (lines.length < 2) { await client.query('RELEASE SAVEPOINT post_sale_entry'); return; }
 
     await _post(client, companyId, {
       entryDate,
@@ -177,7 +178,9 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
       userId:      txn.cashier_user_id || txn.cashierUserId || null,
       lines,
     });
+    await client.query('RELEASE SAVEPOINT post_sale_entry');
   } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT post_sale_entry');
     console.error('[ledger] postSaleEntry skipped:', err.message);
   }
 }
@@ -626,6 +629,7 @@ async function postSaleVoidEntry(client, companyId, txn) {
 // (not fully voided). Always targets the LATEST posted SALE entry so repeated
 // edits each reverse the previous corrected entry, not the original.
 async function postSaleEditReversal(client, companyId, txn) {
+  await client.query('SAVEPOINT post_sale_edit_reversal');
   try {
     // Case 1: individual SALE JE exists — reverse it
     const { rows: jeRows } = await client.query(
@@ -640,40 +644,42 @@ async function postSaleEditReversal(client, companyId, txn) {
          FROM ledger_entry_lines WHERE journal_entry_id = $1`,
         [jeRows[0].journal_entry_id]
       );
-      if (!origLines.length) return;
-      await _post(client, companyId, {
-        entryDate:   new Date().toISOString().slice(0, 10),
-        description: `Edit reversal — ${txn.transaction_number}`,
-        sourceType:  'SALE_EDIT',
-        sourceId:    txn.transaction_id,
-        userId:      txn.edited_by_user_id || null,
-        lines: origLines.map((l) => ({
-          accountId: l.account_id, debit: parseFloat(l.credit), credit: parseFloat(l.debit),
-          description: l.description, entityType: l.entity_type, entityId: l.entity_id,
-        })),
-      });
-      return;
+      if (origLines.length) {
+        await _post(client, companyId, {
+          entryDate:   new Date().toISOString().slice(0, 10),
+          description: `Edit reversal — ${txn.transaction_number}`,
+          sourceType:  'SALE_EDIT',
+          sourceId:    txn.transaction_id,
+          userId:      txn.edited_by_user_id || null,
+          lines: origLines.map((l) => ({
+            accountId: l.account_id, debit: parseFloat(l.credit), credit: parseFloat(l.debit),
+            description: l.description, entityType: l.entity_type, entityId: l.entity_id,
+          })),
+        });
+      }
+    } else {
+      // Case 2: no individual JE — check if a summary covers this transaction
+      const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
+      if (covered) {
+        const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+        if (accIds['4000']) {
+          const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
+          if (result && result.lines.length >= 2) {
+            await _post(client, companyId, {
+              entryDate:   new Date().toISOString().slice(0, 10),
+              description: `Edit reversal — ${result.txnNumber}`,
+              sourceType:  'SALE_EDIT',
+              sourceId:    txn.transaction_id,
+              userId:      txn.edited_by_user_id || null,
+              lines:       result.lines,
+            });
+          }
+        }
+      }
     }
-
-    // Case 2: no individual JE — check if a summary covers this transaction
-    const covered = await _isCoveredBySummary(client, companyId, txn.transaction_id);
-    if (!covered) return;
-
-    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
-    if (!accIds['4000']) return;
-
-    const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
-    if (!result || result.lines.length < 2) return;
-
-    await _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
-      description: `Edit reversal — ${result.txnNumber}`,
-      sourceType:  'SALE_EDIT',
-      sourceId:    txn.transaction_id,
-      userId:      txn.edited_by_user_id || null,
-      lines:       result.lines,
-    });
+    await client.query('RELEASE SAVEPOINT post_sale_edit_reversal');
   } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT post_sale_edit_reversal');
     console.error('[ledger] postSaleEditReversal skipped:', err.message);
   }
 }
