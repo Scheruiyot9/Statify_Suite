@@ -105,8 +105,8 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
     const netRevenue   = +(totalAmount - taxAmount).toFixed(4);
     const entryDate    = toDateStr(txn.transaction_date || txn.transactionDate);
     const totalPaid       = rawPayments.reduce((s, p) => s + parseFloat(p.amountApplied || p.amount_applied || 0), 0);
-    // When payment exceeds total (Kenyan cash rounding), the rounded-up amount is the actual revenue
-    const effectiveRevenue = Math.max(totalAmount, totalPaid);
+    // Always use the invoice amount as revenue; cap payment debits at totalAmount so the entry balances
+    const effectiveRevenue = totalAmount;
     const arAmount         = +(totalAmount - Math.min(totalPaid, totalAmount)).toFixed(4);
     const totalCOGS = cogsMap
       ? Object.values(cogsMap).reduce((s, c) => s + c, 0)
@@ -117,9 +117,11 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
 
     const lines = [];
 
-    // DR: cash/bank receipts per payment method
-    // Priority: 1) payment method's linked bank account GL  2) name heuristic  3) Cash in Hand (1000)
+    // DR: cash/bank receipts per payment method — total capped at effectiveRevenue to handle cash rounding
+    // (if payment was rounded up above invoice total, we post only the invoice amount to stay balanced)
+    let payDebitRemaining = effectiveRevenue;
     for (const pmt of rawPayments) {
+      if (payDebitRemaining <= 0.005) break;
       const pmId      = pmt.paymentMethodId || pmt.payment_method_id;
       const pm        = pmMap[pmId] || {};
       let drAccId     = pm.glAccountId || null;
@@ -129,8 +131,12 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
         drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
       }
       if (!drAccId) continue;
-      const amt = parseFloat(pmt.amountApplied || pmt.amount_applied || 0);
-      if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
+      const rawAmt = parseFloat(pmt.amountApplied || pmt.amount_applied || 0);
+      const amt    = +Math.min(rawAmt, payDebitRemaining).toFixed(4);
+      if (amt > 0.005) {
+        lines.push({ accountId: drAccId, debit: amt, credit: 0 });
+        payDebitRemaining -= amt;
+      }
     }
 
     // DR: AR for unpaid portion — linked to customer
@@ -151,9 +157,7 @@ async function postSaleEntry(client, companyId, txn, items, rawPayments, cogsMap
       lines.push({ accountId: accIds['1200'], debit: 0, credit: +totalCOGS.toFixed(4) });
     }
 
-    // CR: Revenue — use effectiveRevenue (max of invoice total and amount paid, to handle cash rounding).
-    // If VAT Payable account (2100) exists: split into net revenue + VAT.
-    // If 2100 is missing: absorb tax into revenue so the entry stays balanced.
+    // CR: Revenue = invoice total. Split into net + VAT when account 2100 exists.
     if (effectiveRevenue > 0.005 && accIds['4000']) {
       if (taxAmount > 0.005 && accIds['2100']) {
         lines.push({ accountId: accIds['4000'], debit: 0, credit: +(effectiveRevenue - taxAmount).toFixed(4) });
@@ -432,9 +436,10 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
 
     const lines = [];
 
-    // Sum what was actually collected (may exceed total_amount due to cash rounding)
-    let totalPaid = 0;
+    // Sum what was actually collected; cap total DR at totalAmount to handle cash rounding
+    let payDebitRemainingD = totalAmount;
     for (const pmt of pmtRows) {
+      if (payDebitRemainingD <= 0.005) break;
       let drAccId = pmt.gl_account_id || null;
       if (!drAccId) {
         const name = (pmt.method_name || '').toLowerCase();
@@ -442,13 +447,16 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
         drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
       }
       if (!drAccId) continue;
-      const amt = parseFloat(pmt.total);
-      totalPaid += amt;
-      if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
+      const rawAmt = parseFloat(pmt.total);
+      const amt    = +Math.min(rawAmt, payDebitRemainingD).toFixed(4);
+      if (amt > 0.005) {
+        lines.push({ accountId: drAccId, debit: amt, credit: 0 });
+        payDebitRemainingD -= amt;
+      }
     }
 
-    // When collected amount exceeds invoice total (Kenyan cash rounding), the excess is revenue
-    const effectiveRevenue = Math.max(totalAmount, totalPaid);
+    // Always post invoice amount as revenue
+    const effectiveRevenue = totalAmount;
 
     if (totalCOGS > 0.005 && accIds['5000'] && accIds['1200']) {
       lines.push({ accountId: accIds['5000'], debit: +totalCOGS.toFixed(4), credit: 0 });

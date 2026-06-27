@@ -231,7 +231,7 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
   const handleSave = () => {
     if (!editReason.trim()) { toast.error('Enter a reason for this edit'); return; }
     if (computedItems.length === 0) { toast.error('At least one item is required'); return; }
-    if (payments.length === 0) { toast.error('At least one payment is required'); return; }
+    if (payments.length === 0 && !txn.is_credit_sale) { toast.error('At least one payment is required'); return; }
 
     const payload = {
       items: computedItems.map((i) => ({

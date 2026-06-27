@@ -554,7 +554,6 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
   const { items, payments, customerId, notes, editReason, orderDiscount = 0, transactionDate: newTransactionDate } = data;
 
   if (!items?.length)       throw AppError.badRequest('At least one item is required');
-  if (!payments?.length)    throw AppError.badRequest('At least one payment is required');
   if (!editReason?.trim())  throw AppError.badRequest('Edit reason is required');
 
   // Fetch transaction with branch-scope access check
@@ -565,12 +564,15 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
     accessConds.push(`branch_id = ANY($${accessParams.length})`);
   }
   const { rows } = await query(
-    `SELECT branch_id, transaction_number, transaction_date, cashier_user_id, status
+    `SELECT branch_id, transaction_number, transaction_date, cashier_user_id, status, is_credit_sale
      FROM sales_transactions WHERE ${accessConds.join(' AND ')}`,
     accessParams
   );
   if (!rows.length) throw AppError.notFound('Transaction');
   if (rows[0].status !== 'completed') throw AppError.conflict('Only completed transactions can be edited');
+
+  const isCreditSale = rows[0].is_credit_sale;
+  if (!payments?.length && !isCreditSale) throw AppError.badRequest('At least one payment is required');
 
   const branchId          = rows[0].branch_id;
   const transactionNumber = rows[0].transaction_number;
@@ -641,7 +643,9 @@ async function editTransaction(companyId, transactionId, userId, data, role, bra
     const discountAmt   = itemDiscounts + parseFloat(orderDiscount);
     const totalAmount   = Math.max(0, subtotal - parseFloat(orderDiscount));
     const totalPaid     = payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
-    const paymentStatus = totalPaid >= totalAmount ? 'paid' : 'partial';
+    const paymentStatus = totalPaid >= totalAmount ? 'paid'
+      : (isCreditSale && totalPaid === 0) ? 'credit'
+      : 'partial';
 
     // 4. Update transaction header
     await client.query(`
