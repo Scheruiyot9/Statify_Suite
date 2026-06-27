@@ -155,14 +155,14 @@ function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines,
 
   return (
     <>
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm min-w-[580px]">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-2 py-1.5 font-medium text-gray-600">Account / Entity</th>
-              <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-40">Line Note</th>
-              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-28">Debit</th>
-              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-28">Credit</th>
+              <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Line Note</th>
+              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-24">Debit</th>
+              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-24">Credit</th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -215,7 +215,7 @@ function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines,
           </tfoot>
         </table>
       </div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <button onClick={addLine} className="text-sm text-primary-600 hover:underline">+ Add line</button>
         {!balanced && totalDr > 0 && (
           <p className="text-sm text-red-600 flex items-center gap-1">
@@ -325,20 +325,20 @@ function JournalFormModal({ existing, accounts, onClose }) {
   return (
     <Modal open title={isEdit ? `Edit Journal — ${existing.journal_number}` : 'New Journal Entry'} onClose={onClose} size="xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-            <input type="date" className="w-full border rounded-lg px-2 py-1.5 text-sm"
+            <input type="date" className="w-full border rounded-lg px-2 py-2 text-sm"
               value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-            <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="e.g. Monthly accrual"
+            <input className="w-full border rounded-lg px-2 py-2 text-sm" placeholder="e.g. Monthly accrual"
               value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Reference</label>
-            <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="e.g. INV-001"
+            <input className="w-full border rounded-lg px-2 py-2 text-sm" placeholder="e.g. INV-001"
               value={reference} onChange={(e) => setReference(e.target.value)} />
           </div>
         </div>
@@ -349,7 +349,7 @@ function JournalFormModal({ existing, accounts, onClose }) {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
 
-      <div className="mt-6 flex justify-between gap-2 border-t pt-4">
+      <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-between gap-2 border-t pt-4">
         <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">
           Cancel
         </button>
@@ -357,14 +357,14 @@ function JournalFormModal({ existing, accounts, onClose }) {
           <button
             onClick={() => { setError(''); saveMut.mutate(buildPayload()); }}
             disabled={isPending}
-            className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
           >
-            {isPending ? 'Saving…' : 'Save as Draft'}
+            {isPending ? 'Saving…' : 'Save Draft'}
           </button>
           <button
             onClick={() => { setError(''); if (validate()) postMut.mutate(buildPayload()); }}
             disabled={isPending}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40"
+            className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40"
           >
             {isPending ? 'Posting…' : 'Save & Post'}
           </button>
@@ -406,65 +406,76 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
         <div className="py-12 text-center text-gray-400">Loading…</div>
       ) : j ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4 text-sm bg-gray-50 rounded-lg p-4">
-            <div><span className="text-gray-500 text-xs">Number</span><p className="font-mono font-semibold">{j.journal_number}</p></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
+            <div><span className="text-gray-500 text-xs">Number</span><p className="font-mono font-semibold text-sm">{j.journal_number}</p></div>
             <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(j.entry_date).slice(0, 10)}</p></div>
             <div><span className="text-gray-500 text-xs">Status</span>
               <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>{j.status}</span></p>
             </div>
-            {j.description && <div className="col-span-full"><span className="text-gray-500 text-xs">Description</span><p>{j.description}</p></div>}
+            {j.description && <div className="col-span-full"><span className="text-gray-500 text-xs">Description</span><p className="break-words">{j.description}</p></div>}
             {j.reference   && <div><span className="text-gray-500 text-xs">Reference</span><p>{j.reference}</p></div>}
             {j.created_by  && <div><span className="text-gray-500 text-xs">Created by</span><p>{j.created_by}</p></div>}
             {j.posted_by   && <div><span className="text-gray-500 text-xs">Posted by</span><p>{j.posted_by}</p></div>}
           </div>
 
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 font-medium text-gray-600">Account</th>
-                <th className="text-left py-2 font-medium text-gray-600">Entity / Note</th>
-                <th className="text-right py-2 font-medium text-gray-600 w-32">Debit</th>
-                <th className="text-right py-2 font-medium text-gray-600 w-32">Credit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(j.lines ?? []).map((l) => (
-                <tr key={l.lineId} className="border-b last:border-0">
-                  <td className="py-2">
-                    <span className="font-mono text-xs text-gray-500 mr-1">{l.accountCode}</span>{l.accountName}
-                  </td>
-                  <td className="py-2 text-xs text-gray-500">
-                    {l.entityName
-                      ? <><span className="capitalize text-gray-400">{l.entityType?.replace('_', ' ')}</span>: {l.entityName}</>
-                      : l.description || '—'}
-                  </td>
-                  <td className="py-2 text-right font-mono">{l.debit  > 0 ? fmt(l.debit)  : ''}</td>
-                  <td className="py-2 text-right font-mono">{l.credit > 0 ? fmt(l.credit) : ''}</td>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm min-w-[420px]">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
+                  <th className="hidden sm:table-cell text-left px-3 py-2 font-medium text-gray-600">Entity / Note</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Debit</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Credit</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2">
-              <tr>
-                <td colSpan={2} className="py-2 font-semibold">Totals</td>
-                <td className="py-2 text-right font-mono font-semibold">
-                  {fmt((j.lines ?? []).reduce((s, l) => s + l.debit, 0))}
-                </td>
-                <td className="py-2 text-right font-mono font-semibold">
-                  {fmt((j.lines ?? []).reduce((s, l) => s + l.credit, 0))}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                {(j.lines ?? []).map((l) => (
+                  <tr key={l.lineId} className="border-b last:border-0">
+                    <td className="px-3 py-2">
+                      <span className="font-mono text-xs text-gray-500 mr-1">{l.accountCode}</span>
+                      <span className="text-sm">{l.accountName}</span>
+                      {l.entityName && (
+                        <p className="sm:hidden text-xs text-gray-400 mt-0.5">
+                          <span className="capitalize">{l.entityType?.replace('_', ' ')}</span>: {l.entityName}
+                        </p>
+                      )}
+                      {!l.entityName && l.description && (
+                        <p className="sm:hidden text-xs text-gray-400 mt-0.5">{l.description}</p>
+                      )}
+                    </td>
+                    <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">
+                      {l.entityName
+                        ? <><span className="capitalize text-gray-400">{l.entityType?.replace('_', ' ')}</span>: {l.entityName}</>
+                        : l.description || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-sm">{l.debit  > 0 ? fmt(l.debit)  : '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono text-sm">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 bg-gray-50">
+                <tr>
+                  <td colSpan={2} className="px-3 py-2 font-semibold">Totals</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {fmt((j.lines ?? []).reduce((s, l) => s + l.debit, 0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {fmt((j.lines ?? []).reduce((s, l) => s + l.credit, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
           {/* Actions */}
           {j.status === 'draft' && (
-            <div className="border-t pt-4 flex gap-2">
+            <div className="border-t pt-4 flex flex-wrap gap-2">
               <button onClick={() => onEdit(j)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border text-gray-700 hover:bg-gray-50">
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border text-gray-700 hover:bg-gray-50">
                 <Edit2 className="h-4 w-4" />Edit Draft
               </button>
               <button onClick={() => postMut.mutate()} disabled={postMut.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40">
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40">
                 {postMut.isPending ? 'Posting…' : 'Post to Ledger'}
               </button>
             </div>
@@ -473,20 +484,22 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
           {j.status === 'posted' && (
             <div className="border-t pt-4">
               {showVoidForm ? (
-                <div className="flex gap-2">
-                  <input className="flex-1 border rounded-lg px-2 py-1.5 text-sm"
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input className="flex-1 border rounded-lg px-2 py-2 text-sm"
                     placeholder="Reason for voiding…"
                     value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
-                  <button onClick={() => voidMut.mutate()} disabled={!voidReason.trim() || voidMut.isPending}
-                    className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white disabled:opacity-40">
-                    Confirm Void
-                  </button>
-                  <button onClick={() => setShowVoidForm(false)}
-                    className="px-4 py-2 text-sm rounded-lg border">Cancel</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => voidMut.mutate()} disabled={!voidReason.trim() || voidMut.isPending}
+                      className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg bg-red-600 text-white disabled:opacity-40">
+                      Confirm Void
+                    </button>
+                    <button onClick={() => setShowVoidForm(false)}
+                      className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg border">Cancel</button>
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => setShowVoidForm(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
                   <XCircle className="h-4 w-4" />Void Journal
                 </button>
               )}
@@ -1223,13 +1236,13 @@ export default function JournalPage() {
           {aeDetailLoading ? (
             <div className="py-16 text-center text-gray-400">Loading…</div>
           ) : aeDetail ? (
-            <div className="space-y-4 p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-lg font-bold text-gray-900 font-mono">{aeDetail.entry_number}</p>
-                  <p className="text-sm text-gray-500">{String(aeDetail.entry_date).slice(0, 10)} · {aeDetail.description}</p>
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-base font-bold text-gray-900 font-mono leading-tight">{aeDetail.entry_number}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 break-words">{String(aeDetail.entry_date).slice(0, 10)} · {aeDetail.description}</p>
                 </div>
-                <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                <span className={`flex-shrink-0 inline-block rounded-full px-2.5 py-1 text-xs font-semibold text-center ${
                   aeDetail.source_type === 'SALE'                 ? 'bg-green-100 text-green-700' :
                   aeDetail.source_type === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
                   aeDetail.source_type === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
@@ -1239,41 +1252,43 @@ export default function JournalPage() {
                   {aeDetail.source_type?.replace(/_/g, ' ')}
                 </span>
               </div>
-              <table className="w-full text-sm border rounded-xl overflow-hidden">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
-                    <th className="hidden sm:table-cell text-left px-3 py-2 font-medium text-gray-600">Description</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">Debit</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">Credit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {(aeDetail.lines ?? []).map((l) => (
-                    <tr key={l.lineId}>
-                      <td className="px-3 py-2 text-xs">
-                        <span className="font-mono text-gray-500 mr-1">{l.accountCode}</span>
-                        <span className="text-gray-800">{l.accountName}</span>
-                        {l.entityName && <span className="ml-1 text-gray-400">({l.entityName})</span>}
-                      </td>
-                      <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{l.description ?? '—'}</td>
-                      <td className="px-3 py-2 text-xs text-right font-mono">{l.debit > 0 ? fmt(l.debit) : '—'}</td>
-                      <td className="px-3 py-2 text-xs text-right font-mono">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full text-sm min-w-[380px]">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
+                      <th className="hidden sm:table-cell text-left px-3 py-2 font-medium text-gray-600">Description</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Debit</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Credit</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-50 border-t">
-                  <tr>
-                    <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-600">Total</td>
-                    <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
-                      {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.debit, 0))}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
-                      {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0))}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(aeDetail.lines ?? []).map((l) => (
+                      <tr key={l.lineId}>
+                        <td className="px-3 py-2 text-xs">
+                          <span className="font-mono text-gray-500 mr-1">{l.accountCode}</span>
+                          <span className="text-gray-800">{l.accountName}</span>
+                          {l.entityName && <p className="text-[10px] text-gray-400 mt-0.5">{l.entityName}</p>}
+                        </td>
+                        <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{l.description ?? '—'}</td>
+                        <td className="px-3 py-2 text-xs text-right font-mono">{l.debit > 0 ? fmt(l.debit) : '—'}</td>
+                        <td className="px-3 py-2 text-xs text-right font-mono">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t">
+                    <tr>
+                      <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-700">Total</td>
+                      <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
+                        {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.debit, 0))}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
+                        {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
               {aeDetail.created_by && (
                 <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
               )}

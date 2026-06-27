@@ -270,26 +270,26 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
           <p>Inventory and journal entries will be reversed and re-posted. The transaction number stays the same.</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-x-4 text-xs text-gray-500 items-center">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs text-gray-500 items-start">
           <div>
-            <span className="text-gray-400 block mb-0.5">Date</span>
+            <span className="text-gray-400 block mb-1">Date</span>
             <input
               type="date"
               value={transactionDate}
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setTransactionDate(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-primary-500 focus:outline-none"
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-800 focus:border-primary-500 focus:outline-none"
             />
           </div>
-          <div><span className="text-gray-400">Cashier: </span>{txn.cashier_name}</div>
-          <div><span className="text-gray-400">Branch: </span>{txn.branch_name}</div>
+          <div><span className="text-gray-400 block mb-1">Cashier</span><p className="text-gray-700">{txn.cashier_name}</p></div>
+          <div><span className="text-gray-400 block mb-1">Branch</span><p className="text-gray-700">{txn.branch_name}</p></div>
         </div>
 
         {/* Items */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Items</p>
-          <div className="rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm min-w-[400px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Product</th>
@@ -360,11 +360,11 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Payments</p>
           <div className="space-y-2">
             {payments.map((p) => (
-              <div key={p._key} className="flex items-center gap-2">
+              <div key={p._key} className="flex flex-wrap items-center gap-2">
                 <select
                   value={p.paymentMethodId}
                   onChange={(e) => onMethodChange(p._key, e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
+                  className="flex-1 min-w-[120px] rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
                 >
                   {payMethods.map((m) => (
                     <option key={m.payment_method_id} value={m.payment_method_id}>{m.method_name}</option>
@@ -375,7 +375,7 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
                   value={p.amountApplied}
                   onChange={(e) => updatePayment(p._key, 'amountApplied', e.target.value)}
                   placeholder="Amount"
-                  className="w-32 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right focus:border-primary-400 focus:outline-none"
+                  className="w-28 rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-right focus:border-primary-400 focus:outline-none"
                 />
                 {p.requiresReference && (
                   <input
@@ -383,7 +383,7 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
                     value={p.referenceNumber}
                     onChange={(e) => updatePayment(p._key, 'referenceNumber', e.target.value)}
                     placeholder="Ref #"
-                    className="w-28 rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
+                    className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
                   />
                 )}
                 <button
