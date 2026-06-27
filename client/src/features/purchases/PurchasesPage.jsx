@@ -76,15 +76,15 @@ function ProductSearch({ products, value, onChange }) {
         />
       </div>
       {open && (
-        <div className="absolute top-full left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className="absolute top-full left-0 z-30 mt-1 max-h-56 w-max min-w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg" style={{ minWidth: '220px' }}>
           {filtered.length === 0 ? (
             <p className="px-3 py-2.5 text-xs text-gray-400">No products match</p>
           ) : filtered.map((p) => (
             <button key={p.product_id} type="button"
               onMouseDown={(e) => { e.preventDefault(); onChange(p.product_id); setOpen(false); setQuery(''); }}
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-primary-50 transition-colors ${value === p.product_id ? 'bg-primary-50' : ''}`}>
-              <span className="font-medium text-gray-900 truncate">{p.product_name}</span>
-              <span className="ml-3 shrink-0 text-xs text-gray-400 font-mono">{p.sku}</span>
+              className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-primary-50 transition-colors ${value === p.product_id ? 'bg-primary-50' : ''}`}>
+              <span className="font-medium text-gray-900">{p.product_name}</span>
+              <span className="shrink-0 text-xs text-gray-400 font-mono">{p.sku}</span>
             </button>
           ))}
         </div>
@@ -190,7 +190,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
   return (
     <Modal open onClose={onClose} title={isEdit ? `Edit PO ${po.po_number}` : 'New Purchase Order'} size="xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Supplier *">
             <select className={sel} value={form.supplier_id} onChange={(e) => setF('supplier_id', e.target.value)}>
               <option value="">— Select supplier —</option>
@@ -217,15 +217,15 @@ function POModal({ po, suppliers, products, branches, onClose }) {
               <Plus className="h-3.5 w-3.5" /> Add item
             </button>
           </div>
-          <div className="rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full min-w-[540px] text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="py-2 pr-2 text-left text-xs font-medium text-gray-500 pl-3">Product</th>
-                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-28">Qty</th>
-                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-32">Unit Cost</th>
-                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-24">Tax %</th>
-                  <th className="py-2 pl-2 text-right text-xs font-medium text-gray-500 w-28 pr-3">Line Total</th>
+                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-24">Qty</th>
+                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-28">Unit Cost</th>
+                  <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-20">Tax %</th>
+                  <th className="py-2 pl-2 text-right text-xs font-medium text-gray-500 w-24 pr-3">Line Total</th>
                   <th className="w-8" />
                 </tr>
               </thead>
@@ -409,7 +409,7 @@ function GRNModal({ po, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Receive Goods — ${po.po_number}`} size="xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Received Date">
             <input type="date" className={inp} value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
           </Field>
@@ -419,7 +419,7 @@ function GRNModal({ po, onClose }) {
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[580px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="py-2 pl-3 text-left text-xs font-medium text-gray-500">Product</th>
@@ -427,7 +427,7 @@ function GRNModal({ po, onClose }) {
                 <th className="py-2 text-center text-xs font-medium text-gray-500">Received</th>
                 <th className="py-2 text-center text-xs font-medium text-gray-500">Remaining</th>
                 <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-28">Receive Now</th>
-                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-32">Unit Cost</th>
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 w-28">Unit Cost</th>
                 <th className="py-2 pr-3 text-right text-xs font-medium text-gray-500">Line Total</th>
               </tr>
             </thead>
