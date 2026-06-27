@@ -430,7 +430,7 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
         ${UNPOSTED}
     `, [companyId, branchId, date]);
 
-    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+    const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
     if (!accIds['4000']) throw new Error('Chart of Accounts not seeded');
 
     const totalAmount = parseFloat(agg.total_amount);
@@ -456,6 +456,11 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
         lines.push({ accountId: drAccId, debit: amt, credit: 0 });
         payDebitRemainingD -= amt;
       }
+    }
+    // Unpaid portion of credit sales → Accounts Receivable
+    if (payDebitRemainingD > 0.005 && accIds['1100']) {
+      lines.push({ accountId: accIds['1100'], debit: +payDebitRemainingD.toFixed(4), credit: 0 });
+      payDebitRemainingD = 0;
     }
 
     // Always post invoice amount as revenue
