@@ -48,10 +48,10 @@ function ShiftDetail({ sessionId, onForceClose }) {
     </div>
   );
 
-  const variance = data.cash_variance ?? 0;
-  const payModeOpen  = data.pay_mode_amounts?.filter((a) => a.count_type === 'opening') ?? [];
-  const payModeClose = data.pay_mode_amounts?.filter((a) => a.count_type === 'closing') ?? [];
-  const showOpenCol  = payModeOpen.length > 0 || (data.opening_cash_amount ?? 0) > 0;
+  const payModeOpen   = data.pay_mode_amounts?.filter((a) => a.count_type === 'opening') ?? [];
+  const payModeClose  = data.pay_mode_amounts?.filter((a) => a.count_type === 'closing') ?? [];
+  const showOpenCol   = payModeOpen.length > 0 || (data.opening_cash_amount ?? 0) > 0;
+  const showReconCols = data.status !== 'open';
 
   return (
     <div className="space-y-5">
@@ -67,37 +67,22 @@ function ShiftDetail({ sessionId, onForceClose }) {
 
       {/* Sales summary */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Transactions" value={data.txn_count}                      color="primary" />
-        <StatCard label="Total Sales"  value={formatCurrency(data.total_sales)}    color="green" />
-        <StatCard
-          label="Cash Variance"
-          value={formatCurrency(Math.abs(variance))}
-          color={Math.abs(variance) < 0.5 ? 'green' : variance > 0 ? 'blue' : 'red'}
-          sub={variance > 0 ? 'Cash Over' : variance < 0 ? 'Cash Short' : 'Cash Balanced'}
-        />
+        <StatCard label="Transactions" value={data.txn_count}                   color="primary" />
+        <StatCard label="Total Sales"  value={formatCurrency(data.total_sales)} color="green" />
+        {data.status !== 'open' && (() => {
+          const v = data.cash_variance ?? 0;
+          return (
+            <StatCard
+              label="Cash Variance"
+              value={formatCurrency(Math.abs(v))}
+              color={Math.abs(v) < 0.5 ? 'green' : v > 0 ? 'blue' : 'red'}
+              sub={v > 0 ? 'Cash Over' : v < 0 ? 'Cash Short' : 'Cash Balanced'}
+            />
+          );
+        })()}
       </div>
 
-      {/* Cash reconciliation */}
-      <div>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Cash Reconciliation</h3>
-        <div className="rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-gray-50">
-              <RecRow label="Opening Float"   value={formatCurrency(data.opening_cash_amount)} />
-              <RecRow label="Cash Sales"      value={formatCurrency(data.payment_breakdown?.find((p) => p.method_name === 'Cash')?.total ?? 0)} />
-              <RecRow label="Expected Cash"   value={formatCurrency(data.expected_cash_amount)} bold />
-              <RecRow label="Closing Count"   value={formatCurrency(data.closing_cash_counted)} />
-              <RecRow
-                label="Variance"
-                value={(variance >= 0 ? '+' : '') + formatCurrency(variance)}
-                className={Math.abs(variance) < 0.5 ? 'text-green-700' : 'text-red-600 font-semibold'}
-              />
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Payment breakdown */}
+      {/* Payment breakdown — includes per-method reconciliation when session is closed */}
       {data.payment_breakdown?.length > 0 && (
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment Breakdown</h3>
@@ -106,30 +91,35 @@ function ShiftDetail({ sessionId, onForceClose }) {
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Method</th>
-                  {showOpenCol && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
+                  {showOpenCol     && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Opening</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Sales</th>
-                  {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
-                  {payModeClose.length > 0 && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
+                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Expected</th>}
+                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Closing Count</th>}
+                  {showReconCols   && <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Variance</th>}
                   <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Txns</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.payment_breakdown.map((p) => {
-                  const isCash = p.method_name === 'Cash';
-                  const open   = payModeOpen.find((a) => a.method_name === p.method_name)
-                               ?? (isCash && data.opening_cash_amount > 0
-                                   ? { amount: data.opening_cash_amount } : undefined);
-                  const close  = payModeClose.find((a) => a.method_name === p.method_name);
-                  const pmVar  = isCash
-                    ? variance
-                    : close != null ? close.amount - p.total : null;
+                  const isCash     = p.method_name === 'Cash';
+                  const open       = payModeOpen.find((a) => a.method_name === p.method_name)
+                                   ?? (isCash && data.opening_cash_amount > 0
+                                       ? { amount: data.opening_cash_amount } : undefined);
+                  const closingAmt = isCash
+                    ? data.closing_cash_counted
+                    : payModeClose.find((a) => a.method_name === p.method_name)?.amount ?? null;
+                  const expectedAmt = isCash ? data.expected_cash_amount : null;
+                  const pmVar      = isCash
+                    ? data.cash_variance
+                    : closingAmt !== null ? closingAmt - p.total : null;
                   return (
-                    <tr key={p.method_name}>
+                    <tr key={p.method_name} className={isCash ? 'bg-amber-50/30' : ''}>
                       <td className="px-4 py-3 font-medium text-gray-800">{p.method_name}</td>
-                      {showOpenCol && <td className="px-4 py-3 text-right text-gray-500">{open ? formatCurrency(open.amount) : '—'}</td>}
+                      {showOpenCol   && <td className="px-4 py-3 text-right text-gray-500">{open ? formatCurrency(open.amount) : '—'}</td>}
                       <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(p.total)}</td>
-                      {payModeClose.length > 0 && <td className="px-4 py-3 text-right text-gray-700">{close ? formatCurrency(close.amount) : '—'}</td>}
-                      {payModeClose.length > 0 && (
+                      {showReconCols && <td className="px-4 py-3 text-right text-gray-600">{expectedAmt !== null ? formatCurrency(expectedAmt) : '—'}</td>}
+                      {showReconCols && <td className="px-4 py-3 text-right text-gray-700 font-medium">{closingAmt !== null ? formatCurrency(closingAmt) : '—'}</td>}
+                      {showReconCols && (
                         <td className="px-4 py-3 text-right">
                           {pmVar !== null ? (
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -282,15 +272,6 @@ function StatCard({ label, value, color, sub }) {
       <p className="text-lg font-bold">{value}</p>
       {sub && <p className="text-xs mt-0.5 opacity-70">{sub}</p>}
     </div>
-  );
-}
-
-function RecRow({ label, value, bold, className }) {
-  return (
-    <tr>
-      <td className="px-4 py-2.5 text-gray-600">{label}</td>
-      <td className={`px-4 py-2.5 text-right ${bold ? 'font-bold text-gray-900' : ''} ${className ?? 'text-gray-700'}`}>{value}</td>
-    </tr>
   );
 }
 

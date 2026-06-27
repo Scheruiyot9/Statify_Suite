@@ -9,8 +9,8 @@ const {
 const dashboard = async (req, res) => {
   const companyId = req.tenantId || null;
   const { role, branchIds = [], userId } = req.user;
-  const { period = '7d' } = req.query;
-  const data = await getDashboard(companyId, role, branchIds, { period, userId });
+  const { period = '7d', startDate, endDate } = req.query;
+  const data = await getDashboard(companyId, role, branchIds, { period, userId, startDate, endDate });
   res.json({ success: true, data });
 };
 

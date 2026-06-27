@@ -41,7 +41,7 @@ async function getPlatformSummary() {
   };
 }
 
-async function getDashboard(companyId, role, branchIds, { period = '7d', userId } = {}) {
+async function getDashboard(companyId, role, branchIds, { period = '7d', userId, startDate, endDate } = {}) {
   if (!companyId) return getPlatformSummary();
 
   const isCashier = role === 'cashier';
@@ -50,23 +50,36 @@ async function getDashboard(companyId, role, branchIds, { period = '7d', userId 
 
   // Calendar-aligned date ranges so "Week" = Mon–today, "Month" = 1st–today, "Year" = Jan 1–today
   const _now = new Date();
-  const _dow = _now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const todayStr    = _now.toISOString().slice(0, 10);
+  const _dow        = _now.getDay(); // 0=Sun … 6=Sat
   const daysSinceMon  = _dow === 0 ? 6 : _dow - 1;
   const daysSince1st  = _now.getDate() - 1;
   const daysSinceJan1 = Math.floor((_now - new Date(_now.getFullYear(), 0, 1)) / 86400000);
 
-  const trendDays =
-    period === '1d'  ? 0 :
-    period === '7d'  ? daysSinceMon :
-    period === '30d' ? daysSince1st :
-    period === '90d' ? 89 :
-    period === '1y'  ? daysSinceJan1 :
-    daysSinceMon;
+  let trendDays, periodStart, periodEnd;
+
+  if (startDate && endDate) {
+    periodStart = startDate;
+    periodEnd   = endDate;
+    trendDays   = Math.max(0, Math.floor((new Date(endDate) - new Date(startDate)) / 86400000));
+  } else {
+    periodEnd = todayStr;
+    trendDays =
+      period === '1d'  ? 0 :
+      period === '7d'  ? daysSinceMon :
+      period === '30d' ? daysSince1st :
+      period === '90d' ? 89 :
+      period === '1y'  ? daysSinceJan1 :
+      daysSinceMon;
+    const pStart = new Date(_now);
+    pStart.setDate(pStart.getDate() - trendDays);
+    periodStart = pStart.toISOString().slice(0, 10);
+  }
 
   const { clause: bClause, params: bParams } = branchScope(role, companyId, branchIds);
   const allBranches = isCompanyWide(role);
 
-  // For cashiers: additionally scope all sales queries to their own transactions
+  // Cashier scope: additionally filter by their own user_id
   let cashierClause = '';
   let cParams = [...bParams];
   if (isCashier && userId) {
@@ -74,23 +87,32 @@ async function getDashboard(companyId, role, branchIds, { period = '7d', userId 
     cashierClause = `AND st.cashier_user_id = $${cParams.length}`;
   }
 
-  // Run all queries in parallel for speed
-  const [summaryRes, lowStockRes, trendRes, recentRes, topProdsRes, categoryRes, branchRes] = await Promise.all([
+  // Date range params appended after cParams / bParams
+  const pStart = cParams.length + 1;
+  const pEnd   = cParams.length + 2;
+  const dateParams  = [...cParams,  periodStart, periodEnd];
 
-    // 1. Today's summary
+  const bPStart = bParams.length + 1;
+  const bPEnd   = bParams.length + 2;
+  const bDateParams = [...bParams, periodStart, periodEnd];
+
+  const [summaryRes, lowStockRes, trendRes, recentRes, topProdsRes, categoryRes, branchRes, payMethodRes] = await Promise.all([
+
+    // 1. Today's summary + yesterday for % change
     query(`
       SELECT
-        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date::date = CURRENT_DATE), 0)::numeric AS today_sales,
-        COUNT(*)                   FILTER (WHERE transaction_date::date = CURRENT_DATE)              AS today_txns,
+        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date::date = CURRENT_DATE),     0)::numeric AS today_sales,
+        COALESCE(SUM(total_amount) FILTER (WHERE transaction_date::date = CURRENT_DATE - 1), 0)::numeric AS yesterday_sales,
+        COUNT(*)                   FILTER (WHERE transaction_date::date = CURRENT_DATE)                  AS today_txns,
         COUNT(DISTINCT customer_id) FILTER (
           WHERE transaction_date::date = CURRENT_DATE AND customer_id IS NOT NULL
-        ) AS customers_served
+        )                                                                                                AS customers_served
       FROM sales_transactions st
       WHERE st.company_id = $1 AND st.status = 'completed'
       ${bClause} ${cashierClause}
     `, cParams),
 
-    // 2. Low stock count (not scoped to cashier — branch-level is fine)
+    // 2. Low stock count
     query(`
       SELECT COUNT(DISTINCT pbi.product_id) AS cnt
       FROM product_branch_inventory pbi
@@ -102,17 +124,13 @@ async function getDashboard(companyId, role, branchIds, { period = '7d', userId 
         AND pbi.quantity_available <= pbi.reorder_level
     `, bParams),
 
-    // 3. Sales trend — dynamic period, daily rows
+    // 3. Sales trend — explicit date range so custom dates work correctly
     query(`
       SELECT
-        gs.day::date                                                             AS sale_date,
-        COALESCE(SUM(st.total_amount), 0)::numeric                              AS total,
-        COALESCE(COUNT(st.transaction_id), 0)::int                              AS txn_count
-      FROM generate_series(
-        CURRENT_DATE - ($${cParams.length + 1}::int * INTERVAL '1 day'),
-        CURRENT_DATE,
-        INTERVAL '1 day'
-      ) AS gs(day)
+        gs.day::date                                AS sale_date,
+        COALESCE(SUM(st.total_amount), 0)::numeric  AS total,
+        COALESCE(COUNT(st.transaction_id), 0)::int  AS txn_count
+      FROM generate_series($${pStart}::date, $${pEnd}::date, INTERVAL '1 day') AS gs(day)
       LEFT JOIN sales_transactions st
         ON st.transaction_date::date = gs.day::date
         AND st.company_id = $1
@@ -120,117 +138,128 @@ async function getDashboard(companyId, role, branchIds, { period = '7d', userId 
         ${bClause} ${cashierClause}
       GROUP BY gs.day
       ORDER BY gs.day
-    `, [...cParams, trendDays]),
+    `, dateParams),
 
-    // 4. Recent transactions (cashier sees only their own)
-    query(`
-      SELECT
-        st.transaction_id,
-        st.transaction_number,
-        st.transaction_date,
-        st.total_amount::numeric,
-        st.status,
-        COALESCE(c.customer_name, 'Walk-in')                                    AS customer_name,
-        u.first_name || ' ' || u.last_name                                      AS cashier_name,
-        b.branch_name,
-        (SELECT pm.method_name
-           FROM transaction_payments tp
-           JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
-          WHERE tp.transaction_id = st.transaction_id
-          ORDER BY tp.sequence_no
-          LIMIT 1)                                                               AS payment_method
-      FROM sales_transactions st
-      LEFT JOIN customers c ON c.customer_id = st.customer_id
-      JOIN users    u ON u.user_id    = st.cashier_user_id
-      JOIN branches b ON b.branch_id  = st.branch_id
-      WHERE st.company_id = $1 AND st.status = 'completed'
-      ${bClause} ${cashierClause}
-      ORDER BY st.transaction_date DESC
-      LIMIT 10
-    `, cParams),
-
-    // 5. Top 5 products — hidden for cashier
-    (!isCashier && canViewSales)
+    // 4. Recent transactions — cashier only (removed from non-cashier dashboard)
+    isCashier
       ? query(`
           SELECT
-            p.product_name,
-            p.sku,
-            SUM(sti.quantity)::numeric   AS qty_sold,
-            SUM(sti.line_total)::numeric AS revenue
+            st.transaction_id,
+            st.transaction_number,
+            st.transaction_date,
+            st.total_amount::numeric,
+            st.status,
+            COALESCE(c.customer_name, 'Walk-in')   AS customer_name,
+            u.first_name || ' ' || u.last_name     AS cashier_name,
+            b.branch_name,
+            (SELECT pm.method_name
+               FROM transaction_payments tp
+               JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+              WHERE tp.transaction_id = st.transaction_id
+              ORDER BY tp.sequence_no LIMIT 1)      AS payment_method
+          FROM sales_transactions st
+          LEFT JOIN customers c ON c.customer_id = st.customer_id
+          JOIN users    u ON u.user_id   = st.cashier_user_id
+          JOIN branches b ON b.branch_id = st.branch_id
+          WHERE st.company_id = $1 AND st.status = 'completed'
+          ${bClause} ${cashierClause}
+          ORDER BY st.transaction_date DESC
+          LIMIT 10
+        `, cParams)
+      : Promise.resolve({ rows: [] }),
+
+    // 5. Top 10 products — frontend slices to 5, expands to 10 on "Show More"
+    (!isCashier && canViewSales)
+      ? query(`
+          SELECT p.product_name, p.sku,
+                 SUM(sti.quantity)::numeric   AS qty_sold,
+                 SUM(sti.line_total)::numeric AS revenue
           FROM sales_transaction_items sti
           JOIN products p ON p.product_id = sti.product_id
           JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
           WHERE st.company_id = $1 AND st.status = 'completed'
-            AND st.transaction_date >= CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day')
+            AND st.transaction_date::date BETWEEN $${bPStart}::date AND $${bPEnd}::date
             ${bClause}
           GROUP BY p.product_id, p.product_name, p.sku
           ORDER BY revenue DESC
-          LIMIT 5
-        `, [...bParams, trendDays])
+          LIMIT 10
+        `, bDateParams)
       : Promise.resolve({ rows: [] }),
 
-    // 6. Category breakdown — hidden for cashier
+    // 6. Category breakdown
     (!isCashier && canViewSales)
       ? query(`
-          SELECT
-            COALESCE(pc.category_name, 'Uncategorised') AS category_name,
-            SUM(sti.quantity)::numeric                   AS qty_sold,
-            SUM(sti.line_total)::numeric                 AS revenue
+          SELECT COALESCE(pc.category_name, 'Uncategorised') AS category_name,
+                 SUM(sti.quantity)::numeric   AS qty_sold,
+                 SUM(sti.line_total)::numeric AS revenue
           FROM sales_transaction_items sti
           JOIN products p ON p.product_id = sti.product_id
           LEFT JOIN categories pc ON pc.category_id = p.category_id
           JOIN sales_transactions st ON st.transaction_id = sti.transaction_id
           WHERE st.company_id = $1 AND st.status = 'completed'
-            AND st.transaction_date >= CURRENT_DATE - ($${bParams.length + 1}::int * INTERVAL '1 day')
+            AND st.transaction_date::date BETWEEN $${bPStart}::date AND $${bPEnd}::date
             ${bClause}
           GROUP BY pc.category_name
           ORDER BY revenue DESC
           LIMIT 8
-        `, [...bParams, trendDays])
+        `, bDateParams)
       : Promise.resolve({ rows: [] }),
 
-    // 7. Branch comparison (only useful for company-wide roles)
+    // 7. Branch comparison
     allBranches
       ? query(`
-          SELECT
-            b.branch_id,
-            b.branch_name,
-            b.branch_code,
-            COALESCE(SUM(st.total_amount) FILTER (
-              WHERE st.transaction_date::date = CURRENT_DATE
-            ), 0)::numeric AS today_sales,
-            COUNT(st.transaction_id) FILTER (
-              WHERE st.transaction_date::date = CURRENT_DATE
-            )              AS today_txns,
-            COALESCE(SUM(st.total_amount) FILTER (
-              WHERE st.transaction_date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')
-            ), 0)::numeric AS period_sales
+          SELECT b.branch_id, b.branch_name, b.branch_code,
+                 COALESCE(SUM(st.total_amount) FILTER (WHERE st.transaction_date::date = CURRENT_DATE),    0)::numeric AS today_sales,
+                 COUNT(st.transaction_id)       FILTER (WHERE st.transaction_date::date = CURRENT_DATE)              AS today_txns,
+                 COALESCE(SUM(st.total_amount) FILTER (
+                   WHERE st.transaction_date::date BETWEEN $2::date AND $3::date
+                 ), 0)::numeric AS period_sales
           FROM branches b
-          LEFT JOIN sales_transactions st
-            ON st.branch_id = b.branch_id AND st.status = 'completed'
+          LEFT JOIN sales_transactions st ON st.branch_id = b.branch_id AND st.status = 'completed'
           WHERE b.company_id = $1 AND b.is_active = TRUE
           GROUP BY b.branch_id, b.branch_name, b.branch_code
           ORDER BY period_sales DESC
-        `, [companyId, trendDays])
+        `, [companyId, periodStart, periodEnd])
+      : Promise.resolve({ rows: [] }),
+
+    // 8. Payment method breakdown
+    (!isCashier && canViewSales)
+      ? query(`
+          SELECT pm.method_name,
+                 COUNT(tp.payment_id)::int                        AS txn_count,
+                 COALESCE(SUM(tp.amount_applied), 0)::numeric     AS total
+          FROM transaction_payments tp
+          JOIN payment_methods pm ON pm.payment_method_id = tp.payment_method_id
+          JOIN sales_transactions st ON st.transaction_id = tp.transaction_id
+          WHERE st.company_id = $1 AND st.status = 'completed'
+            AND st.transaction_date::date BETWEEN $${bPStart}::date AND $${bPEnd}::date
+            ${bClause}
+          GROUP BY pm.payment_method_id, pm.method_name
+          ORDER BY total DESC
+        `, bDateParams)
       : Promise.resolve({ rows: [] }),
   ]);
 
   const s = summaryRes.rows[0];
 
   return {
-    todaySales:        canViewSales ? parseFloat(s.today_sales) : 0,
-    todayTransactions: canViewSales ? parseInt(s.today_txns) : 0,
-    customersServed:   canViewSales ? parseInt(s.customers_served) : 0,
+    todaySales:        canViewSales ? parseFloat(s.today_sales)      : 0,
+    yesterdaySales:    canViewSales ? parseFloat(s.yesterday_sales)  : 0,
+    todayTransactions: canViewSales ? parseInt(s.today_txns)         : 0,
+    customersServed:   canViewSales ? parseInt(s.customers_served)   : 0,
     lowStockCount:     canViewInventory ? parseInt(lowStockRes.rows[0].cnt) : 0,
 
     trendDays,
+    periodStart,
+    periodEnd,
+
     salesTrend: canViewSales ? trendRes.rows.map((r) => ({
       date:     r.sale_date,
       total:    parseFloat(r.total),
       txnCount: r.txn_count,
     })) : [],
 
-    recentTransactions: canViewSales ? recentRes.rows.map((r) => ({
+    recentTransactions: isCashier ? recentRes.rows.map((r) => ({
       transactionId:     r.transaction_id,
       transactionNumber: r.transaction_number,
       transactionDate:   r.transaction_date,
@@ -263,6 +292,12 @@ async function getDashboard(companyId, role, branchIds, { period = '7d', userId 
       todayTxns:   parseInt(r.today_txns),
       periodSales: parseFloat(r.period_sales),
     })),
+
+    paymentBreakdown: canViewSales ? payMethodRes.rows.map((r) => ({
+      method: r.method_name,
+      total:  parseFloat(r.total),
+      count:  parseInt(r.txn_count),
+    })) : [],
 
     isCashierView: isCashier,
   };
