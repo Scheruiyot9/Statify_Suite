@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, ClipboardCheck, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -235,6 +235,203 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
   );
 }
 
+// ── Stock count / balance update modal ───────────────────────────────────────
+// Enter the actual counted quantity; system calculates the adjustment automatically.
+
+function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
+  const [branchId,    setBranchId]    = useState(branches.length === 1 ? branches[0].branch_id : '');
+  const [categoryId,  setCategoryId]  = useState('');
+  const [search,      setSearch]      = useState('');
+  const [counts,      setCounts]      = useState({});   // "productId:branchId" → string
+  const [notes,       setNotes]       = useState('Stock count');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['inventory-stock-count', branchId, categoryId],
+    queryFn: () => api.get('/inventory', {
+      params: { branchId: branchId || undefined, categoryId: categoryId || undefined, limit: 500, page: 1 },
+    }).then((r) => r.data.data),
+    staleTime: 0,   // always fresh — this is a live count
+  });
+
+  const inventory = data?.inventory ?? [];
+  const filtered  = inventory.filter((i) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return i.product_name.toLowerCase().includes(q) || (i.sku || '').toLowerCase().includes(q);
+  });
+
+  const setCount = (key, val) => setCounts((prev) => ({ ...prev, [key]: val }));
+  const clearCount = (key) => setCounts((prev) => { const n = { ...prev }; delete n[key]; return n; });
+
+  // Items where a count was entered and differs from current balance
+  const changedItems = filtered.flatMap((i) => {
+    const key     = `${i.product_id}:${i.branch_id}`;
+    const raw     = counts[key];
+    if (raw === '' || raw === undefined || raw === null) return [];
+    const counted = parseFloat(raw);
+    if (isNaN(counted) || counted < 0) return [];
+    const diff = parseFloat((counted - i.quantity_available).toFixed(4));
+    if (diff === 0) return [];
+    return [{ product_id: i.product_id, branch_id: i.branch_id, adjustment: diff, notes,
+              _counted: counted, _current: i.quantity_available, _name: i.product_name }];
+  });
+
+  const gains  = changedItems.filter((i) => i.adjustment > 0).length;
+  const losses = changedItems.filter((i) => i.adjustment < 0).length;
+  const countedTotal = Object.keys(counts).filter((k) => counts[k] !== '' && counts[k] !== undefined).length;
+
+  const handleSubmit = () => {
+    if (!changedItems.length) return toast.error('No stock changes to apply');
+    onSave(changedItems.map(({ product_id, branch_id, adjustment, notes }) => ({ product_id, branch_id, adjustment, notes })));
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Stock Count / Balance Update" size="xl">
+      <div className="space-y-4">
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2">
+          {branches.length > 1 && (
+            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+              className="rounded-lg border border-gray-200 py-1.5 px-2 text-sm bg-white focus:border-primary-500 focus:outline-none">
+              <option value="">All Branches</option>
+              {branches.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+            </select>
+          )}
+          {categories.length > 0 && (
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+              className="rounded-lg border border-gray-200 py-1.5 px-2 text-sm bg-white focus:border-primary-500 focus:outline-none">
+              <option value="">All Categories</option>
+              {categories.map((c) => <option key={c.category_id} value={c.category_id}>{c.category_name}</option>)}
+            </select>
+          )}
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Search product or SKU…" value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 pl-8 pr-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none" />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Instruction banner */}
+        <div className="rounded-lg bg-primary-50 border border-primary-100 px-3 py-2 text-xs text-primary-700">
+          Enter the <strong>actual counted quantity</strong> for each item you've physically counted.
+          Items left blank will not be updated. The system will calculate the adjustment automatically.
+        </div>
+
+        {/* Count table */}
+        <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-[45vh] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="py-2 pl-3 text-left text-xs font-medium text-gray-500">Product</th>
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">SKU</th>
+                {!branchId && <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Branch</th>}
+                <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-24">System Bal.</th>
+                <th className="py-2 px-2 text-center text-xs font-medium text-gray-500 w-32">Counted Qty</th>
+                <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-24">Variance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {isLoading ? (
+                <tr><td colSpan={6} className="py-8 text-center text-xs text-gray-400">Loading inventory…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="py-8 text-center text-xs text-gray-400">No items found</td></tr>
+              ) : filtered.map((item) => {
+                const key     = `${item.product_id}:${item.branch_id}`;
+                const raw     = counts[key] ?? '';
+                const counted = raw !== '' ? parseFloat(raw) : null;
+                const invalid = counted !== null && (isNaN(counted) || counted < 0);
+                const diff    = (!invalid && counted !== null) ? parseFloat((counted - item.quantity_available).toFixed(4)) : null;
+                const hasChange = diff !== null && diff !== 0;
+                return (
+                  <tr key={key} className={invalid ? 'bg-red-50' : hasChange ? 'bg-amber-50/40' : ''}>
+                    <td className="py-2 pl-3">
+                      <p className="font-medium text-gray-900 text-xs leading-tight">{item.product_name}</p>
+                    </td>
+                    <td className="py-2 px-2 text-xs font-mono text-gray-400 hidden sm:table-cell">{item.sku}</td>
+                    {!branchId && <td className="py-2 px-2 text-xs text-gray-500 hidden md:table-cell">{item.branch_name}</td>}
+                    <td className="py-2 px-2 text-right text-xs font-semibold text-gray-700">
+                      {item.quantity_available}
+                      <span className="ml-0.5 text-gray-400 font-normal">{item.unit_of_measure}</span>
+                    </td>
+                    <td className="py-2 px-2">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number" min="0" step="0.01"
+                          value={raw}
+                          onChange={(e) => setCount(key, e.target.value)}
+                          placeholder={String(item.quantity_available)}
+                          className={`w-full rounded border px-2 py-1 text-center text-sm focus:outline-none focus:ring-1 ${
+                            invalid
+                              ? 'border-red-400 bg-red-50 focus:ring-red-400'
+                              : raw !== ''
+                                ? 'border-primary-300 bg-primary-50 focus:ring-primary-400'
+                                : 'border-gray-200 focus:ring-primary-400'
+                          }`}
+                        />
+                        {raw !== '' && (
+                          <button onClick={() => clearCount(key)} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 px-2 text-right text-xs font-bold">
+                      {diff === null || invalid ? (
+                        <span className="text-gray-300">—</span>
+                      ) : diff === 0 ? (
+                        <span className="text-gray-400">no change</span>
+                      ) : (
+                        <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Summary + notes */}
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex-1 space-y-1 text-xs text-gray-500">
+            <p>{filtered.length} item{filtered.length !== 1 ? 's' : ''} shown
+              {countedTotal > 0 && <span className="ml-1">· <strong>{countedTotal} counted</strong></span>}
+              {gains  > 0 && <span className="ml-1 text-green-600">· +{gains} gain{gains !== 1 ? 's' : ''}</span>}
+              {losses > 0 && <span className="ml-1 text-red-600">· {losses} shortage{losses !== 1 ? 's' : ''}</span>}
+            </p>
+            {changedItems.length > 0 && (
+              <p className="text-primary-600 font-medium">{changedItems.length} item{changedItems.length !== 1 ? 's' : ''} will be updated.</p>
+            )}
+          </div>
+          <div className="w-full sm:w-64">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Notes (applied to all changes)</label>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Monthly stock count June 2026"
+              className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-primary-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} isLoading={isSaving} disabled={!changedItems.length}>
+            <ClipboardCheck className="h-4 w-4 mr-1" />
+            Apply {changedItems.length > 0 ? `${changedItems.length} Update${changedItems.length > 1 ? 's' : ''}` : 'Count'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
@@ -250,6 +447,7 @@ export default function InventoryPage() {
   const [ledgerItem, setLedgerItem]   = useState(null); // { product_id, product_name }
   const [selected, setSelected]       = useState(new Set());
   const [bulkOpen, setBulkOpen]       = useState(false);
+  const [stockCountOpen, setStockCountOpen] = useState(false);
   const [sortBy,  setSortBy]  = useState('name');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -325,6 +523,17 @@ export default function InventoryPage() {
       setSelected(new Set());
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Bulk adjustment failed'),
+  });
+
+  const stockCountMut = useMutation({
+    mutationFn: (items) => api.post('/inventory/adjust-bulk', { items }),
+    onSuccess: (res) => {
+      const results = res.data.data;
+      toast.success(`Stock count applied — ${results.length} balance${results.length > 1 ? 's' : ''} updated`);
+      qc.invalidateQueries(['inventory']);
+      setStockCountOpen(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Stock count failed'),
   });
 
   const inventory = data?.inventory ?? [];
@@ -405,6 +614,14 @@ export default function InventoryPage() {
           onClick={() => refetch()}>
           Refresh
         </Button>
+        {/* Stock count */}
+        {canAdjustStock && (
+          <Button size="sm" variant="secondary" onClick={() => setStockCountOpen(true)}>
+            <ClipboardCheck className="h-4 w-4 mr-1" />
+            Stock Count
+          </Button>
+        )}
+
         {/* Bulk adjust */}
         {canAdjustStock && selected.size > 0 && (
           <Button size="sm" onClick={() => setBulkOpen(true)}>
@@ -519,6 +736,17 @@ export default function InventoryPage() {
           onClose={() => setBulkOpen(false)}
           onSave={(items) => bulkMut.mutate(items)}
           isSaving={bulkMut.isPending}
+        />
+      )}
+
+      {/* Stock count modal */}
+      {canAdjustStock && stockCountOpen && (
+        <StockCountModal
+          onClose={() => setStockCountOpen(false)}
+          onSave={(items) => stockCountMut.mutate(items)}
+          isSaving={stockCountMut.isPending}
+          branches={branches}
+          categories={categories}
         />
       )}
 
