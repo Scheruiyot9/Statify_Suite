@@ -407,6 +407,14 @@ async function getLoyaltySettings(companyId) {
   };
 }
 
+async function resetCustomerLoyaltyPoints(companyId) {
+  const { rowCount } = await query(
+    `UPDATE customers SET loyalty_points_balance = 0, updated_at = now() WHERE company_id = $1`,
+    [companyId]
+  );
+  return { customers_reset: rowCount };
+}
+
 async function updateLoyaltySettings(companyId, { points_earn_rate, points_redeem_rate }) {
   if (points_earn_rate   < 0) throw AppError.badRequest('Earn rate cannot be negative');
   if (points_redeem_rate < 0) throw AppError.badRequest('Redeem rate cannot be negative');
@@ -601,6 +609,7 @@ module.exports = {
   updateMyProfile,
   getLoyaltySettings,
   updateLoyaltySettings,
+  resetCustomerLoyaltyPoints,
   getMySubscription,
   requestUpgrade,
   submitSubscriptionRequest,

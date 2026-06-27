@@ -12,8 +12,9 @@ router.get('/plans', authenticate, controller.listPlans);
 router.get('/mine', authenticate, controller.getMine);
 
 // Loyalty settings — company_admin of their own tenant
-router.get('/mine/loyalty',   authenticate, requireRole('company_admin'), controller.getLoyaltySettings);
-router.patch('/mine/loyalty', authenticate, requireRole('company_admin'), controller.updateLoyaltySettings);
+router.get('/mine/loyalty',                  authenticate, requireRole('company_admin'), controller.getLoyaltySettings);
+router.patch('/mine/loyalty',                authenticate, requireRole('company_admin'), controller.updateLoyaltySettings);
+router.post('/mine/loyalty/reset-points',    authenticate, requireRole('company_admin'), controller.resetCustomerLoyaltyPoints);
 
 // Company profile (KRA PIN etc.) — company_admin
 router.patch('/mine/profile', authenticate, requireRole('company_admin'), controller.updateMyProfile);

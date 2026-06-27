@@ -56,6 +56,13 @@ const updateLoyaltySettings = async (req, res) => {
   res.json({ success: true, data: settings });
 };
 
+const resetCustomerLoyaltyPoints = async (req, res) => {
+  const companyId = req.user?.companyId;
+  if (!companyId) return res.status(400).json({ success: false, message: 'No company context' });
+  const result = await svc.resetCustomerLoyaltyPoints(companyId);
+  res.json({ success: true, data: result });
+};
+
 const updateMyProfile = async (req, res) => {
   const companyId = req.user?.companyId;
   if (!companyId) return res.status(400).json({ success: false, message: 'No company context' });
@@ -94,6 +101,7 @@ const listMySubscriptionRequests = async (req, res) => {
 module.exports = {
   list, getOne, create, update, updateStatus, remove,
   listPlans, getMine, updateMyProfile, getLoyaltySettings, updateLoyaltySettings,
+  resetCustomerLoyaltyPoints,
   getMySubscription, requestUpgrade,
   submitSubscriptionRequest, listMySubscriptionRequests,
 };

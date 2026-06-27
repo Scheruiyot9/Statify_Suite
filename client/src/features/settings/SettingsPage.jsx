@@ -684,9 +684,10 @@ function TerminalsTab() {
 
 function LoyaltyTab() {
   const qc = useQueryClient();
-  const [earnRate,   setEarnRate]   = useState('');
-  const [redeemRate, setRedeemRate] = useState('');
-  const [dirty,      setDirty]      = useState(false);
+  const [earnRate,     setEarnRate]     = useState('');
+  const [redeemRate,   setRedeemRate]   = useState('');
+  const [dirty,        setDirty]        = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const { isLoading } = useQuery({
     queryKey: ['loyalty-settings'],
@@ -705,6 +706,17 @@ function LoyaltyTab() {
       qc.invalidateQueries({ queryKey: ['loyalty-settings'] });
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Save failed'),
+  });
+
+  const resetMut = useMutation({
+    mutationFn: () => api.post('/companies/mine/loyalty/reset-points'),
+    onSuccess: (res) => {
+      const n = res.data.data?.customers_reset ?? 0;
+      toast.success(`Reset ${n} customer${n !== 1 ? 's' : ''} to 0 points`);
+      setConfirmReset(false);
+      qc.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Reset failed'),
   });
 
   const handle = (setter) => (e) => { setter(e.target.value); setDirty(true); };
@@ -765,6 +777,36 @@ function LoyaltyTab() {
               Save Loyalty Settings
             </Button>
           )}
+
+          {/* Danger zone — reset all customers */}
+          <div className="rounded-xl border border-red-100 bg-red-50 p-4 space-y-3">
+            <p className="text-sm font-medium text-red-700">Reset All Customer Points</p>
+            <p className="text-xs text-red-600">Sets every customer's loyalty points balance to 0. This cannot be undone.</p>
+            {confirmReset ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="danger"
+                  loading={resetMut.isPending}
+                  onClick={() => resetMut.mutate()}
+                >
+                  Yes, reset all points
+                </Button>
+                <button
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                  onClick={() => setConfirmReset(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                onClick={() => setConfirmReset(true)}
+              >
+                Reset all customers to 0 points
+              </button>
+            )}
+          </div>
         </>
       )}
     </div>
