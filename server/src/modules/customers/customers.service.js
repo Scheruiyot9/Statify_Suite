@@ -285,9 +285,9 @@ async function getCustomerLedger(companyId, customerId) {
              jel.credit::numeric AS amount
       FROM journal_entries je
       JOIN ledger_entry_lines jel ON jel.journal_entry_id = je.journal_entry_id
-      JOIN accounts a ON a.account_id = jel.account_id AND a.account_code = '1100'
       WHERE je.company_id = $1 AND je.source_type = 'CREDIT_PAYMENT'
-        AND jel.entity_id = $2 AND jel.credit > 0 AND je.status = 'posted'
+        AND jel.entity_id = $2 AND jel.entity_type = 'customer'
+        AND jel.credit > 0 AND je.status = 'posted'
       ORDER BY je.entry_date ASC
     `, [companyId, customerId]),
   ]);

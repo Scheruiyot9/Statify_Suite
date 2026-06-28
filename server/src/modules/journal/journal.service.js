@@ -1319,40 +1319,33 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
 // ── AR Aging ───────────────────────────────────────────────────────────────────
 async function getArAging(companyId) {
   const { rows } = await query(`
-    WITH ar_sales AS (
-      SELECT je.journal_entry_id, je.source_id AS transaction_id, je.entry_date,
-             COALESCE(SUM(lel.debit), 0)::numeric AS ar_debit
-      FROM journal_entries je
-      JOIN ledger_entry_lines lel ON lel.journal_entry_id = je.journal_entry_id
-      JOIN accounts a              ON a.account_id = lel.account_id AND a.account_code = '1100'
-      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted' AND je.source_type = 'SALE'
-      GROUP BY je.journal_entry_id, je.source_id, je.entry_date
-      HAVING COALESCE(SUM(lel.debit), 0) > 0.005
-    ),
-    ar_settled AS (
+    WITH ar_settled AS (
       SELECT je.source_id AS transaction_id,
              COALESCE(SUM(lel.credit), 0)::numeric AS cr_total
       FROM journal_entries je
       JOIN ledger_entry_lines lel ON lel.journal_entry_id = je.journal_entry_id
       JOIN accounts a              ON a.account_id = lel.account_id AND a.account_code = '1100'
-      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid) AND je.status = 'posted' AND je.source_type = 'AR_SETTLEMENT'
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid)
+        AND je.status = 'posted' AND je.source_type = 'AR_SETTLEMENT'
       GROUP BY je.source_id
     )
     SELECT
-      s.transaction_id,
+      st.transaction_id,
       st.transaction_number,
       st.transaction_date,
       COALESCE(c.customer_name, 'Walk-in') AS customer_name,
-      s.ar_debit,
-      COALESCE(sett.cr_total, 0)                       AS ar_settled,
-      (s.ar_debit - COALESCE(sett.cr_total, 0))        AS outstanding,
-      (CURRENT_DATE - s.entry_date)                    AS days_outstanding
-    FROM ar_sales s
-    JOIN sales_transactions st ON st.transaction_id = s.transaction_id
+      st.total_amount::numeric                                      AS ar_debit,
+      COALESCE(sett.cr_total, 0)                                    AS ar_settled,
+      (st.total_amount::numeric - COALESCE(sett.cr_total, 0))       AS outstanding,
+      (CURRENT_DATE - st.transaction_date::date)                    AS days_outstanding
+    FROM sales_transactions st
     LEFT JOIN customers c      ON c.customer_id     = st.customer_id
-    LEFT JOIN ar_settled sett  ON sett.transaction_id = s.transaction_id
-    WHERE (s.ar_debit - COALESCE(sett.cr_total, 0)) > 0.005
-    ORDER BY s.entry_date ASC
+    LEFT JOIN ar_settled sett  ON sett.transaction_id = st.transaction_id
+    WHERE ($1::uuid IS NULL OR st.company_id = $1::uuid)
+      AND st.is_credit_sale = TRUE AND st.status = 'completed'
+      AND st.payment_status NOT IN ('paid')
+      AND (st.total_amount::numeric - COALESCE(sett.cr_total, 0)) > 0.005
+    ORDER BY st.transaction_date ASC
   `, [companyId]);
 
   const bucket = (days) => {

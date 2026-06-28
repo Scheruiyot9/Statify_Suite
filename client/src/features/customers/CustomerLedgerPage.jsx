@@ -110,10 +110,11 @@ export default function CustomerLedgerPage() {
   const [selected, setSelected]   = useState(new Set());
   const [payModal, setPayModal]   = useState(false);
 
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['customer-ledger', customerId],
     queryFn:  () => api.get(`/customers/${customerId}/ledger`).then((r) => r.data.data),
     enabled:  !!customerId,
+    retry:    false,
   });
 
   const { data: payMethods = [] } = useQuery({
@@ -126,6 +127,15 @@ export default function CustomerLedgerPage() {
     <div className="flex flex-col items-center justify-center py-24 text-center gap-2">
       <AlertTriangle className="h-8 w-8 text-amber-400" />
       <p className="text-sm font-medium text-gray-600">Could not load credit entries</p>
+      {error && (
+        <p className="text-xs text-red-400 max-w-sm">
+          {error.response?.data?.message || error.message}
+        </p>
+      )}
+      <button onClick={() => refetch()}
+        className="mt-2 text-xs text-primary-600 underline cursor-pointer">
+        Try again
+      </button>
     </div>
   );
 

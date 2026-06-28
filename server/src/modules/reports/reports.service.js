@@ -922,20 +922,53 @@ async function getLedgerEntries(companyId, { accountId, startDate, endDate, page
 
 async function getAPAging(companyId) {
   const { rows } = await query(`
+    WITH grn_seq AS (
+      -- All posted GRNs per supplier, with running prior total (FIFO base)
+      SELECT
+        g.supplier_id,
+        g.grn_id,
+        g.received_date,
+        g.total_amount::numeric AS grn_amt,
+        COALESCE(SUM(g.total_amount::numeric) OVER (
+          PARTITION BY g.supplier_id
+          ORDER BY g.received_date, g.grn_id
+          ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS prior_amt
+      FROM grns g
+      WHERE ($1::uuid IS NULL OR g.company_id = $1::uuid) AND g.status = 'posted'
+    ),
+    supplier_grn_totals AS (
+      SELECT supplier_id, COALESCE(SUM(grn_amt), 0) AS total_grn
+      FROM grn_seq
+      GROUP BY supplier_id
+    )
     SELECT
       s.supplier_id, s.supplier_name, s.phone, s.email,
-      s.current_balance::numeric                AS balance,
+      s.current_balance::numeric AS balance,
       s.payment_terms,
-      MIN(g.received_date)::date                AS oldest_invoice_date,
-      MAX(g.received_date)::date                AS latest_invoice_date,
-      CURRENT_DATE - MIN(g.received_date)::date AS days_outstanding,
-      COUNT(g.grn_id)::int                      AS grn_count,
-      COALESCE(SUM(g.total_amount), 0)::numeric AS total_invoiced
+      -- Oldest GRN not yet fully covered by FIFO payments
+      MIN(CASE
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        THEN gs.received_date
+      END)::date AS oldest_invoice_date,
+      MAX(gs.received_date)::date AS latest_invoice_date,
+      CURRENT_DATE - MIN(CASE
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        THEN gs.received_date
+      END)::date AS days_outstanding,
+      COUNT(CASE
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        THEN 1
+      END)::int AS grn_count,
+      COALESCE(SUM(CASE
+        WHEN gs.prior_amt + gs.grn_amt > (COALESCE(sgt.total_grn, 0) - s.current_balance::numeric)
+        THEN gs.grn_amt
+      END), 0)::numeric AS total_invoiced
     FROM suppliers s
-    LEFT JOIN grns g ON g.supplier_id = s.supplier_id
-      AND ($1::uuid IS NULL OR g.company_id = $1::uuid) AND g.status = 'posted'
+    LEFT JOIN grn_seq           gs  ON gs.supplier_id  = s.supplier_id
+    LEFT JOIN supplier_grn_totals sgt ON sgt.supplier_id = s.supplier_id
     WHERE ($1::uuid IS NULL OR s.company_id = $1::uuid) AND s.current_balance > 0
-    GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email, s.current_balance, s.payment_terms
+    GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email, s.current_balance, s.payment_terms, sgt.total_grn
     ORDER BY days_outstanding DESC NULLS LAST
   `, [companyId]);
 
