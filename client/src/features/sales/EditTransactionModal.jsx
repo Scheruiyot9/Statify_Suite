@@ -252,7 +252,8 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
       customerId:      txn.customer_id ?? null,
       notes:           notes || null,
       editReason:      editReason.trim(),
-      transactionDate: transactionDate || undefined,
+      transactionDate: transactionDate && transactionDate !== (txn.transaction_date?.slice(0, 10) ?? '')
+        ? transactionDate : undefined,
     };
 
     mut.mutate(payload);
