@@ -269,14 +269,17 @@ async function getCustomerLedger(companyId, customerId) {
     query(`
       SELECT st.transaction_id, st.transaction_number, st.transaction_date,
              st.total_amount::numeric, st.payment_status,
-             COALESCE(json_agg(json_build_object('name', p.product_name, 'qty', sti.quantity::numeric)
-                       ORDER BY sti.sales_transaction_item_id) FILTER (WHERE p.product_name IS NOT NULL), '[]'::json) AS items
+             COALESCE(json_agg(
+               json_build_object('name', p.product_name, 'qty', sti.quantity)
+               ORDER BY sti.sales_transaction_item_id
+             ) FILTER (WHERE p.product_name IS NOT NULL), '[]') AS items
       FROM sales_transactions st
       LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.transaction_id
       LEFT JOIN products p ON p.product_id = sti.product_id
       WHERE st.customer_id = $2 AND st.company_id = $1
         AND st.is_credit_sale = TRUE AND st.status = 'completed'
-      GROUP BY st.transaction_id
+      GROUP BY st.transaction_id, st.transaction_number, st.transaction_date,
+               st.total_amount, st.payment_status
       ORDER BY st.transaction_date ASC
     `, [companyId, customerId]),
 
@@ -286,7 +289,7 @@ async function getCustomerLedger(companyId, customerId) {
       FROM journal_entries je
       JOIN ledger_entry_lines jel ON jel.journal_entry_id = je.journal_entry_id
       WHERE je.company_id = $1 AND je.source_type = 'CREDIT_PAYMENT'
-        AND jel.entity_id = $2 AND jel.entity_type = 'customer'
+        AND jel.entity_id = $2
         AND jel.credit > 0 AND je.status = 'posted'
       ORDER BY je.entry_date ASC
     `, [companyId, customerId]),

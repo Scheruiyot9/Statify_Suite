@@ -62,8 +62,13 @@ const recalculateCreditBalance = async (req, res) => {
 };
 
 const customerLedger = async (req, res) => {
-  const result = await svc.getCustomerLedger(req.tenantId, req.params.id);
-  res.json({ success: true, data: result });
+  try {
+    const result = await svc.getCustomerLedger(req.tenantId, req.params.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[customerLedger] error:', err.message, err.stack);
+    throw err;
+  }
 };
 
 module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment, recalculateCreditBalance, customerLedger };
