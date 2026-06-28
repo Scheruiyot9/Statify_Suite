@@ -349,6 +349,38 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
   });
 }
 
+async function recalculateCreditBalance(companyId, customerId) {
+  // Derive credit_balance from the AR ledger (account 1100) for this customer.
+  // The ledger is always authoritative — credit sales DR the AR account and
+  // credit payments CR it; the net is the true outstanding balance.
+  const { rows } = await query(`
+    WITH ar_account AS (
+      SELECT account_id FROM accounts
+      WHERE company_id = $1 AND account_code = '1100' LIMIT 1
+    )
+    UPDATE customers SET
+      credit_balance = (
+        SELECT COALESCE(SUM(lel.debit - lel.credit), 0)
+        FROM ledger_entry_lines lel
+        JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+        WHERE lel.account_id = (SELECT account_id FROM ar_account)
+          AND lel.entity_id  = $2
+          AND je.company_id  = $1
+      ),
+      updated_at = now()
+    WHERE customer_id = $2 AND company_id = $1
+    RETURNING customer_id, customer_name, credit_balance, credit_limit
+  `, [companyId, customerId]);
+
+  if (!rows.length) throw new Error('Customer not found');
+  return {
+    customer_id:    rows[0].customer_id,
+    customer_name:  rows[0].customer_name,
+    credit_balance: parseFloat(rows[0].credit_balance),
+    credit_limit:   parseFloat(rows[0].credit_limit),
+  };
+}
+
 async function deleteCustomer(companyId, customerId, deletedBy) {
   const { rows: txns } = await query(`
     SELECT 1 FROM sales_transactions
@@ -372,5 +404,5 @@ async function deleteCustomer(companyId, customerId, deletedBy) {
 
 module.exports = {
   listCustomers, getCustomer, createCustomer, updateCustomer, listGroups, createGroup, updateGroup,
-  listCreditTransactions, recordCreditPayment, deleteCustomer,
+  listCreditTransactions, recordCreditPayment, recalculateCreditBalance, deleteCustomer,
 };

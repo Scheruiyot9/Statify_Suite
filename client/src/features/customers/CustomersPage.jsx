@@ -90,11 +90,21 @@ function CustomerForm({ initial, groups, creditEnabled, onSave, onClose }) {
 }
 
 function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransaction }) {
+  const qc = useQueryClient();
   const showCredit = creditEnabled && !!customer?.allow_credit;
   const { data: creditTxns = [] } = useQuery({
     queryKey: ['credit-transactions', customer?.customer_id],
     queryFn: () => api.get(`/customers/${customer.customer_id}/credit-transactions`).then((r) => r.data.data),
     enabled: showCredit && !!customer?.customer_id,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: () => api.post(`/customers/${customer.customer_id}/recalculate-balance`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['credit-transactions', customer.customer_id] });
+    },
+    onError: (e) => console.error('Balance sync failed:', e.response?.data?.message),
   });
 
   if (!customer) return null;
@@ -122,7 +132,17 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransa
           </div>
           <div className="grid grid-cols-3 gap-3 text-center text-xs">
             <div>
-              <p className="text-gray-500">Outstanding</p>
+              <div className="flex items-center justify-center gap-1">
+                <p className="text-gray-500">Outstanding</p>
+                <button
+                  title="Sync balance from ledger"
+                  onClick={() => syncMut.mutate()}
+                  disabled={syncMut.isPending}
+                  className="text-gray-300 hover:text-amber-600 cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`h-3 w-3 ${syncMut.isPending ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
               <p className="font-bold text-red-600">{formatCurrency(creditUsed)}</p>
             </div>
             <div>

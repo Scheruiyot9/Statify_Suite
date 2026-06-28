@@ -55,4 +55,9 @@ const creditPayment = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment };
+const recalculateCreditBalance = async (req, res) => {
+  const result = await svc.recalculateCreditBalance(req.tenantId, req.params.id);
+  res.json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment, recalculateCreditBalance };
