@@ -346,6 +346,12 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
             : 0
         )} icon={BarChart2} sub={`${(data?.trend ?? []).filter((d) => d.total > 0).length} active days`} />
       </div>
+      {(s?.creditSaleCount ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <KPICard label="Credit Sales"   value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount} txn${s?.creditSaleCount !== 1 ? 's' : ''} charged to account`} />
+          <KPICard label="Cash / Paid Sales" value={formatCurrency((s?.totalSales ?? 0) - (s?.creditSaleAmount ?? 0))} icon={TrendingUp} sub="Collected at counter" />
+        </div>
+      )}
 
       <SectionCard title={`Revenue Trend — ${bucketLabel} · ${trend.length} ${days <= 31 ? 'days' : days <= 89 ? 'weeks' : 'months'}`}>
         <BarChart data={trend} height={140} />

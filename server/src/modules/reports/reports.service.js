@@ -341,7 +341,9 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
         COALESCE(SUM(total_amount), 0)::numeric AS total_sales,
         COUNT(*)::int                            AS total_txns,
         COALESCE(AVG(total_amount), 0)::numeric  AS avg_txn,
-        COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)::int AS unique_customers
+        COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)::int AS unique_customers,
+        COUNT(*) FILTER (WHERE is_credit_sale = TRUE)::int AS credit_sale_count,
+        COALESCE(SUM(total_amount) FILTER (WHERE is_credit_sale = TRUE), 0)::numeric AS credit_sale_amount
       FROM sales_transactions st
       WHERE ${companyFilter} AND st.status = 'completed' ${filterClause} ${dateFilter} ${sessionFilter}
     `, filterParams),
@@ -399,10 +401,12 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
   return {
     period:      { startDate: start, endDate: end },
     summary:     {
-      totalSales:      parseFloat(s.total_sales),
-      totalTxns:       parseInt(s.total_txns),
-      avgTxn:          parseFloat(s.avg_txn),
-      uniqueCustomers: parseInt(s.unique_customers),
+      totalSales:       parseFloat(s.total_sales),
+      totalTxns:        parseInt(s.total_txns),
+      avgTxn:           parseFloat(s.avg_txn),
+      uniqueCustomers:  parseInt(s.unique_customers),
+      creditSaleCount:  parseInt(s.credit_sale_count),
+      creditSaleAmount: parseFloat(s.credit_sale_amount),
     },
     trend:       trendRes.rows.map((r) => ({ date: r.sale_date, total: parseFloat(r.total), txnCount: r.txn_count })),
     topProducts: topProdsRes.rows.map((r) => ({ productName: r.product_name, sku: r.sku, qtySold: parseFloat(r.qty_sold), revenue: parseFloat(r.revenue) })),

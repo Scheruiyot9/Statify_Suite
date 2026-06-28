@@ -970,6 +970,20 @@ function CloseSessionModal({ session, onClose, onClosed }) {
                 <p className="text-xs text-gray-500">Total Sales</p>
                 <p className="text-xl font-bold text-green-700">{formatCurrency(summary.total_sales)}</p>
               </div>
+              {summary.credit_sale_count > 0 && (
+                <>
+                  <div className="rounded-xl bg-orange-50 p-3 text-center">
+                    <p className="text-xs text-orange-600">Credit Sales</p>
+                    <p className="text-xl font-bold text-orange-700">{formatCurrency(summary.credit_sale_amount)}</p>
+                    <p className="text-[10px] text-orange-500 mt-0.5">{summary.credit_sale_count} txn{summary.credit_sale_count !== 1 ? 's' : ''} — charged to account</p>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 p-3 text-center">
+                    <p className="text-xs text-blue-600">Cash Sales</p>
+                    <p className="text-xl font-bold text-blue-700">{formatCurrency(summary.total_sales - summary.credit_sale_amount)}</p>
+                    <p className="text-[10px] text-blue-500 mt-0.5">Paid at counter</p>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

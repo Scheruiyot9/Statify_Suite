@@ -184,7 +184,7 @@ function PayModesTab() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setEditMode(m)}
-                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer">
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button onClick={() => setConfirmDel(m)}
@@ -620,7 +620,7 @@ function TerminalsTab() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => setEditTerm(t)}
-                              className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors"
+                              className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -689,11 +689,18 @@ function LoyaltyTab() {
   const [dirty,        setDirty]        = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const { isLoading } = useQuery({
+  const { data: loyaltyData, isLoading } = useQuery({
     queryKey: ['loyalty-settings'],
     queryFn:  () => api.get('/companies/mine/loyalty').then((r) => r.data.data),
-    onSuccess: (d) => { setEarnRate(String(d.points_earn_rate)); setRedeemRate(String(d.points_redeem_rate)); },
   });
+
+  useEffect(() => {
+    if (loyaltyData && !dirty) {
+      setEarnRate(String(loyaltyData.points_earn_rate));
+      setRedeemRate(String(loyaltyData.points_redeem_rate));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loyaltyData]);
 
   const saveMut = useMutation({
     mutationFn: (body) => api.patch('/companies/mine/loyalty', body),
@@ -880,7 +887,7 @@ function CategoriesTab() {
                   <td className="px-4 py-3 font-medium text-gray-900">{c.category_name}</td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => openEdit(c)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -987,7 +994,7 @@ function CustomerGroupsTab() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => openEdit(g)}
-                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -1298,12 +1305,15 @@ function TaxTab() {
     queryFn:  () => api.get('/tax-rates').then((r) => r.data.data),
   });
 
-  // Fetch KRA PIN from company profile
-  useQuery({
+  const { data: companyProfile } = useQuery({
     queryKey: ['company-mine'],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
-    onSuccess: (d) => setKraPin(d.tax_id ?? ''),
   });
+
+  useEffect(() => {
+    if (companyProfile && !pinDirty) setKraPin(companyProfile.tax_id ?? '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyProfile]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['tax-rates'] });
 
@@ -1411,7 +1421,7 @@ function TaxTab() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setEditItem(r)}
-                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button onClick={() => { if (window.confirm(`Delete "${r.template_name}"?`)) deleteMut.mutate(r.tax_template_id); }}
@@ -1589,12 +1599,12 @@ function ReturnReasonsTab() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => setEditReason(r)}
-                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors">
+                        className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 transition-colors cursor-pointer">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       {!r.is_system_reason && (
                         <button onClick={() => setDeleteTarget(r)}
-                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition-colors">
+                          className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition-colors cursor-pointer">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -2318,15 +2328,30 @@ const NAV_GROUPS = [
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('pay-modes');
 
-  const activeLabel = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === activeTab)?.label ?? '';
-
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">Configure your POS system</p>
 
+      {/* Mobile: full-width select */}
+      <div className="md:hidden mb-4">
+        <select
+          value={activeTab}
+          onChange={(e) => setActiveTab(e.target.value)}
+          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none"
+        >
+          {NAV_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.items.map(({ id, label }) => (
+                <option key={id} value={id}>{label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+
       <div className="flex gap-6 items-start">
-        {/* Sidebar */}
-        <aside className="w-48 flex-shrink-0 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {/* Sidebar — desktop only */}
+        <aside className="hidden md:block w-48 flex-shrink-0 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           {NAV_GROUPS.map((group, gi) => (
             <div key={group.label}>
               {gi > 0 && <div className="border-t border-gray-100" />}
@@ -2335,7 +2360,7 @@ export default function SettingsPage() {
               </p>
               {group.items.map(({ id, label, Icon }) => (
                 <button key={id} onClick={() => setActiveTab(id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left cursor-pointer ${
                     activeTab === id
                       ? 'bg-primary-50 text-primary-700 font-semibold border-l-2 border-primary-600'
                       : 'text-gray-600 hover:bg-gray-50 border-l-2 border-transparent'
@@ -2351,7 +2376,6 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">{activeLabel}</h2>
           {activeTab === 'branches'       && <BranchesTab />}
           {activeTab === 'categories'     && <CategoriesTab />}
           {activeTab === 'cust-groups'    && <CustomerGroupsTab />}

@@ -332,7 +332,9 @@ async function getSessionSummary(companyId, sessionId) {
     query(`
       SELECT COUNT(*)::int AS txn_count,
              COALESCE(SUM(total_amount),    0)::numeric AS total_sales,
-             COALESCE(SUM(discount_amount), 0)::numeric AS total_discounts
+             COALESCE(SUM(discount_amount), 0)::numeric AS total_discounts,
+             COUNT(*) FILTER (WHERE is_credit_sale = TRUE)::int AS credit_sale_count,
+             COALESCE(SUM(total_amount) FILTER (WHERE is_credit_sale = TRUE), 0)::numeric AS credit_sale_amount
       FROM sales_transactions
       WHERE pos_session_id = $1 AND status = 'completed'
     `, [sessionId]),
@@ -383,6 +385,8 @@ async function getSessionSummary(companyId, sessionId) {
     txn_count:           summaryRes.rows[0].txn_count,
     total_sales:         parseFloat(summaryRes.rows[0].total_sales),
     total_discounts:     parseFloat(summaryRes.rows[0].total_discounts),
+    credit_sale_count:   summaryRes.rows[0].credit_sale_count,
+    credit_sale_amount:  parseFloat(summaryRes.rows[0].credit_sale_amount),
     total_cash_outs:     totalCashOuts,
     cash_outs:           cashOuts,
     cash_outs_by_method: cashOutsByMethod,

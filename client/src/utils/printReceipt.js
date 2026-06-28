@@ -10,6 +10,7 @@
 
 const RECEIPT_STYLES = `
   @page { size: 58mm auto; margin: 2mm; }
+  html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
   body > *:not(#__rpo) { display: none !important; }
   #__rpo {
     display: block !important;
