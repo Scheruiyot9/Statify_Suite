@@ -93,35 +93,78 @@ function ProductSearch({ products, value, onChange }) {
   );
 }
 
-// ── PO Item row editor ────────────────────────────────────────────────────────
+// ── PO Item — shared change handler ──────────────────────────────────────────
 
-function POItemRow({ item, products, onChange, onRemove }) {
-  const prod = products.find((p) => p.product_id === item.product_id);
+function useItemHandlers(item, products, onChange) {
   const lineTotal = +(parseFloat(item.quantity_ordered || 0) * parseFloat(item.unit_cost || 0)).toFixed(2);
-
   const handleProductChange = (productId) => {
     const p = products.find((x) => x.product_id === productId);
     onChange({ ...item, product_id: productId, unit_cost: p?.cost_price ?? p?.selling_price ?? '' });
   };
+  return { lineTotal, handleProductChange };
+}
 
+// ── PO Item card — mobile only ────────────────────────────────────────────────
+
+function POItemCard({ item, products, onChange, onRemove }) {
+  const { lineTotal, handleProductChange } = useItemHandlers(item, products, onChange);
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 space-y-2 bg-white">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <label className="mb-1 block text-xs font-medium text-gray-500">Product</label>
+          <ProductSearch products={products} value={item.product_id ?? ''} onChange={handleProductChange} />
+        </div>
+        <button onClick={onRemove} className="mt-5 text-red-400 hover:text-red-600 flex-shrink-0">
+          <XCircle className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Qty</label>
+          <input type="number" min="0.001" step="0.001" className={inp} value={item.quantity_ordered}
+            onChange={(e) => onChange({ ...item, quantity_ordered: e.target.value })} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Unit Cost</label>
+          <input type="number" min="0" step="0.01" className={inp} value={item.unit_cost}
+            onChange={(e) => onChange({ ...item, unit_cost: e.target.value })} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Tax %</label>
+          <input type="number" min="0" max="100" step="0.01" className={inp} value={item.tax_rate}
+            onChange={(e) => onChange({ ...item, tax_rate: e.target.value })} />
+        </div>
+      </div>
+      <div className="text-right text-sm font-semibold text-gray-700">
+        Line total: {formatCurrency(lineTotal)}
+      </div>
+    </div>
+  );
+}
+
+// ── PO Item row — desktop table only ─────────────────────────────────────────
+
+function POItemRow({ item, products, onChange, onRemove }) {
+  const { lineTotal, handleProductChange } = useItemHandlers(item, products, onChange);
   return (
     <tr className="border-b border-gray-100">
-      <td className="py-2 pr-2">
+      <td className="py-2 pr-2 min-w-[200px]">
         <ProductSearch products={products} value={item.product_id ?? ''} onChange={handleProductChange} />
       </td>
-      <td className="py-2 px-2 w-28">
+      <td className="py-2 px-2 w-24">
         <input type="number" min="0.001" step="0.001" className={inp} value={item.quantity_ordered}
           onChange={(e) => onChange({ ...item, quantity_ordered: e.target.value })} />
       </td>
-      <td className="py-2 px-2 w-32">
+      <td className="py-2 px-2 w-28">
         <input type="number" min="0" step="0.01" className={inp} value={item.unit_cost}
           onChange={(e) => onChange({ ...item, unit_cost: e.target.value })} />
       </td>
-      <td className="py-2 px-2 w-24">
+      <td className="py-2 px-2 w-20">
         <input type="number" min="0" max="100" step="0.01" className={inp} value={item.tax_rate}
           onChange={(e) => onChange({ ...item, tax_rate: e.target.value })} />
       </td>
-      <td className="py-2 pl-2 w-28 text-right text-sm font-medium">{formatCurrency(lineTotal)}</td>
+      <td className="py-2 pl-2 w-24 text-right text-sm font-medium">{formatCurrency(lineTotal)}</td>
       <td className="py-2 pl-2 w-8">
         <button onClick={onRemove} className="text-red-400 hover:text-red-600">
           <XCircle className="h-4 w-4" />
@@ -190,7 +233,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
   return (
     <Modal open onClose={onClose} title={isEdit ? `Edit PO ${po.po_number}` : 'New Purchase Order'} size="xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Supplier *">
             <select className={sel} value={form.supplier_id} onChange={(e) => setF('supplier_id', e.target.value)}>
               <option value="">— Select supplier —</option>
@@ -217,8 +260,19 @@ function POModal({ po, suppliers, products, branches, onClose }) {
               <Plus className="h-3.5 w-3.5" /> Add item
             </button>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full min-w-[540px] text-sm">
+
+          {/* Mobile: card per item (no overflow-clip issues) */}
+          <div className="space-y-2 md:hidden">
+            {items.map((item) => (
+              <POItemCard key={item._id} item={item} products={products}
+                onChange={(updated) => updateItem(item._id, updated)}
+                onRemove={() => removeItem(item._id)} />
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="py-2 pr-2 text-left text-xs font-medium text-gray-500 pl-3">Product</th>
@@ -238,6 +292,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
               </tbody>
             </table>
           </div>
+
           <div className="mt-2 text-right text-sm font-semibold text-gray-800">
             Subtotal: {formatCurrency(subtotal)}
           </div>
@@ -330,7 +385,41 @@ function PODetail({ po, onClose, onEdit }) {
   );
 }
 
-// ── GRN Item row ──────────────────────────────────────────────────────────────
+// ── GRN Item — mobile card ────────────────────────────────────────────────────
+
+function GRNItemCard({ item, onChange }) {
+  const remaining = +(parseFloat(item.quantity_ordered) - parseFloat(item.quantity_received)).toFixed(3);
+  const lineTotal  = +(parseFloat(item.qty_receiving || 0) * parseFloat(item.unit_cost)).toFixed(2);
+  return (
+    <div className="rounded-lg border border-gray-200 p-3 space-y-2 bg-white">
+      <p className="text-sm font-medium text-gray-900">{item.product_name}</p>
+      <div className="flex gap-4 text-xs text-gray-500">
+        <span>Ordered: <strong>{item.quantity_ordered}</strong></span>
+        <span>Received: <strong>{item.quantity_received}</strong></span>
+        <span className="text-blue-600 font-semibold">Remaining: {remaining}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Receive Now</label>
+          <input type="number" min="0" max={remaining} step="0.001" className={inp}
+            value={item.qty_receiving}
+            onChange={(e) => onChange({ ...item, qty_receiving: e.target.value })} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Unit Cost</label>
+          <input type="number" min="0" step="0.01" className={inp}
+            value={item.unit_cost}
+            onChange={(e) => onChange({ ...item, unit_cost: e.target.value })} />
+        </div>
+      </div>
+      <div className="text-right text-sm font-semibold text-gray-700">
+        Line total: {formatCurrency(lineTotal)}
+      </div>
+    </div>
+  );
+}
+
+// ── GRN Item row — desktop table ──────────────────────────────────────────────
 
 function GRNItemRow({ item, onChange }) {
   const remaining = +(parseFloat(item.quantity_ordered) - parseFloat(item.quantity_received)).toFixed(3);
@@ -409,7 +498,7 @@ function GRNModal({ po, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Receive Goods — ${po.po_number}`} size="xl">
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Received Date">
             <input type="date" className={inp} value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
           </Field>
@@ -418,7 +507,15 @@ function GRNModal({ po, onClose }) {
           </Field>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
+        {/* Mobile: card per item */}
+        <div className="space-y-2 md:hidden">
+          {items.map((item) => (
+            <GRNItemCard key={item.poi_id} item={item} onChange={(u) => updateItem(item.poi_id, u)} />
+          ))}
+        </div>
+
+        {/* Desktop: table */}
+        <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200">
           <table className="w-full min-w-[580px] text-sm">
             <thead className="bg-gray-50">
               <tr>
