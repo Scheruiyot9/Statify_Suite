@@ -82,6 +82,16 @@ function ShiftDetail({ sessionId, onForceClose }) {
         })()}
       </div>
 
+      {/* Credit sales split */}
+      {(data.credit_sale_count ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Credit Sales"     value={formatCurrency(data.credit_sale_amount)} color="red"
+            sub={`${data.credit_sale_count} txn${data.credit_sale_count !== 1 ? 's' : ''} — charged to account`} />
+          <StatCard label="Cash / Paid Sales" value={formatCurrency(data.total_sales - data.credit_sale_amount)} color="blue"
+            sub="Collected at counter" />
+        </div>
+      )}
+
       {/* Payment breakdown — includes per-method reconciliation when session is closed */}
       {data.payment_breakdown?.length > 0 && (
         <div>
@@ -278,31 +288,13 @@ function StatCard({ label, value, color, sub }) {
 // ── Correct Session Modal ─────────────────────────────────────────────────────
 
 function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
-  const isOpen    = session.status === 'open';
-  const breakdown = session.payment_breakdown ?? [];
-  const qc        = useQueryClient();
-
-  // Opening amounts keyed by payment_method_id.
-  // Cash reads from session.opening_cash_amount; other methods from pay_mode_amounts.
-  const [openings, setOpenings] = useState(() => {
-    const result = {};
-    breakdown.forEach((pm) => {
-      if (pm.method_name === 'Cash') {
-        result[pm.payment_method_id] = String(session.opening_cash_amount ?? '');
-      } else {
-        const existing = (session.pay_mode_amounts ?? [])
-          .find((a) => a.method_name === pm.method_name && a.count_type === 'opening');
-        result[pm.payment_method_id] = String(existing?.amount ?? '');
-      }
-    });
-    return result;
-  });
-
+  const [opening,  setOpening]  = useState(String(session.opening_cash_amount ?? ''));
   const [closing,  setClosing]  = useState(String(session.closing_cash_counted ?? ''));
   const [reason,   setReason]   = useState('');
   const [workDate, setWorkDate] = useState(
     session.session_start ? session.session_start.slice(0, 10) : ''
   );
+  const qc = useQueryClient();
 
   const { mutate, isPending } = useMutation({
     mutationFn: (body) => api.patch(`/pos/sessions/${sessionId}/correct`, body),
@@ -315,26 +307,14 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save correction'),
   });
 
+  const isOpen = session.status === 'open';
+
   const handleSave = () => {
     const body = { correctionReason: reason };
-
-    // Cash opening (stored on pos_sessions.opening_cash_amount)
-    const cashMethod = breakdown.find((p) => p.method_name === 'Cash');
-    if (cashMethod && openings[cashMethod.payment_method_id] !== '') {
-      body.openingCashAmount = parseFloat(openings[cashMethod.payment_method_id]) || 0;
-    }
-
-    // Non-cash openings (stored in session_pay_mode_amounts)
-    const nonCash = breakdown
-      .filter((p) => p.method_name !== 'Cash' && openings[p.payment_method_id] !== '')
-      .map((p) => ({ paymentMethodId: p.payment_method_id, amount: parseFloat(openings[p.payment_method_id]) || 0 }));
-    if (nonCash.length) body.openingPayModeAmounts = nonCash;
-
+    if (opening !== '') body.openingCashAmount  = parseFloat(opening) || 0;
     if (!isOpen && closing !== '') body.closingCashCounted = parseFloat(closing) || 0;
-
     const originalDate = session.session_start ? session.session_start.slice(0, 10) : '';
     if (workDate && workDate !== originalDate) body.workDate = workDate;
-
     mutate(body);
   };
 
@@ -356,30 +336,18 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
         <p className="mt-0.5 text-xs text-gray-400">Change only if the shift was opened on the wrong calendar date.</p>
       </div>
 
-      {breakdown.length > 0 && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-2">Opening Float by Method</label>
-          <div className="space-y-2">
-            {breakdown.map((pm) => (
-              <div key={pm.payment_method_id} className="flex items-center gap-3">
-                <span className="text-sm text-gray-600 w-24 flex-shrink-0 truncate">{pm.method_name}</span>
-                <input
-                  type="number" step="0.01" min="0"
-                  value={openings[pm.payment_method_id] ?? ''}
-                  onChange={(e) =>
-                    setOpenings((prev) => ({ ...prev, [pm.payment_method_id]: e.target.value }))
-                  }
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Opening Float</label>
+        <input
+          type="number" step="0.01" min="0"
+          value={opening} onChange={(e) => setOpening(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+      </div>
 
       {!isOpen && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Closing Count (Cash)</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Closing Count</label>
           <input
             type="number" step="0.01" min="0"
             value={closing} onChange={(e) => setClosing(e.target.value)}

@@ -517,6 +517,15 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
           sub={`${income.returnCount} returns`} />
       </div>
 
+      {(income.creditSaleCount ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <KPICard label="Credit Sales" value={formatCurrency(income.creditSaleAmount)} icon={ShoppingCart}
+            sub={`${income.creditSaleCount} txn${income.creditSaleCount !== 1 ? 's' : ''} — charged to account`} />
+          <KPICard label="Cash / Paid Sales" value={formatCurrency(income.grossRevenue - income.creditSaleAmount)} icon={TrendingUp}
+            sub="Collected at counter" />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Full Income Statement */}
         <SectionCard title="Income Statement">

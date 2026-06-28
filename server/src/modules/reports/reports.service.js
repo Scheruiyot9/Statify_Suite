@@ -441,9 +441,11 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       GROUP BY a.account_code, a.account_name, a.account_type
     `, [companyId, start, end]),
 
-    // Sales transaction count
+    // Sales transaction count + credit sale stats
     query(`
-      SELECT COUNT(*)::int AS txn_count
+      SELECT COUNT(*)::int AS txn_count,
+             COUNT(*) FILTER (WHERE is_credit_sale = TRUE)::int AS credit_sale_count,
+             COALESCE(SUM(total_amount) FILTER (WHERE is_credit_sale = TRUE), 0)::numeric AS credit_sale_amount
       FROM sales_transactions
       WHERE ($1::uuid IS NULL OR company_id = $1::uuid) AND status = 'completed'
         AND transaction_date::date BETWEEN $2 AND $3
@@ -513,7 +515,9 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       totalReturns:  +totalReturns.toFixed(2),
       returnCount:   parseInt(returnsRes.rows[0].return_count),
       netRevenue:    +netRevenue.toFixed(2),
-      txnCount:      parseInt(txnCountRes.rows[0].txn_count),
+      txnCount:        parseInt(txnCountRes.rows[0].txn_count),
+      creditSaleCount:  parseInt(txnCountRes.rows[0].credit_sale_count),
+      creditSaleAmount: parseFloat(txnCountRes.rows[0].credit_sale_amount),
     },
     cogs:             +cogs.toFixed(2),
     grossProfit:      +grossProfit.toFixed(2),

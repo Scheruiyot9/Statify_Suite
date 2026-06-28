@@ -10,7 +10,8 @@ import PosLayout        from '@/components/layout/PosLayout';
 import DashboardPage    from '@/features/dashboard/DashboardPage';
 import ProductsPage     from '@/features/products/ProductsPage';
 import InventoryPage    from '@/features/inventory/InventoryPage';
-import CustomersPage    from '@/features/customers/CustomersPage';
+import CustomersPage        from '@/features/customers/CustomersPage';
+import CustomerLedgerPage  from '@/features/customers/CustomerLedgerPage';
 import SalesPage        from '@/features/sales/SalesPage';
 import ReturnsPage      from '@/features/returns/ReturnsPage';
 import ShiftsPage       from '@/features/shifts/ShiftsPage';
@@ -94,6 +95,7 @@ export default function AppRouter() {
         <Route path="products"   element={<CapabilityRoute capability="products.view"><ProductsPage /></CapabilityRoute>} />
         <Route path="inventory"  element={<CapabilityRoute capability="inventory.view"><InventoryPage /></CapabilityRoute>} />
         <Route path="customers"  element={<CapabilityRoute capability="customers.view"><CustomersPage /></CapabilityRoute>} />
+        <Route path="customers/:customerId/ledger" element={<CapabilityRoute capability="customers.view"><CustomerLedgerPage /></CapabilityRoute>} />
         <Route path="sales"      element={<CapabilityRoute capability="sales.view"><SalesPage /></CapabilityRoute>} />
         <Route path="mpesa"      element={<CapabilityRoute capability="mpesa.view"><MpesaPage /></CapabilityRoute>} />
         <Route path="returns"    element={<CapabilityRoute capability="returns.view"><ReturnsPage /></CapabilityRoute>} />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw, CreditCard, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Search, Edit2, Star, Phone, Mail, Download, RefreshCw, CreditCard, ExternalLink, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/formatters';
@@ -226,6 +227,7 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransa
 
 export default function CustomersPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { hasCapability } = usePermission();
   const canCreateCustomers = hasCapability('customers.create');
   const canManageCustomers = hasCapability('customers.manage');
@@ -393,11 +395,20 @@ export default function CustomersPage() {
                     </td>
                   )}
                   {canManageCustomers && (
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={(e) => { e.stopPropagation(); setDetail(c.customer_id); }}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
-                      </button>
+                    <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button onClick={() => setModal(c)}
+                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                          Edit
+                        </button>
+                        {c.allow_credit && (
+                          <button onClick={() => navigate(`/app/customers/${c.customer_id}/ledger`)}
+                            title="View credit entries"
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                            <BookOpen className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -432,6 +443,12 @@ export default function CustomersPage() {
         footer={canManageCustomers && customerDetail && (
           <div className="flex gap-3">
             <Button variant="secondary" fullWidth onClick={() => setDetail(null)}>Close</Button>
+            {customerDetail.allow_credit && (
+              <Button variant="secondary" fullWidth icon={<BookOpen className="h-4 w-4" />}
+                onClick={() => { setDetail(null); navigate(`/app/customers/${customerDetail.customer_id}/ledger`); }}>
+                View Entries
+              </Button>
+            )}
             <Button fullWidth icon={<Edit2 className="h-4 w-4" />}
               onClick={() => { setModal(customerDetail); setDetail(null); }}>
               Edit

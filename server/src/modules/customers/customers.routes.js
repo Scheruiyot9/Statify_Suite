@@ -24,6 +24,7 @@ router.delete('/:id', requireAnyPermission('manage_customers'), controller.remov
 
 // ── Credit account ────────────────────────────────────────────────────────────
 router.get('/:id/credit-transactions', controller.creditTransactions);
+router.get('/:id/ledger', controller.customerLedger);
 router.post('/:id/credit-payment', requireAnyPermission('manage_customers', 'create_transaction'), controller.creditPayment);
 router.post('/:id/recalculate-balance', requireAnyPermission('manage_customers'), controller.recalculateCreditBalance);
 

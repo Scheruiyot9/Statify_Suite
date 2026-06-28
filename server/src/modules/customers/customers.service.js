@@ -257,6 +257,90 @@ async function _generateCode(companyId) {
   return `CUST-${String(parseInt(rows[0].cnt) + 1).padStart(5, '0')}`;
 }
 
+async function getCustomerLedger(companyId, customerId) {
+  const { rows: [cust] } = await query(
+    `SELECT customer_id, customer_name, credit_balance, credit_limit
+     FROM customers WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL`,
+    [companyId, customerId]
+  );
+  if (!cust) throw AppError.notFound('Customer');
+
+  const [salesRes, paymentsRes] = await Promise.all([
+    query(`
+      SELECT st.transaction_id, st.transaction_number, st.transaction_date,
+             st.total_amount::numeric, st.payment_status,
+             COALESCE(json_agg(json_build_object('name', p.product_name, 'qty', sti.quantity::numeric)
+                       ORDER BY sti.sales_transaction_item_id) FILTER (WHERE p.product_name IS NOT NULL), '[]') AS items
+      FROM sales_transactions st
+      LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.transaction_id
+      LEFT JOIN products p ON p.product_id = sti.product_id
+      WHERE st.customer_id = $2 AND st.company_id = $1
+        AND st.is_credit_sale = TRUE AND st.status = 'completed'
+      GROUP BY st.transaction_id
+      ORDER BY st.transaction_date ASC
+    `, [companyId, customerId]),
+
+    query(`
+      SELECT je.journal_entry_id, je.entry_date, je.description,
+             jel.credit::numeric AS amount
+      FROM journal_entries je
+      JOIN ledger_entry_lines jel ON jel.journal_entry_id = je.journal_entry_id
+      JOIN accounts a ON a.account_id = jel.account_id AND a.account_code = '1100'
+      WHERE je.company_id = $1 AND je.source_type = 'CREDIT_PAYMENT'
+        AND jel.entity_id = $2::uuid AND jel.credit > 0 AND je.status = 'posted'
+      ORDER BY je.entry_date ASC
+    `, [companyId, customerId]),
+  ]);
+
+  // Aging from unpaid/partial sales
+  const today = new Date();
+  const aging = { current: 0, days30: 0, days60: 0, days90plus: 0 };
+  for (const r of salesRes.rows) {
+    if (r.payment_status === 'paid') continue;
+    const days = Math.floor((today - new Date(r.transaction_date)) / 86400000);
+    const amt  = parseFloat(r.total_amount);
+    if      (days <= 30) aging.current    += amt;
+    else if (days <= 60) aging.days30     += amt;
+    else if (days <= 90) aging.days60     += amt;
+    else                 aging.days90plus += amt;
+  }
+
+  const activity = [
+    ...salesRes.rows.map((r) => ({
+      type:           'SALE',
+      id:             r.transaction_id,
+      ref:            r.transaction_number,
+      date:           r.transaction_date,
+      amount:         parseFloat(r.total_amount),
+      payment_status: r.payment_status,
+      items:          r.items,
+    })),
+    ...paymentsRes.rows.map((r) => ({
+      type:   'PAYMENT',
+      id:     r.journal_entry_id,
+      ref:    r.description,
+      date:   r.entry_date,
+      amount: parseFloat(r.amount),
+    })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return {
+    customer: {
+      customer_id:    cust.customer_id,
+      customer_name:  cust.customer_name,
+      credit_balance: parseFloat(cust.credit_balance ?? 0),
+      credit_limit:   parseFloat(cust.credit_limit   ?? 0),
+    },
+    aging: {
+      current:    +aging.current.toFixed(2),
+      days30:     +aging.days30.toFixed(2),
+      days60:     +aging.days60.toFixed(2),
+      days90plus: +aging.days90plus.toFixed(2),
+    },
+    activity,
+  };
+}
+
 async function listCreditTransactions(companyId, customerId) {
   const { rows } = await query(`
     SELECT st.transaction_id, st.transaction_number, st.transaction_date,
@@ -283,7 +367,7 @@ async function listCreditTransactions(companyId, customerId) {
   }));
 }
 
-async function recordCreditPayment(companyId, customerId, amount, paymentMethodId, sessionId = null) {
+async function recordCreditPayment(companyId, customerId, amount, paymentMethodId, sessionId = null, transactionIds = null) {
   if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
 
   return transaction(async (client) => {
@@ -306,15 +390,22 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
       RETURNING customer_id, customer_name, credit_balance, credit_limit
     `, [companyId, customerId, amount]);
 
-    // FIFO: mark oldest unpaid/partial credit transactions as paid
-    const { rows: txns } = await client.query(`
-      SELECT transaction_id, total_amount FROM sales_transactions
-      WHERE customer_id = $1
-        AND is_credit_sale = TRUE
-        AND payment_status IN ('partial', 'unpaid')
-        AND status = 'completed'
-      ORDER BY transaction_date ASC
-    `, [customerId]);
+    // Mark transactions as paid: use caller-specified IDs or fall back to FIFO
+    let txnQuery, txnParams;
+    if (transactionIds && transactionIds.length > 0) {
+      txnQuery  = `SELECT transaction_id, total_amount FROM sales_transactions
+                   WHERE customer_id = $1 AND transaction_id = ANY($2::uuid[])
+                     AND is_credit_sale = TRUE AND payment_status IN ('partial','unpaid') AND status = 'completed'
+                   ORDER BY transaction_date ASC`;
+      txnParams = [customerId, transactionIds];
+    } else {
+      txnQuery  = `SELECT transaction_id, total_amount FROM sales_transactions
+                   WHERE customer_id = $1 AND is_credit_sale = TRUE
+                     AND payment_status IN ('partial','unpaid') AND status = 'completed'
+                   ORDER BY transaction_date ASC`;
+      txnParams = [customerId];
+    }
+    const { rows: txns } = await client.query(txnQuery, txnParams);
 
     // Only apply up to the actual balance (advance credit doesn't clear extra invoices)
     let remaining = Math.min(amount, currentBalance);
@@ -404,5 +495,5 @@ async function deleteCustomer(companyId, customerId, deletedBy) {
 
 module.exports = {
   listCustomers, getCustomer, createCustomer, updateCustomer, listGroups, createGroup, updateGroup,
-  listCreditTransactions, recordCreditPayment, recalculateCreditBalance, deleteCustomer,
+  listCreditTransactions, recordCreditPayment, recalculateCreditBalance, deleteCustomer, getCustomerLedger,
 };

@@ -47,10 +47,11 @@ const creditTransactions = async (req, res) => {
 };
 
 const creditPayment = async (req, res) => {
-  const { amount, paymentMethodId, sessionId } = req.body;
+  const { amount, paymentMethodId, sessionId, transactionIds } = req.body;
   const result = await svc.recordCreditPayment(
     req.tenantId, req.params.id,
-    parseFloat(amount), paymentMethodId || null, sessionId || null
+    parseFloat(amount), paymentMethodId || null, sessionId || null,
+    Array.isArray(transactionIds) && transactionIds.length ? transactionIds : null
   );
   res.json({ success: true, data: result });
 };
@@ -60,4 +61,9 @@ const recalculateCreditBalance = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
-module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment, recalculateCreditBalance };
+const customerLedger = async (req, res) => {
+  const result = await svc.getCustomerLedger(req.tenantId, req.params.id);
+  res.json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, create, update, listGroups, createGroup, updateGroup, remove, creditTransactions, creditPayment, recalculateCreditBalance, customerLedger };
