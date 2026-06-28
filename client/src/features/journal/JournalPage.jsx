@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ScrollText, Plus, XCircle, RefreshCw, Download, Upload,
   AlertCircle, CheckCircle2, Building2, User, Briefcase, BookOpen, Edit2,
-  ArrowDownLeft, Calendar, Package,
+  ArrowDownLeft, Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -668,281 +668,6 @@ function ImportModal({ onClose }) {
   );
 }
 
-// ── Stock Adjustment Modal ────────────────────────────────────────────────────
-
-function StockAdjustmentModal({ accounts, onClose }) {
-  const qc        = useQueryClient();
-  const searchRef = useRef(null);
-  const [step,      setStep]      = useState('form'); // 'form' | 'preview'
-  const [search,    setSearch]    = useState('');
-  const [selected,  setSelected]  = useState(null);
-  const [showDrop,  setShowDrop]  = useState(false);
-  const [qty,       setQty]       = useState('');
-  const [costPrice, setCostPrice] = useState('');
-  const [notes,     setNotes]     = useState('');
-  const [date,      setDate]      = useState(new Date().toISOString().slice(0, 10));
-
-  const { data: invRows = [], isFetching: searching } = useQuery({
-    queryKey: ['inv-adj-search', search],
-    queryFn: () => api.get('/inventory', { params: { search, limit: 15 } }).then((r) => r.data.data?.inventory ?? []),
-    enabled: search.length >= 1,
-    placeholderData: (prev) => prev,
-  });
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDrop(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const selectItem = (item) => {
-    setSelected(item);
-    setSearch(`${item.product_name}${item.sku ? ` (${item.sku})` : ''} — ${item.branch_name}`);
-    setCostPrice(item.cost_price != null ? String(item.cost_price) : '');
-    setShowDrop(false);
-  };
-
-  const qtyNum  = parseFloat(qty)       || 0;
-  const costNum = parseFloat(costPrice) || 0;
-  const value   = +(Math.abs(qtyNum * costNum)).toFixed(4);
-  const isGain  = qtyNum > 0;
-  const newQty  = selected ? selected.quantity_available + qtyNum : null;
-
-  const inv1200  = accounts.find((a) => a.account_code === '1200');
-  const cogs5000 = accounts.find((a) => a.account_code === '5000');
-  const hasAccounts = !!inv1200 && !!cogs5000;
-
-  const previewLines = hasAccounts && value > 0 ? [
-    { code: isGain ? '1200' : '5000', name: isGain ? inv1200.account_name : cogs5000.account_name, debit: value, credit: 0 },
-    { code: isGain ? '5000' : '1200', name: isGain ? cogs5000.account_name : inv1200.account_name, debit: 0, credit: value },
-  ] : [];
-
-  const canPreview = selected && qtyNum !== 0 && newQty >= 0;
-
-  const postMut = useMutation({
-    mutationFn: () => api.post('/inventory/adjust', {
-      product_id: selected.product_id,
-      branch_id:  selected.branch_id,
-      adjustment: qtyNum,
-      notes:      notes || undefined,
-    }),
-    onSuccess: () => {
-      toast.success('Stock adjustment posted');
-      qc.invalidateQueries({ queryKey: ['inventory'] });
-      qc.invalidateQueries({ queryKey: ['journals'] });
-      onClose();
-    },
-    onError: (e) => toast.error(e.response?.data?.message || 'Adjustment failed'),
-  });
-
-  if (step === 'preview') {
-    return (
-      <Modal open title="Preview — Stock Adjustment Journal Entry" onClose={onClose} size="lg">
-        <div className="space-y-4">
-          {/* Summary grid */}
-          <div className="rounded-lg bg-gray-50 border p-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-xs text-gray-500">Product</span>
-              <p className="font-medium">{selected.product_name}{selected.sku ? ` (${selected.sku})` : ''}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Branch</span>
-              <p className="font-medium">{selected.branch_name}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Date</span>
-              <p>{date}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Qty Change</span>
-              <p className="font-mono">
-                {selected.quantity_available} →{' '}
-                <strong className={isGain ? 'text-green-600' : 'text-red-600'}>{newQty}</strong>
-                <span className={`ml-1 text-xs ${isGain ? 'text-green-600' : 'text-red-600'}`}>
-                  ({isGain ? '+' : ''}{qtyNum})
-                </span>
-              </p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Cost / Unit</span>
-              <p>KES {fmt(costNum)}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">Total Value</span>
-              <p className="font-semibold">KES {fmt(value)}</p>
-            </div>
-            {notes && (
-              <div className="col-span-2">
-                <span className="text-xs text-gray-500">Notes</span>
-                <p>{notes}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Journal entry preview */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Journal Entry</p>
-            {previewLines.length > 0 ? (
-              <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Debit</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Credit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewLines.map((l, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="px-3 py-2">
-                          <span className="font-mono text-xs text-gray-400 mr-1">{l.code}</span>
-                          {l.name}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono">{l.debit  > 0 ? fmt(l.debit)  : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t-2 bg-gray-50">
-                    <tr>
-                      <td className="px-3 py-2 font-semibold text-sm">Total</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold">{fmt(value)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold">{fmt(value)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            ) : !hasAccounts ? (
-              <p className="text-sm text-amber-600 bg-amber-50 rounded-lg p-3">
-                ⚠ Inventory (1200) or COGS (5000) account not found in your Chart of Accounts.
-                The stock quantity will still be updated but no journal entry will be created.
-              </p>
-            ) : (
-              <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-3">
-                Cost price is 0 — stock quantity will update but no accounting entry will be posted.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-between border-t pt-4">
-          <button onClick={() => setStep('form')}
-            className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">
-            ← Back
-          </button>
-          <button
-            onClick={() => postMut.mutate()}
-            disabled={postMut.isPending}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40"
-          >
-            {postMut.isPending ? 'Posting…' : 'Confirm & Post'}
-          </button>
-        </div>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal open title="New Stock Adjustment" onClose={onClose} size="lg">
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-
-          {/* Product search with dropdown */}
-          <div className="relative" ref={searchRef}>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Product *</label>
-            <input
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              placeholder="Search by name or SKU…"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDrop(true); }}
-              onFocus={() => { if (search) setShowDrop(true); }}
-            />
-            {showDrop && search.length >= 1 && (
-              <div className="absolute top-full left-0 z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border bg-white shadow-lg">
-                {invRows.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-gray-400">{searching ? 'Searching…' : 'No results'}</p>
-                ) : invRows.map((item) => (
-                  <button key={`${item.product_id}-${item.branch_id}`} type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b last:border-0"
-                    onClick={() => selectItem(item)}>
-                    <span className="font-medium">{item.product_name}</span>
-                    {item.sku && <span className="ml-1 text-xs text-gray-400">{item.sku}</span>}
-                    <span className="ml-2 text-xs text-gray-400">
-                      {item.branch_name} · {item.quantity_available} in stock
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {selected && (
-          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-2 text-sm flex flex-wrap gap-4">
-            <span><span className="text-gray-500">Branch: </span><strong>{selected.branch_name}</strong></span>
-            <span><span className="text-gray-500">Current stock: </span><strong>{selected.quantity_available}</strong></span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Adjustment Qty *{' '}
-              <span className="font-normal text-gray-400">(+ for gain, − for loss)</span>
-            </label>
-            <input type="number" step="1" className="w-full border rounded-lg px-3 py-2 text-sm"
-              placeholder="e.g. 10 or -5"
-              value={qty} onChange={(e) => setQty(e.target.value)} />
-            {selected && qty !== '' && !isNaN(parseFloat(qty)) && (
-              <p className={`mt-1 text-xs ${newQty < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                New stock: {selected.quantity_available} → <strong>{newQty}</strong>
-                {newQty < 0 && ' · cannot go below 0'}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cost Price / Unit</label>
-            <input type="number" step="0.01" min="0" className="w-full border rounded-lg px-3 py-2 text-sm"
-              placeholder="0.00"
-              value={costPrice} onChange={(e) => setCostPrice(e.target.value)} />
-            <p className="mt-1 text-xs text-gray-400">
-              Used to compute the journal entry value. Leave 0 to skip the accounting entry.
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Notes / Reason</label>
-          <textarea rows={2} className="w-full border rounded-lg px-3 py-2 text-sm resize-none"
-            placeholder="e.g. Physical count discrepancy, damaged goods…"
-            value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="mt-6 flex justify-between border-t pt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">
-          Cancel
-        </button>
-        <button
-          onClick={() => setStep('preview')}
-          disabled={!canPreview}
-          className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-40"
-        >
-          Preview Journal →
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const OUT_TYPE_LABELS = { withdrawal: 'Withdrawal', expense: 'Expense', stock_payment: 'Stock Payment' };
@@ -964,7 +689,6 @@ export default function JournalPage() {
   const [editTarget,   setEditTarget]   = useState(null);
   const [showNew,      setShowNew]      = useState(false);
   const [showImport,   setShowImport]   = useState(false);
-  const [showStockAdj, setShowStockAdj] = useState(false);
 
   // ── Cash outs state ──
   const [coStart, setCoStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
@@ -1118,11 +842,7 @@ export default function JournalPage() {
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
               <Upload className="h-4 w-4" />Import
             </button>
-            <button onClick={() => setShowStockAdj(true)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
-              <Package className="h-4 w-4" />Stock Adj
-            </button>
-            <button onClick={() => setShowNew(true)}
+<button onClick={() => setShowNew(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
               <Plus className="h-4 w-4" />New Journal
             </button>
@@ -1508,8 +1228,7 @@ export default function JournalPage() {
         <JournalFormModal existing={editTarget} accounts={accounts}
           onClose={() => { setShowNew(false); setEditTarget(null); }} />
       )}
-      {showImport    && <ImportModal onClose={() => setShowImport(false)} />}
-      {showStockAdj  && <StockAdjustmentModal accounts={accounts} onClose={() => setShowStockAdj(false)} />}
+      {showImport && <ImportModal onClose={() => setShowImport(false)} />}
 
       {/* Posted entry detail modal */}
       {aeSelected && (
