@@ -273,7 +273,7 @@ async function getCustomerLedger(companyId, customerId) {
              st.total_amount::numeric, st.payment_status,
              COALESCE(json_agg(
                json_build_object('name', p.product_name, 'qty', sti.quantity)
-               ORDER BY sti.sales_transaction_item_id
+               ORDER BY sti.item_id
              ) FILTER (WHERE p.product_name IS NOT NULL), '[]') AS items
       FROM sales_transactions st
       LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.transaction_id
@@ -361,7 +361,7 @@ async function listCreditTransactions(companyId, customerId) {
            COALESCE(
              json_agg(
                json_build_object('name', p.product_name, 'qty', sti.quantity)
-               ORDER BY sti.sales_transaction_item_id
+               ORDER BY sti.item_id
              ) FILTER (WHERE p.product_name IS NOT NULL),
              '[]'
            ) AS items

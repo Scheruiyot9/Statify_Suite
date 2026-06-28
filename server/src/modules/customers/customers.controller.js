@@ -67,8 +67,7 @@ const customerLedger = async (req, res) => {
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('[customerLedger] error:', err.message, err.stack);
-    // Temporary: expose real error so we can diagnose the 500
-    res.status(500).json({ success: false, message: err.message, code: err.code || null });
+    throw err;
   }
 };
 
