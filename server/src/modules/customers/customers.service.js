@@ -259,14 +259,16 @@ async function _generateCode(companyId) {
 
 async function getCustomerLedger(companyId, customerId) {
   const { rows: [cust] } = await query(
-    `SELECT customer_id, customer_name, credit_balance, credit_limit
+    `SELECT customer_id, customer_name, credit_balance, credit_limit, allow_credit
      FROM customers WHERE company_id = $1 AND customer_id = $2 AND deleted_at IS NULL`,
     [companyId, customerId]
   );
   if (!cust) throw AppError.notFound('Customer');
 
-  const [salesRes, paymentsRes] = await Promise.all([
-    query(`
+  let salesRes, paymentsRes;
+
+  try {
+    salesRes = await query(`
       SELECT st.transaction_id, st.transaction_number, st.transaction_date,
              st.total_amount::numeric, st.payment_status,
              COALESCE(json_agg(
@@ -281,9 +283,14 @@ async function getCustomerLedger(companyId, customerId) {
       GROUP BY st.transaction_id, st.transaction_number, st.transaction_date,
                st.total_amount, st.payment_status
       ORDER BY st.transaction_date ASC
-    `, [companyId, customerId]),
+    `, [companyId, customerId]);
+  } catch (err) {
+    console.error('[getCustomerLedger] sales query failed:', err.message);
+    throw err;
+  }
 
-    query(`
+  try {
+    paymentsRes = await query(`
       SELECT je.journal_entry_id, je.entry_date, je.description,
              jel.credit::numeric AS amount
       FROM journal_entries je
@@ -292,8 +299,11 @@ async function getCustomerLedger(companyId, customerId) {
         AND jel.entity_id = $2
         AND jel.credit > 0 AND je.status = 'posted'
       ORDER BY je.entry_date ASC
-    `, [companyId, customerId]),
-  ]);
+    `, [companyId, customerId]);
+  } catch (err) {
+    console.error('[getCustomerLedger] payments query failed:', err.message);
+    paymentsRes = { rows: [] };   // degrade gracefully — show sales even if payments fail
+  }
 
   // Aging from unpaid/partial sales
   const today = new Date();
