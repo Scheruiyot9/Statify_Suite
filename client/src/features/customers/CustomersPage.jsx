@@ -199,28 +199,6 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransa
         )}
         {customer.notes && <div className="col-span-full text-gray-500 text-xs">{customer.notes}</div>}
       </div>
-      {customer.recent_transactions?.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Recent Purchases</p>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {customer.recent_transactions.map((t) => (
-              <button
-                key={t.transaction_id ?? t.transaction_number}
-                onClick={() => onViewTransaction?.(t.transaction_id)}
-                className="w-full flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm hover:bg-gray-50 hover:border-gray-200 transition-colors text-left"
-              >
-                <span className="font-mono text-xs text-gray-500 flex items-center gap-1">
-                  {t.transaction_number}
-                  {t.is_credit_sale && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-600">Credit</span>}
-                  <ExternalLink className="h-2.5 w-2.5 text-gray-300" />
-                </span>
-                <span className="text-gray-400 text-xs">{formatDate(t.transaction_date)}</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(t.total_amount)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -397,9 +375,9 @@ export default function CustomersPage() {
                   {canManageCustomers && (
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
-                        <button onClick={() => setModal(c)}
+                        <button onClick={() => setDetail(c.customer_id)}
                           className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                          Edit
+                          View
                         </button>
                         {c.allow_credit && (
                           <button onClick={() => navigate(`/app/customers/${c.customer_id}/ledger`)}

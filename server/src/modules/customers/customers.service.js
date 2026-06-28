@@ -270,7 +270,7 @@ async function getCustomerLedger(companyId, customerId) {
       SELECT st.transaction_id, st.transaction_number, st.transaction_date,
              st.total_amount::numeric, st.payment_status,
              COALESCE(json_agg(json_build_object('name', p.product_name, 'qty', sti.quantity::numeric)
-                       ORDER BY sti.sales_transaction_item_id) FILTER (WHERE p.product_name IS NOT NULL), '[]') AS items
+                       ORDER BY sti.sales_transaction_item_id) FILTER (WHERE p.product_name IS NOT NULL), '[]'::json) AS items
       FROM sales_transactions st
       LEFT JOIN sales_transaction_items sti ON sti.transaction_id = st.transaction_id
       LEFT JOIN products p ON p.product_id = sti.product_id
@@ -287,7 +287,7 @@ async function getCustomerLedger(companyId, customerId) {
       JOIN ledger_entry_lines jel ON jel.journal_entry_id = je.journal_entry_id
       JOIN accounts a ON a.account_id = jel.account_id AND a.account_code = '1100'
       WHERE je.company_id = $1 AND je.source_type = 'CREDIT_PAYMENT'
-        AND jel.entity_id = $2::uuid AND jel.credit > 0 AND je.status = 'posted'
+        AND jel.entity_id = $2 AND jel.credit > 0 AND je.status = 'posted'
       ORDER BY je.entry_date ASC
     `, [companyId, customerId]),
   ]);

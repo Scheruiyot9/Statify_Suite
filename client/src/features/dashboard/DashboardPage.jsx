@@ -91,6 +91,8 @@ function groupTrend(trend, days, period) {
 
 // ── Mini bar chart ─────────────────────────────────────────────────────────────
 function BarChart({ data }) {
+  const [hovered, setHovered] = useState(null);
+
   if (!data?.length) return <div className="flex h-24 items-center justify-center text-xs text-gray-300">No data</div>;
   const vals = data.map((d) => d.value ?? d.total ?? 0);
   const max  = Math.max(...vals, 1);
@@ -100,8 +102,11 @@ function BarChart({ data }) {
   const gap   = count > 20 ? 1 : count > 10 ? 2 : 5;
   const barW  = Math.max(3, (W - gap * (count - 1)) / count);
   const maxIdx = vals.indexOf(Math.max(...vals));
+
+  const tipW = 80; const tipH = 16;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full cursor-crosshair" aria-hidden
+      onMouseLeave={() => setHovered(null)}>
       <defs>
         <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#FFA916" stopOpacity="1" />
@@ -126,7 +131,9 @@ function BarChart({ data }) {
           ? d.showLabel
           : count <= 10 || i % Math.ceil(count / 10) === 0 || i === count - 1;
         return (
-          <g key={d.date ?? i}>
+          <g key={d.date ?? i}
+            onMouseEnter={() => !isEmpty && setHovered({ x, y, val, barW, label: d.label })}
+            onMouseLeave={() => setHovered(null)}>
             <rect x={x} y={isEmpty ? chartH - 2 : y} width={barW} height={isEmpty ? 2 : bh}
               fill={isEmpty ? '#E5E7EB' : isPeak ? 'url(#barGradPeak)' : 'url(#barGrad)'} rx="2" />
             {showLabel && (
@@ -139,6 +146,28 @@ function BarChart({ data }) {
           </g>
         );
       })}
+      {hovered && (() => {
+        const cx  = hovered.x + hovered.barW / 2;
+        const tx  = Math.min(Math.max(cx, tipW / 2 + 2), W - tipW / 2 - 2);
+        const ty  = Math.max(hovered.y - 6, tipH + 2);
+        const tip = formatCurrency(hovered.val);
+        return (
+          <g style={{ pointerEvents: 'none' }}>
+            <rect x={tx - tipW / 2} y={ty - tipH} width={tipW} height={tipH} rx="3"
+              fill="#1F2937" fillOpacity="0.88" />
+            <text x={tx} y={ty - tipH / 2 + 3} textAnchor="middle" fontSize="8"
+              fill="white" fontFamily="system-ui, sans-serif" fontWeight="600">
+              {tip}
+            </text>
+            {hovered.label && (
+              <text x={tx} y={ty - tipH - 2} textAnchor="middle" fontSize="7"
+                fill="#6B7280" fontFamily="system-ui, sans-serif">
+                {hovered.label}
+              </text>
+            )}
+          </g>
+        );
+      })()}
     </svg>
   );
 }
