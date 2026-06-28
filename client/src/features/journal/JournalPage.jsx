@@ -1235,65 +1235,72 @@ export default function JournalPage() {
         <Modal open title={aeDetail?.entry_number ?? 'Entry Detail'} onClose={() => setAeSelected(null)} size="lg">
           {aeDetailLoading ? (
             <div className="py-16 text-center text-gray-400">Loading…</div>
-          ) : aeDetail ? (
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-base font-bold text-gray-900 font-mono leading-tight">{aeDetail.entry_number}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 break-words">{String(aeDetail.entry_date).slice(0, 10)} · {aeDetail.description}</p>
+          ) : aeDetail ? (() => {
+            const totalDr = (aeDetail.lines ?? []).reduce((s, l) => s + l.debit,  0);
+            const totalCr = (aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0);
+            const badgeClass =
+              aeDetail.source_type === 'SALE'                 ? 'bg-green-100 text-green-700' :
+              aeDetail.source_type === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
+              aeDetail.source_type === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
+              aeDetail.source_type === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
+              'bg-gray-100 text-gray-600';
+            return (
+              <div className="space-y-4">
+                {/* Meta row */}
+                <div className="flex items-start justify-between gap-3 border-b pb-3">
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="text-xs text-gray-400">{String(aeDetail.entry_date).slice(0, 10)}</p>
+                    {aeDetail.description && (
+                      <p className="text-sm text-gray-700 break-words">{aeDetail.description}</p>
+                    )}
+                    {aeDetail.created_by && (
+                      <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
+                    )}
+                  </div>
+                  <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeClass}`}>
+                    {aeDetail.source_type?.replace(/_/g, ' ')}
+                  </span>
                 </div>
-                <span className={`flex-shrink-0 inline-block rounded-full px-2.5 py-1 text-xs font-semibold text-center ${
-                  aeDetail.source_type === 'SALE'                 ? 'bg-green-100 text-green-700' :
-                  aeDetail.source_type === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
-                  aeDetail.source_type === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
-                  aeDetail.source_type === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
-                  'bg-gray-100 text-gray-600'
-                }`}>
-                  {aeDetail.source_type?.replace(/_/g, ' ')}
-                </span>
-              </div>
-              <div className="overflow-x-auto rounded-xl border">
-                <table className="w-full text-sm min-w-[380px]">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Account</th>
-                      <th className="hidden sm:table-cell text-left px-3 py-2 font-medium text-gray-600">Description</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Debit</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Credit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {(aeDetail.lines ?? []).map((l) => (
-                      <tr key={l.lineId}>
-                        <td className="px-3 py-2 text-xs">
-                          <span className="font-mono text-gray-500 mr-1">{l.accountCode}</span>
-                          <span className="text-gray-800">{l.accountName}</span>
-                          {l.entityName && <p className="text-[10px] text-gray-400 mt-0.5">{l.entityName}</p>}
-                        </td>
-                        <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{l.description ?? '—'}</td>
-                        <td className="px-3 py-2 text-xs text-right font-mono">{l.debit > 0 ? fmt(l.debit) : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-right font-mono">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+
+                {/* Lines table */}
+                <div className="rounded-xl border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Account</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-gray-600 w-28">Debit</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-gray-600 w-28">Credit</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-50 border-t">
-                    <tr>
-                      <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-700">Total</td>
-                      <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
-                        {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.debit, 0))}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-right font-mono font-semibold">
-                        {fmt((aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(aeDetail.lines ?? []).map((l) => (
+                        <tr key={l.lineId}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-mono text-xs text-gray-400 flex-shrink-0">{l.accountCode}</span>
+                              <span className="text-sm text-gray-800">{l.accountName}</span>
+                            </div>
+                            {(l.entityName || l.description) && (
+                              <p className="mt-0.5 text-xs text-gray-400 pl-0">{l.entityName || l.description}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-sm">{l.debit  > 0 ? fmt(l.debit)  : '—'}</td>
+                          <td className="px-4 py-3 text-right font-mono text-sm">{l.credit > 0 ? fmt(l.credit) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                      <tr>
+                        <td className="px-4 py-2.5 font-semibold text-gray-700">Total</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold">{fmt(totalDr)}</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold">{fmt(totalCr)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
-              {aeDetail.created_by && (
-                <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
-              )}
-            </div>
-          ) : null}
+            );
+          })() : null}
         </Modal>
       )}
     </div>
