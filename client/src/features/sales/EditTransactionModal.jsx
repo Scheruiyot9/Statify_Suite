@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Plus, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
-import { formatCurrency, formatDateTime } from '@/utils/formatters';
+import { formatCurrency, formatDateTime, todayLocal } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 
@@ -277,7 +277,7 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
             <input
               type="date"
               value={transactionDate}
-              max={new Date().toISOString().slice(0, 10)}
+              max={todayLocal()}
               onChange={(e) => setTransactionDate(e.target.value)}
               className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-800 focus:border-primary-500 focus:outline-none"
             />

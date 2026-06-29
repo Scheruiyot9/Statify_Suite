@@ -86,6 +86,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     orderDiscount = 0,
     idempotencyKey,
     isCreditSale = false,
+    effectiveTotal,
   } = data;
 
   if (!items?.length)    throw AppError.badRequest('Cart is empty');
@@ -166,7 +167,11 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     const itemDiscounts  = items.reduce((s, i) => s + parseFloat(i.discount   || 0), 0);
     const loyaltyDiscount = loyaltyPointsRedeemed * redeemRate;
     const discountAmt    = itemDiscounts + loyaltyDiscount + parseFloat(orderDiscount || 0);
-    const totalAmount    = Math.max(0, subtotal - loyaltyDiscount - parseFloat(orderDiscount || 0));
+    // Use the POS-rounded total when provided (rounding applied in frontend); else compute from items
+    const baseTotal      = Math.max(0, subtotal - loyaltyDiscount - parseFloat(orderDiscount || 0));
+    const totalAmount    = (effectiveTotal != null && parseFloat(effectiveTotal) > 0)
+      ? parseFloat(effectiveTotal)
+      : baseTotal;
 
     const totalPaid     = isCreditSale ? 0 : payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
     const paymentStatus = isCreditSale ? 'partial' : (totalPaid >= totalAmount ? 'paid' : 'partial');

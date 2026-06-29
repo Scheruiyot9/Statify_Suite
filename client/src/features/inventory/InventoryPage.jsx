@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, AlertTriangle, Plus, Minus, Layers, BookOpen, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, ClipboardCheck, X, Download, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, todayLocal } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
@@ -302,7 +302,7 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
       ws['!cols'] = [{ wch: 14 }, { wch: 36 }, { wch: 20 }, { wch: 12 }, { wch: 8 }, { wch: 14 }];
       const wb = utils.book_new();
       utils.book_append_sheet(wb, ws, 'Stock Count');
-      writeFile(wb, `stock_count_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      writeFile(wb, `stock_count_${todayLocal()}.xlsx`);
     });
   };
 

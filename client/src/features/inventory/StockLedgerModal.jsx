@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 import api from '@/services/api';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, todayLocal } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import { PageSpinner } from '@/components/ui/Spinner';
 
@@ -35,7 +35,7 @@ export function MovementBadge({ type }) {
  *   productName — string|null  (used for modal title)
  */
 export default function StockLedgerModal({ open, onClose, productId = null, productName = null, branchId = null, branchName = null }) {
-  const today     = new Date().toISOString().slice(0, 10);
+  const today     = todayLocal();
   const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
 
   const [search,   setSearch]   = useState('');

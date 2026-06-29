@@ -11,7 +11,8 @@ const seed   = async (req, res) => ok(res, await svc.seedDefaults(req.tenantId))
 
 const balance      = async (req, res) => ok(res, await svc.getAccountBalance(req.tenantId, req.params.id));
 const ledger       = async (req, res) => ok(res, await svc.getAccountLedger(req.tenantId, req.params.id, req.query));
-const journalEntry = async (req, res) => ok(res, await svc.getJournalEntry(req.tenantId, req.params.entryId));
-const voidEntry    = async (req, res) => ok(res, await journalSvc.voidJournalEntry(req.tenantId, req.params.entryId, req.user.userId, req.body.reason));
+const journalEntry  = async (req, res) => ok(res, await svc.getJournalEntry(req.tenantId, req.params.entryId));
+const voidEntry     = async (req, res) => ok(res, await journalSvc.voidJournalEntry(req.tenantId, req.params.entryId, req.user.userId, req.body.reason));
+const patchEntryDate = async (req, res) => ok(res, await svc.patchEntryDate(req.tenantId, req.params.entryId, req.body.entryDate));
 
-module.exports = { list, getOne, create, update, remove, seed, balance, ledger, journalEntry, voidEntry };
+module.exports = { list, getOne, create, update, remove, seed, balance, ledger, journalEntry, voidEntry, patchEntryDate };

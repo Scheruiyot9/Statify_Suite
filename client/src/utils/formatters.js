@@ -1,3 +1,7 @@
+// Returns today's date as YYYY-MM-DD in local time (not UTC).
+// Use everywhere instead of new Date().toISOString().slice(0,10).
+export const todayLocal = () => new Intl.DateTimeFormat('en-CA').format(new Date());
+
 export const formatCurrency = (amount, currency = 'KES') => {
   const raw = new Intl.NumberFormat('en-KE', { style: 'currency', currency }).format(amount ?? 0);
   return raw.replace(/^KSh\s?|^KES\s?|^\$\s?/, 'Ksh ');

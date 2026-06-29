@@ -12,7 +12,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore } from '@/app/store';
-import { formatDate, formatCurrency } from '@/utils/formatters';
+import { formatDate, formatCurrency, todayLocal } from '@/utils/formatters';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ImageUpload from '@/components/ui/ImageUpload';
@@ -502,7 +502,7 @@ function computeAmount(plan, period) {
 
 function RecordSubscriptionModal({ companyId: initialCompanyId, companies = [], plans, onClose }) {
   const qc  = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId ?? '');
   const companyId = selectedCompanyId;
@@ -2954,7 +2954,7 @@ function ReportsPanel({ companies }) {
   const [companyId,  setCompanyId]  = useState('');
   const [reportId,   setReportId]   = useState('sales');
   const [startDate,  setStartDate]  = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
-  const [endDate,    setEndDate]    = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDate,    setEndDate]    = useState(() => todayLocal());
   const [branchId,   setBranchId]   = useState('');
   const [runKey,     setRunKey]     = useState(null);
 
@@ -3130,7 +3130,7 @@ function ReportsPanel({ companies }) {
 
 function ApproveRequestModal({ request, plans, onClose }) {
   const qc    = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   const plan = plans.find((p) => p.plan_id === request.plan_id);
 

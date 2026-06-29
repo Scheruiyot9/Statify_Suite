@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
-import { formatCurrency, formatDateTime, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDateTime, formatDate, todayLocal } from '@/utils/formatters';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
@@ -329,7 +329,7 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
         <input
           type="date"
           value={workDate}
-          max={new Date().toISOString().slice(0, 10)}
+          max={todayLocal()}
           onChange={(e) => setWorkDate(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
         />

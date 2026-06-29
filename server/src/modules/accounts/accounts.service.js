@@ -238,4 +238,27 @@ async function getJournalEntry(companyId, journalEntryId) {
   };
 }
 
-module.exports = { listAccounts, getAccount, createAccount, updateAccount, deleteAccount, seedDefaults, getAccountBalance, getAccountLedger, getJournalEntry };
+async function patchEntryDate(companyId, journalEntryId, entryDate) {
+  const { rows: [je] } = await query(
+    `SELECT status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2`,
+    [journalEntryId, companyId]
+  );
+  if (!je) throw AppError.notFound('Journal entry');
+  if (je.status === 'void') throw AppError.conflict('Cannot change date on a voided entry');
+
+  const dateStr = entryDate.slice(0, 10);
+  await transaction(async (client) => {
+    await client.query(
+      `UPDATE journal_entries SET entry_date = $1 WHERE journal_entry_id = $2`,
+      [dateStr, journalEntryId]
+    );
+    // Also sync the journals record if one exists (MANUAL source_type only)
+    await client.query(
+      `UPDATE journals SET entry_date = $1, updated_at = now() WHERE ledger_entry_id = $2`,
+      [dateStr, journalEntryId]
+    );
+  });
+  return getJournalEntry(companyId, journalEntryId);
+}
+
+module.exports = { listAccounts, getAccount, createAccount, updateAccount, deleteAccount, seedDefaults, getAccountBalance, getAccountLedger, getJournalEntry, patchEntryDate };

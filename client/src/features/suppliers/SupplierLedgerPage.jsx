@@ -7,9 +7,9 @@ import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, todayLocal } from '@/utils/formatters';
 
-const todayISO = new Date().toISOString().slice(0, 10);
+const todayISO = todayLocal();
 const toISO    = (d) => d.toISOString().slice(0, 10);
 
 const SOURCE_COLORS = {
@@ -23,11 +23,26 @@ const SOURCE_COLORS = {
 // ── Entry Lines Modal ─────────────────────────────────────────────────────────
 
 function EntryLinesModal({ entryId, onClose, onReverse }) {
+  const qc = useQueryClient();
   const { data: j, isLoading, error } = useQuery({
     queryKey: ['journal-entry', entryId],
     queryFn:  () => api.get(`/accounts/entry/${entryId}`).then((r) => r.data.data),
     enabled:  !!entryId,
     retry: false,
+  });
+
+  const [editingDate, setEditingDate] = useState(false);
+  const [newDate,     setNewDate]     = useState('');
+
+  const dateMut = useMutation({
+    mutationFn: (d) => api.patch(`/accounts/entry/${entryId}/date`, { entryDate: d }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Date updated');
+      qc.invalidateQueries({ queryKey: ['journal-entry', entryId] });
+      qc.invalidateQueries({ queryKey: ['supplier-ledger'] });
+      setEditingDate(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message ?? e.message),
   });
 
   const fmt     = (n) => n > 0 ? formatCurrency(n) : '';
@@ -40,16 +55,36 @@ function EntryLinesModal({ entryId, onClose, onReverse }) {
         isLoading ? 'Loading…' : (
           <div>
             <p className="text-sm font-semibold text-gray-900 font-mono">{j?.journal_number}</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {j?.entry_date ? String(j.entry_date).slice(0, 10) : ''}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {editingDate ? (
+                <div className="flex items-center gap-1.5">
+                  <input type="date" autoFocus
+                    className="border rounded px-1.5 py-0.5 text-xs focus:border-primary-500 focus:outline-none"
+                    value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  <button onClick={() => dateMut.mutate(newDate)} disabled={!newDate || dateMut.isPending}
+                    className="px-2 py-0.5 text-xs rounded bg-primary-600 text-white disabled:opacity-40">
+                    {dateMut.isPending ? '…' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditingDate(false)}
+                    className="px-2 py-0.5 text-xs rounded border text-gray-600 hover:bg-gray-100">✕</button>
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400">
+                  {j?.entry_date ? String(j.entry_date).slice(0, 10) : ''}
+                  {j?.status !== 'void' && (
+                    <button onClick={() => { setNewDate(String(j?.entry_date ?? '').slice(0, 10)); setEditingDate(true); }}
+                      className="ml-1.5 text-primary-600 underline hover:text-primary-800">edit</button>
+                  )}
+                </span>
+              )}
               {j?.status && (
-                <span className={`ml-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
                   j.status === 'posted' ? 'bg-green-100 text-green-700'
                   : j.status === 'void' ? 'bg-red-100 text-red-600'
                   : 'bg-gray-100 text-gray-600'
                 }`}>{j.status}</span>
               )}
-            </p>
+            </div>
           </div>
         )
       }

@@ -8,7 +8,7 @@ import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, todayLocal } from '@/utils/formatters';
 
 const inp = 'w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 const sel = inp + ' bg-white';
@@ -202,7 +202,7 @@ function printTrialBalance(data, asOf) {
 
 // ── Trial Balance Tab ─────────────────────────────────────────────────────────
 
-const todayISO = new Date().toISOString().slice(0, 10);
+const todayISO = todayLocal();
 
 const TB_TYPE_COLORS = {
   asset:     'text-blue-700',
@@ -519,7 +519,7 @@ export default function AccountsPage() {
   });
 
   // Fetch trial balance to get Dr/Cr amounts per account (best-effort — no spinner on failure)
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayLocal();
   const { data: tbData } = useQuery({
     queryKey: ['trial-balance-coa', todayStr],
     queryFn:  () => api.get('/reports/trial-balance', { params: { asOf: todayStr } }).then((r) => r.data.data),

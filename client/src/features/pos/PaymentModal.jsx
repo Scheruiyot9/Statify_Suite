@@ -757,6 +757,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       notes,
       loyaltyPointsRedeemed: pointsToRedeem,
       orderDiscount:         cartTotals.orderDiscountAmt,
+      effectiveTotal:        effectiveTotal,
       items: buildItemsPayload(),
       payments: paymentLines.map((l) => {
         const m      = methods.find((m) => m.payment_method_id === l.methodId);

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+import { todayLocal } from '@/utils/formatters';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 
@@ -720,7 +721,7 @@ export default function JournalPage() {
 
   // ── Journal entries state ──
   const [startDate,    setStartDate]    = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
-  const [endDate,      setEndDate]      = useState(new Date().toISOString().slice(0, 10));
+  const [endDate,      setEndDate]      = useState(todayLocal());
   const [statusFilter, setStatusFilter] = useState('');
   const [page,         setPage]         = useState(1);
   const [selectedId,   setSelectedId]   = useState(null);
@@ -730,12 +731,12 @@ export default function JournalPage() {
 
   // ── Cash outs state ──
   const [coStart, setCoStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
-  const [coEnd,   setCoEnd]   = useState(new Date().toISOString().slice(0, 10));
+  const [coEnd,   setCoEnd]   = useState(todayLocal());
   const [coPage,  setCoPage]  = useState(1);
 
   // ── Posted entries (auto-generated) state ──
   const [aeStart,      setAeStart]      = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
-  const [aeEnd,        setAeEnd]        = useState(new Date().toISOString().slice(0, 10));
+  const [aeEnd,        setAeEnd]        = useState(todayLocal());
   const [aeSourceType, setAeSourceType] = useState('!SALE'); // default: hide per-sale entries
   const [aePage,       setAePage]       = useState(1);
   const [aeSelected,   setAeSelected]   = useState(null);
@@ -743,7 +744,7 @@ export default function JournalPage() {
   // ── Post unposted state ──
   const [postMode,      setPostMode]      = useState('combined');
   const [postBranchId,  setPostBranchId]  = useState('');
-  const [postDate,      setPostDate]      = useState(new Date().toISOString().slice(0, 10));
+  const [postDate,      setPostDate]      = useState(todayLocal());
   const [showPostPanel, setShowPostPanel] = useState(false);
   const postPanelRef = useRef(null);
 

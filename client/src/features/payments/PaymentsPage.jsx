@@ -6,7 +6,7 @@ import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, todayLocal } from '@/utils/formatters';
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 const sel = inp + ' bg-white';
@@ -57,7 +57,7 @@ function PaymentModal({ onClose }) {
     supplier_id:     '',
     branch_id:       '',
     bank_account_id: '',
-    payment_date:    new Date().toISOString().slice(0, 10),
+    payment_date:    todayLocal(),
     payment_method:  'bank_transfer',
     reference_number:'',
     notes:           '',

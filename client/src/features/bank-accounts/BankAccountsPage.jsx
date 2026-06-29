@@ -7,7 +7,7 @@ import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, todayLocal } from '@/utils/formatters';
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 const sel = inp + ' bg-white';
@@ -337,7 +337,7 @@ function BankLedgerModal({ account, onClose }) {
 function ReconciliationModal({ account, onClose }) {
   const qc = useQueryClient();
   const [startDate, setStart] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10));
-  const [endDate,   setEnd]   = useState(new Date().toISOString().slice(0, 10));
+  const [endDate,   setEnd]   = useState(todayLocal());
   const [selected,  setSelected] = useState(new Set());
 
   const { data, isLoading, refetch } = useQuery({

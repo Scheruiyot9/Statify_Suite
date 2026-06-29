@@ -11,7 +11,7 @@ import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { PageSpinner } from '@/components/ui/Spinner';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, todayLocal } from '@/utils/formatters';
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 const sel = inp + ' bg-white';
@@ -185,7 +185,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
   const [form, setForm] = useState({
     supplier_id:   po?.supplier_id   ?? '',
     branch_id:     po?.branch_id     ?? (branches[0]?.branch_id ?? ''),
-    order_date:    po?.order_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    order_date:    po?.order_date?.slice(0, 10) ?? todayLocal(),
     expected_date: po?.expected_date?.slice(0, 10) ?? '',
     notes:         po?.notes         ?? '',
   });
@@ -450,7 +450,7 @@ function GRNItemRow({ item, onChange }) {
 function GRNModal({ po, onClose }) {
   const qc = useQueryClient();
 
-  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [receivedDate, setReceivedDate] = useState(todayLocal());
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState(
     (po.items ?? [])

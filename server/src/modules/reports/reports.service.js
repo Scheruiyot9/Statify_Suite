@@ -335,7 +335,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
     sessionFilter = `AND st.pos_session_id = $${filterParams.length}`;
   }
 
-  const [summaryRes, trendRes, topProdsRes, categoriesRes, cashiersRes] = await Promise.all([
+  const [summaryRes, trendRes, topProdsRes, categoriesRes, cashiersRes, creditCollectedRes] = await Promise.all([
     query(`
       SELECT
         COALESCE(SUM(total_amount), 0)::numeric AS total_sales,
@@ -395,6 +395,19 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       GROUP BY st.cashier_user_id, u.first_name, u.last_name
       ORDER BY total_sales DESC
     `, filterParams),
+
+    // Credit payments collected in period (CR to AR account 1100 from CREDIT_PAYMENT entries)
+    query(`
+      SELECT COALESCE(SUM(jel.credit), 0)::numeric AS credit_collected
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a ON a.account_id = jel.account_id
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid)
+        AND je.status = 'posted'
+        AND je.source_type = 'CREDIT_PAYMENT'
+        AND a.account_code = '1100'
+        AND je.entry_date BETWEEN $2 AND $3
+    `, [companyId, start, end]),
   ]);
 
   const s = summaryRes.rows[0];
@@ -407,6 +420,7 @@ async function getSalesReport(companyId, role, branchIds, { startDate, endDate, 
       uniqueCustomers:  parseInt(s.unique_customers),
       creditSaleCount:  parseInt(s.credit_sale_count),
       creditSaleAmount: parseFloat(s.credit_sale_amount),
+      creditCollected:  parseFloat(creditCollectedRes.rows[0].credit_collected),
     },
     trend:       trendRes.rows.map((r) => ({ date: r.sale_date, total: parseFloat(r.total), txnCount: r.txn_count })),
     topProducts: topProdsRes.rows.map((r) => ({ productName: r.product_name, sku: r.sku, qtySold: parseFloat(r.qty_sold), revenue: parseFloat(r.revenue) })),
@@ -421,7 +435,7 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const end   = endDate   || new Date().toISOString().slice(0, 10);
 
-  const [jeRes, txnCountRes, returnsRes, paymentBreakRes] = await Promise.all([
+  const [jeRes, txnCountRes, returnsRes, paymentBreakRes, creditCollectedRes] = await Promise.all([
     // Journal P&L: revenue, expense, and VAT Payable accounts for the period
     query(`
       SELECT
@@ -472,6 +486,19 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       GROUP BY pm.method_name
       ORDER BY amount DESC
     `, [companyId, start, end]),
+
+    // Credit payments collected in period (CR to AR account 1100 from CREDIT_PAYMENT entries)
+    query(`
+      SELECT COALESCE(SUM(jel.credit), 0)::numeric AS credit_collected
+      FROM ledger_entry_lines jel
+      JOIN journal_entries je ON je.journal_entry_id = jel.journal_entry_id
+      JOIN accounts a ON a.account_id = jel.account_id
+      WHERE ($1::uuid IS NULL OR je.company_id = $1::uuid)
+        AND je.status = 'posted'
+        AND je.source_type = 'CREDIT_PAYMENT'
+        AND a.account_code = '1100'
+        AND je.entry_date BETWEEN $2 AND $3
+    `, [companyId, start, end]),
   ]);
 
   // Build map: account_code → journal row
@@ -515,9 +542,10 @@ async function getPLReport(companyId, { startDate, endDate } = {}) {
       totalReturns:  +totalReturns.toFixed(2),
       returnCount:   parseInt(returnsRes.rows[0].return_count),
       netRevenue:    +netRevenue.toFixed(2),
-      txnCount:        parseInt(txnCountRes.rows[0].txn_count),
+      txnCount:         parseInt(txnCountRes.rows[0].txn_count),
       creditSaleCount:  parseInt(txnCountRes.rows[0].credit_sale_count),
       creditSaleAmount: parseFloat(txnCountRes.rows[0].credit_sale_amount),
+      creditCollected:  parseFloat(creditCollectedRes.rows[0].credit_collected),
     },
     cogs:             +cogs.toFixed(2),
     grossProfit:      +grossProfit.toFixed(2),
@@ -1144,7 +1172,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
 
   // Classify movements into cash flow categories
   const cf = {
-    operating: { receiptsFromCustomers: 0, arCollections: 0, refundsToCustomers: 0, paymentsToSuppliers: 0, supplierPaymentVoids: 0 },
+    operating: { receiptsFromCustomers: 0, arCollections: 0, creditCollections: 0, refundsToCustomers: 0, paymentsToSuppliers: 0, supplierPaymentVoids: 0 },
     financing: { openingDeposits: 0 },
     other:     { net: 0 },
   };
@@ -1154,17 +1182,19 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
     const outflow = parseFloat(r.cash_out);
     const net     = inflow - outflow;
     switch (r.source_type) {
-      case 'SALE':           cf.operating.receiptsFromCustomers += inflow;  break;
-      case 'AR_SETTLEMENT':  cf.operating.arCollections        += inflow;  break;
-      case 'RETURN':         cf.operating.refundsToCustomers   -= outflow; break;
-      case 'PAYMENT':        cf.operating.paymentsToSuppliers  -= outflow; break;
-      case 'PAYMENT_VOID':   cf.operating.supplierPaymentVoids += inflow;  break;
-      case 'OPENING':        cf.financing.openingDeposits      += net;     break;
-      default:               cf.other.net                      += net;     break;
+      case 'SALE':             cf.operating.receiptsFromCustomers += inflow;  break;
+      case 'AR_SETTLEMENT':    cf.operating.arCollections         += inflow;  break;
+      case 'CREDIT_PAYMENT':   cf.operating.creditCollections     += inflow;  break;
+      case 'RETURN':           cf.operating.refundsToCustomers    -= outflow; break;
+      case 'PAYMENT':          cf.operating.paymentsToSuppliers   -= outflow; break;
+      case 'PAYMENT_VOID':     cf.operating.supplierPaymentVoids  += inflow;  break;
+      case 'OPENING':          cf.financing.openingDeposits       += net;     break;
+      default:                 cf.other.net                       += net;     break;
     }
   }
 
   const netOperating  = cf.operating.receiptsFromCustomers + cf.operating.arCollections
+                      + cf.operating.creditCollections
                       + cf.operating.refundsToCustomers + cf.operating.paymentsToSuppliers
                       + cf.operating.supplierPaymentVoids;
   const netFinancing  = cf.financing.openingDeposits;
@@ -1181,6 +1211,7 @@ async function getCashFlowStatement(companyId, { startDate, endDate } = {}) {
     operating: {
       receiptsFromCustomers: r2(cf.operating.receiptsFromCustomers),
       arCollections:         r2(cf.operating.arCollections),
+      creditCollections:     r2(cf.operating.creditCollections),
       refundsToCustomers:    r2(cf.operating.refundsToCustomers),
       paymentsToSuppliers:   r2(cf.operating.paymentsToSuppliers),
       supplierPaymentVoids:  r2(cf.operating.supplierPaymentVoids),

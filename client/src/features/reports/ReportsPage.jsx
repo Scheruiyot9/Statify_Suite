@@ -348,7 +348,8 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
       </div>
       {(s?.creditSaleCount ?? 0) > 0 && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-          <KPICard label="Credit Sales"   value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount} txn${s?.creditSaleCount !== 1 ? 's' : ''} charged to account`} />
+          <KPICard label="Credit Sales"      value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount} txn${s?.creditSaleCount !== 1 ? 's' : ''} charged to account`} />
+          <KPICard label="Credit Collected"  value={formatCurrency(s?.creditCollected ?? 0)} icon={ArrowDownLeft} sub="Cash received for credit invoices" />
           <KPICard label="Cash / Paid Sales" value={formatCurrency((s?.totalSales ?? 0) - (s?.creditSaleAmount ?? 0))} icon={TrendingUp} sub="Collected at counter" />
         </div>
       )}
@@ -521,6 +522,8 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <KPICard label="Credit Sales" value={formatCurrency(income.creditSaleAmount)} icon={ShoppingCart}
             sub={`${income.creditSaleCount} txn${income.creditSaleCount !== 1 ? 's' : ''} — charged to account`} />
+          <KPICard label="Credit Collected" value={formatCurrency(income.creditCollected ?? 0)} icon={ArrowDownLeft}
+            sub="Cash received for credit invoices" />
           <KPICard label="Cash / Paid Sales" value={formatCurrency(income.grossRevenue - income.creditSaleAmount)} icon={TrendingUp}
             sub="Collected at counter" />
         </div>
@@ -904,6 +907,8 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
       <h2>Operating Activities</h2>
       <table><tbody>
         <tr><td style="padding-left:16px">Receipts from customers</td><td class="r">${fc(op.receiptsFromCustomers)}</td></tr>
+        ${(op.arCollections ?? 0) > 0 ? `<tr><td style="padding-left:16px">AR collections</td><td class="r">${fc(op.arCollections)}</td></tr>` : ''}
+        ${(op.creditCollections ?? 0) > 0 ? `<tr><td style="padding-left:16px">Credit payment collections</td><td class="r">${fc(op.creditCollections)}</td></tr>` : ''}
         <tr><td style="padding-left:16px">Refunds to customers</td><td class="r">${fc(op.refundsToCustomers)}</td></tr>
         <tr><td style="padding-left:16px">Payments to suppliers</td><td class="r">${fc(op.paymentsToSuppliers)}</td></tr>
         <tr class="b"><td>Net Operating Cash Flow</td><td class="r ${(op.net ?? 0) >= 0 ? 'grn' : 'red'}">${fc(op.net)}</td></tr>
@@ -956,13 +961,14 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
 
       <div className="grid gap-5 lg:grid-cols-2">
         <SectionCard title="Operating Activities">
-          <Row label="Receipts from customers"   value={op.receiptsFromCustomers ?? 0} indent />
-          {(op.arCollections ?? 0) > 0 && <Row label="AR collections"  value={op.arCollections ?? 0} indent />}
-          <Row label="Refunds to customers"      value={op.refundsToCustomers    ?? 0} indent />
-          <Row label="Payments to suppliers"     value={op.paymentsToSuppliers   ?? 0} indent />
+          <Row label="Receipts from customers"      value={op.receiptsFromCustomers ?? 0} indent />
+          {(op.arCollections ?? 0) > 0    && <Row label="AR collections"              value={op.arCollections    ?? 0} indent />}
+          {(op.creditCollections ?? 0) > 0 && <Row label="Credit payment collections" value={op.creditCollections ?? 0} indent />}
+          <Row label="Refunds to customers"         value={op.refundsToCustomers    ?? 0} indent />
+          <Row label="Payments to suppliers"        value={op.paymentsToSuppliers   ?? 0} indent />
           {(op.supplierPaymentVoids ?? 0) !== 0 &&
             <Row label="Supplier payment reversals" value={op.supplierPaymentVoids ?? 0} indent />}
-          <Row label="Net Operating Cash Flow"   value={op.net ?? 0} bold positive />
+          <Row label="Net Operating Cash Flow"      value={op.net ?? 0} bold positive />
         </SectionCard>
 
         <SectionCard title="Financing Activities">
