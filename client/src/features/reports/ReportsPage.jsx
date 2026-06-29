@@ -346,11 +346,16 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
             : 0
         )} icon={BarChart2} sub={`${(data?.trend ?? []).filter((d) => d.total > 0).length} active days`} />
       </div>
-      {((s?.creditSaleCount ?? 0) > 0 || (s?.creditCollected ?? 0) > 0) && (
+      {(s?.creditSaleCount ?? 0) > 0 && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-          <KPICard label="Credit Sales"      value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount ?? 0} txn${(s?.creditSaleCount ?? 0) !== 1 ? 's' : ''} charged to account`} />
+          <KPICard label="Credit Sales"      value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount} txn${s?.creditSaleCount !== 1 ? 's' : ''} charged to account`} />
           <KPICard label="Credit Collected"  value={formatCurrency(s?.creditCollected ?? 0)} icon={ArrowDownLeft} sub="Cash received for credit invoices" />
           <KPICard label="Cash / Paid Sales" value={formatCurrency((s?.totalSales ?? 0) - (s?.creditSaleAmount ?? 0))} icon={TrendingUp} sub="Collected at counter" />
+        </div>
+      )}
+      {(s?.creditSaleCount ?? 0) === 0 && (s?.creditCollected ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <KPICard label="Credit Collected" value={formatCurrency(s.creditCollected)} icon={ArrowDownLeft} sub="Cash received for credit invoices" />
         </div>
       )}
 
@@ -518,14 +523,20 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
           sub={`${income.returnCount} returns`} />
       </div>
 
-      {((income.creditSaleCount ?? 0) > 0 || (income.creditCollected ?? 0) > 0) && (
+      {(income.creditSaleCount ?? 0) > 0 && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-          <KPICard label="Credit Sales" value={formatCurrency(income.creditSaleAmount ?? 0)} icon={ShoppingCart}
-            sub={`${income.creditSaleCount ?? 0} txn${(income.creditSaleCount ?? 0) !== 1 ? 's' : ''} — charged to account`} />
+          <KPICard label="Credit Sales" value={formatCurrency(income.creditSaleAmount)} icon={ShoppingCart}
+            sub={`${income.creditSaleCount} txn${income.creditSaleCount !== 1 ? 's' : ''} — charged to account`} />
           <KPICard label="Credit Collected" value={formatCurrency(income.creditCollected ?? 0)} icon={ArrowDownLeft}
             sub="Cash received for credit invoices" />
           <KPICard label="Cash / Paid Sales" value={formatCurrency(income.grossRevenue - income.creditSaleAmount)} icon={TrendingUp}
             sub="Collected at counter" />
+        </div>
+      )}
+      {(income.creditSaleCount ?? 0) === 0 && (income.creditCollected ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <KPICard label="Credit Collected" value={formatCurrency(income.creditCollected)} icon={ArrowDownLeft}
+            sub="Cash received for credit invoices" />
         </div>
       )}
 
