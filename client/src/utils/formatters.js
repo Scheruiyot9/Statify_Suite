@@ -13,16 +13,28 @@ export const formatCurrencyCompact = (amount) => {
   return formatCurrency(amount);
 };
 
+// Parse a value from the API into a JS Date.
+// Date-only strings (YYYY-MM-DD) are treated as local midnight, not UTC midnight,
+// to avoid the off-by-one that new Date("2026-06-29") causes in UTC+offset browsers.
+function parseDate(date) {
+  if (!date) return null;
+  if (date instanceof Date) return date;
+  const s = String(date);
+  // Date-only string — append local-time marker so it doesn't get parsed as UTC
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T00:00:00`);
+  return new Date(s);
+}
+
 export const formatDate = (date) => {
-  if (!date) return '—';
-  const d = new Date(date);
-  return isNaN(d.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium' }).format(d);
+  const d = parseDate(date);
+  if (!d || isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium' }).format(d);
 };
 
 export const formatDateTime = (date) => {
-  if (!date) return '—';
-  const d = new Date(date);
-  return isNaN(d.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  const d = parseDate(date);
+  if (!d || isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
 };
 
 export const formatNumber = (n) =>

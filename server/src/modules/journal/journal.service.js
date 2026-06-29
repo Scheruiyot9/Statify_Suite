@@ -5,10 +5,18 @@ const AppError = require('../../shared/AppError');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Returns today's date in the server's local calendar (Africa/Nairobi = UTC+3).
+// Using Intl avoids the UTC-vs-local off-by-one that toISOString() causes on
+// UTC-hosted servers when transactions happen between midnight and 03:00 EAT.
+const TZ = process.env.TZ_LOCALE || 'Africa/Nairobi';
+function todayLocal() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+}
+
 function toDateStr(val) {
-  if (!val) return new Date().toISOString().slice(0, 10);
+  if (!val) return todayLocal();
   if (typeof val === 'string') return val.slice(0, 10);
-  return new Date(val).toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(val));
 }
 
 // Returns { account_code: account_id } for all requested codes that exist
@@ -591,7 +599,7 @@ async function postStockAdjustmentEntry(client, companyId, { productId, qty, cos
       : [accIds['5000'], accIds['1200']]; // loss: DR COGS / CR Inventory
 
     await _post(client, companyId, {
-      entryDate:   date || new Date().toISOString().slice(0, 10),
+      entryDate:   date || todayLocal(),
       description: notes || `Stock adjustment (${parseFloat(qty) > 0 ? '+' : ''}${qty})`,
       sourceType:  'STOCK_ADJUSTMENT',
       sourceId:    productId,
@@ -628,7 +636,7 @@ async function postSaleVoidEntry(client, companyId, txn) {
       );
       if (!origLines.length) return;
       await _post(client, companyId, {
-        entryDate:   new Date().toISOString().slice(0, 10),
+        entryDate:   todayLocal(),
         description: `Void sale — ${txn.transaction_number}`,
         sourceType:  'SALE_VOID',
         sourceId:    txn.transaction_id,
@@ -652,7 +660,7 @@ async function postSaleVoidEntry(client, companyId, txn) {
     if (!result || result.lines.length < 2) return;
 
     await _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
+      entryDate:   todayLocal(),
       description: `Void sale — ${result.txnNumber}`,
       sourceType:  'SALE_VOID',
       sourceId:    txn.transaction_id,
@@ -686,7 +694,7 @@ async function postSaleEditReversal(client, companyId, txn) {
       );
       if (origLines.length) {
         await _post(client, companyId, {
-          entryDate:   new Date().toISOString().slice(0, 10),
+          entryDate:   todayLocal(),
           description: `Edit reversal — ${txn.transaction_number}`,
           sourceType:  'SALE_EDIT',
           sourceId:    txn.transaction_id,
@@ -706,7 +714,7 @@ async function postSaleEditReversal(client, companyId, txn) {
           const result = await _buildSaleReversalLines(client, companyId, txn.transaction_id, accIds);
           if (result && result.lines.length >= 2) {
             await _post(client, companyId, {
-              entryDate:   new Date().toISOString().slice(0, 10),
+              entryDate:   todayLocal(),
               description: `Edit reversal — ${result.txnNumber}`,
               sourceType:  'SALE_EDIT',
               sourceId:    txn.transaction_id,
@@ -1139,7 +1147,7 @@ async function postManualEntry(companyId, userId, data) {
       throw AppError.badRequest('One or more accounts not found or inactive');
 
     return _post(client, companyId, {
-      entryDate:   entryDate || new Date().toISOString().slice(0, 10),
+      entryDate:   entryDate || todayLocal(),
       description: description || null,
       sourceType:  'MANUAL',
       sourceId:    null,
@@ -1190,7 +1198,7 @@ async function voidJournalEntry(companyId, jeId, userId, reason) {
     }));
 
     return _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
+      entryDate:   todayLocal(),
       description: `Reversal of ${je.entry_number}${reason ? ': ' + reason : ''}`,
       sourceType:  'VOID',
       sourceId:    jeId,
@@ -1238,7 +1246,7 @@ async function postBulkOpeningBalance(companyId, userId, entries) {
     }
 
     return _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
+      entryDate:   todayLocal(),
       description: 'Opening balances',
       sourceType:  'OPENING',
       sourceId:    null,
@@ -1297,7 +1305,7 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
     const customerId = st?.customer_id || null;
 
     return _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
+      entryDate:   todayLocal(),
       description: `AR collection — ${st?.transaction_number || transactionId}`,
       sourceType:  'AR_SETTLEMENT',
       sourceId:    transactionId,
@@ -1379,7 +1387,7 @@ async function getArAging(companyId) {
 // ── Unreconciled Cash Lines ────────────────────────────────────────────────────
 async function getUnreconciledLines(companyId, { bankAccountId, startDate, endDate } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const end   = endDate   || new Date().toISOString().slice(0, 10);
+  const end   = endDate   || todayLocal();
 
   const conds = [
     'je.company_id = $1', "je.status = 'posted'",
@@ -1453,7 +1461,7 @@ async function reconcileLines(companyId, userId, lineIds) {
 // ── List Journal Entries ───────────────────────────────────────────────────────
 async function listJournalEntries(companyId, { startDate, endDate, sourceType, excludeSourceType, status, page = 1, limit = 25 } = {}) {
   const start = startDate || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const end   = endDate   || new Date().toISOString().slice(0, 10);
+  const end   = endDate   || todayLocal();
   const pg = parseInt(page,  10);
   const lm = parseInt(limit, 10);
 
@@ -1579,7 +1587,7 @@ async function postCreditReceiptEntry(client, companyId, { customerId, customerN
     if (!drAccId) return;
 
     await _post(client, companyId, {
-      entryDate:   new Date().toISOString().slice(0, 10),
+      entryDate:   todayLocal(),
       description: `Credit receipt — ${customerName}`,
       sourceType:  'CREDIT_PAYMENT',
       sourceId:    customerId,
