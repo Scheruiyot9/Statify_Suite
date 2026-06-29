@@ -32,168 +32,166 @@ const LINE_TYPES = [
 
 const emptyLine = () => ({ lineType: 'account', entityId: '', accountId: '', debit: '', credit: '', description: '' });
 
-// ── Smart Account Picker ──────────────────────────────────────────────────────
+// ── Lines form (shared between create + edit) ─────────────────────────────────
+// Columns: Type | Account / Entity | Line Note | Debit | Credit | Del
 
-function SmartAccountPicker({ line, idx, accounts, bankAccounts, customers, suppliers, onChange }) {
+function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines, onChange }) {
   const arAccount = useMemo(() => accounts.find((a) => a.account_code === '1100'), [accounts]);
   const apAccount = useMemo(() => accounts.find((a) => a.account_code === '2000'), [accounts]);
 
-  const handleTypeChange = (newType) => {
-    onChange(idx, { ...line, lineType: newType, entityId: '', accountId: '', description: '' });
+  const addLine    = () => onChange([...lines, emptyLine()]);
+  const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i));
+  const updateLine = (i, l) => onChange(lines.map((x, idx) => (idx === i ? l : x)));
+
+  const handleTypeChange = (i, newType) => {
+    updateLine(i, { ...lines[i], lineType: newType, entityId: '', accountId: '', description: '' });
   };
 
-  const handleEntityChange = (entityId) => {
-    let accountId = line.accountId;
-    let description = line.description;
-    let entityType = line.lineType;
-
-    if (line.lineType === 'bank') {
+  const handleEntityChange = (i, entityId) => {
+    const l = lines[i];
+    let accountId = l.accountId;
+    let description = l.description;
+    let _entityType = l.lineType;
+    if (l.lineType === 'bank') {
       const ba = bankAccounts.find((b) => b.bank_account_id === entityId);
       accountId   = ba?.account_id ?? '';
       description = ba ? `${ba.bank_name} – ${ba.account_name}` : '';
-      entityType  = 'bank_account';
-    } else if (line.lineType === 'customer') {
+      _entityType = 'bank_account';
+    } else if (l.lineType === 'customer') {
       const cust = customers.find((c) => c.customer_id === entityId);
       accountId   = arAccount?.account_id ?? '';
       description = cust ? cust.customer_name : '';
-    } else if (line.lineType === 'supplier') {
+    } else if (l.lineType === 'supplier') {
       const sup = suppliers.find((s) => s.supplier_id === entityId);
       accountId   = sup?.account_id ?? apAccount?.account_id ?? '';
       description = sup ? sup.supplier_name : '';
     }
-
-    onChange(idx, { ...line, entityId, accountId, description, _entityType: entityType });
+    updateLine(i, { ...l, entityId, accountId, description, _entityType });
   };
-
-  return (
-    <div className="space-y-1">
-      <div className="flex gap-0.5 rounded-md bg-gray-100 p-0.5">
-        {LINE_TYPES.map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" onClick={() => handleTypeChange(id)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors flex-1 justify-center
-              ${line.lineType === id ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <Icon className="h-3 w-3" />{label}
-          </button>
-        ))}
-      </div>
-
-      {line.lineType === 'account' && (
-        <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={line.accountId}
-          onChange={(e) => onChange(idx, { ...line, accountId: e.target.value })}>
-          <option value="">Select account…</option>
-          {['asset','liability','equity','revenue','expense'].map((type) => {
-            const group = accounts.filter((a) => a.account_type === type && a.is_active);
-            if (!group.length) return null;
-            return (
-              <optgroup key={type} label={type.charAt(0).toUpperCase() + type.slice(1)}>
-                {group.map((a) => (
-                  <option key={a.account_id} value={a.account_id}>{a.account_code} — {a.account_name}</option>
-                ))}
-              </optgroup>
-            );
-          })}
-        </select>
-      )}
-
-      {line.lineType === 'bank' && (
-        <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={line.entityId}
-          onChange={(e) => handleEntityChange(e.target.value)}>
-          <option value="">Select bank account…</option>
-          {bankAccounts.map((b) => (
-            <option key={b.bank_account_id} value={b.bank_account_id}>
-              {b.bank_name} – {b.account_name}{b.account_number ? ` (…${b.account_number.slice(-4)})` : ''}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {line.lineType === 'customer' && (
-        <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={line.entityId}
-          onChange={(e) => handleEntityChange(e.target.value)}>
-          <option value="">Select customer…</option>
-          {customers.map((c) => (
-            <option key={c.customer_id} value={c.customer_id}>
-              {c.customer_name}{c.phone ? ` — ${c.phone}` : ''}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {line.lineType === 'supplier' && (
-        <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={line.entityId}
-          onChange={(e) => handleEntityChange(e.target.value)}>
-          <option value="">Select supplier…</option>
-          {suppliers.map((s) => (
-            <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
-          ))}
-        </select>
-      )}
-
-      {line.lineType !== 'account' && line.accountId && (
-        <p className="text-xs text-gray-400 pl-1">
-          GL: {accounts.find((a) => a.account_id === line.accountId)?.account_code}{' '}
-          {accounts.find((a) => a.account_id === line.accountId)?.account_name}
-        </p>
-      )}
-      {line.lineType !== 'account' && !line.accountId && line.entityId && (
-        <p className="text-xs text-amber-500 pl-1">⚠ No GL account linked</p>
-      )}
-    </div>
-  );
-}
-
-// ── Lines form (shared between create + edit) ─────────────────────────────────
-
-function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines, onChange }) {
-  const addLine    = () => onChange([...lines, emptyLine()]);
-  const removeLine = (i) => onChange(lines.filter((_, idx) => idx !== i));
-  const updateLine = (i, l) => onChange(lines.map((x, idx) => (idx === i ? l : x)));
 
   const totalDr  = lines.reduce((s, l) => s + (parseFloat(l.debit)  || 0), 0);
   const totalCr  = lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
   const balanced = Math.abs(totalDr - totalCr) < 0.005;
 
+  const selectCls = 'w-full border rounded-lg px-2 py-1.5 text-xs bg-white focus:border-primary-500 focus:outline-none';
+
   return (
     <>
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm min-w-[580px]">
+        <table className="w-full text-sm min-w-[720px]">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-2 py-1.5 font-medium text-gray-600">Account / Entity</th>
-              <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Line Note</th>
-              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-24">Debit</th>
-              <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-24">Credit</th>
-              <th className="w-8" />
+              <th className="text-left px-2 py-2 font-medium text-gray-600 w-28">Type</th>
+              <th className="text-left px-2 py-2 font-medium text-gray-600">Account / Entity</th>
+              <th className="text-left px-2 py-2 font-medium text-gray-600 w-36">Line Note</th>
+              <th className="text-right px-2 py-2 font-medium text-gray-600 w-24">Debit</th>
+              <th className="text-right px-2 py-2 font-medium text-gray-600 w-24">Credit</th>
+              <th className="w-7" />
             </tr>
           </thead>
           <tbody className="divide-y">
             {lines.map((l, i) => (
-              <tr key={i} className="align-top">
+              <tr key={i} className="align-middle">
+                {/* ── Type column ── */}
                 <td className="px-2 py-1.5">
-                  <SmartAccountPicker line={l} idx={i} accounts={accounts}
-                    bankAccounts={bankAccounts} customers={customers} suppliers={suppliers}
-                    onChange={updateLine} />
+                  <select value={l.lineType} onChange={(e) => handleTypeChange(i, e.target.value)}
+                    className={selectCls}>
+                    {LINE_TYPES.map(({ id, label }) => (
+                      <option key={id} value={id}>{label}</option>
+                    ))}
+                  </select>
                 </td>
+
+                {/* ── Account / Entity column ── */}
                 <td className="px-2 py-1.5">
-                  <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Note…"
-                    value={l.description}
+                  {l.lineType === 'account' && (
+                    <select className={selectCls} value={l.accountId}
+                      onChange={(e) => updateLine(i, { ...l, accountId: e.target.value })}>
+                      <option value="">Select account…</option>
+                      {['asset','liability','equity','revenue','expense'].map((type) => {
+                        const group = accounts.filter((a) => a.account_type === type && a.is_active);
+                        if (!group.length) return null;
+                        return (
+                          <optgroup key={type} label={type.charAt(0).toUpperCase() + type.slice(1)}>
+                            {group.map((a) => (
+                              <option key={a.account_id} value={a.account_id}>
+                                {a.account_code} — {a.account_name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  )}
+                  {l.lineType === 'bank' && (
+                    <select className={selectCls} value={l.entityId}
+                      onChange={(e) => handleEntityChange(i, e.target.value)}>
+                      <option value="">Select bank account…</option>
+                      {bankAccounts.map((b) => (
+                        <option key={b.bank_account_id} value={b.bank_account_id}>
+                          {b.bank_name} – {b.account_name}{b.account_number ? ` (…${b.account_number.slice(-4)})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {l.lineType === 'customer' && (
+                    <select className={selectCls} value={l.entityId}
+                      onChange={(e) => handleEntityChange(i, e.target.value)}>
+                      <option value="">Select customer…</option>
+                      {customers.map((c) => (
+                        <option key={c.customer_id} value={c.customer_id}>
+                          {c.customer_name}{c.phone ? ` — ${c.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {l.lineType === 'supplier' && (
+                    <select className={selectCls} value={l.entityId}
+                      onChange={(e) => handleEntityChange(i, e.target.value)}>
+                      <option value="">Select supplier…</option>
+                      {suppliers.map((s) => (
+                        <option key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {/* GL hint for entity types */}
+                  {l.lineType !== 'account' && l.accountId && (
+                    <p className="text-[10px] text-gray-400 mt-0.5 pl-0.5">
+                      GL {accounts.find((a) => a.account_id === l.accountId)?.account_code}
+                      {' '}{accounts.find((a) => a.account_id === l.accountId)?.account_name}
+                    </p>
+                  )}
+                  {l.lineType !== 'account' && !l.accountId && l.entityId && (
+                    <p className="text-[10px] text-amber-500 mt-0.5 pl-0.5">⚠ No GL account linked</p>
+                  )}
+                </td>
+
+                {/* ── Note ── */}
+                <td className="px-2 py-1.5">
+                  <input className="w-full border rounded-lg px-2 py-1.5 text-xs"
+                    placeholder="Note…" value={l.description}
                     onChange={(e) => updateLine(i, { ...l, description: e.target.value })} />
                 </td>
+
+                {/* ── Debit ── */}
                 <td className="px-2 py-1.5">
                   <input type="number" min="0" step="0.01" placeholder="0.00"
-                    className="w-full border rounded-lg px-2 py-1.5 text-sm text-right"
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs text-right"
                     value={l.debit}
                     onChange={(e) => updateLine(i, { ...l, debit: e.target.value, credit: e.target.value ? '' : l.credit })} />
                 </td>
+
+                {/* ── Credit ── */}
                 <td className="px-2 py-1.5">
                   <input type="number" min="0" step="0.01" placeholder="0.00"
-                    className="w-full border rounded-lg px-2 py-1.5 text-sm text-right"
+                    className="w-full border rounded-lg px-2 py-1.5 text-xs text-right"
                     value={l.credit}
                     onChange={(e) => updateLine(i, { ...l, credit: e.target.value, debit: e.target.value ? '' : l.debit })} />
                 </td>
-                <td className="px-2 py-1.5 pt-3">
+
+                <td className="px-2 py-1.5 text-center">
                   {lines.length > 2 && (
-                    <button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500">
+                    <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-500 transition-colors">
                       <XCircle className="h-4 w-4" />
                     </button>
                   )}
@@ -203,11 +201,11 @@ function JournalLinesForm({ accounts, bankAccounts, customers, suppliers, lines,
           </tbody>
           <tfoot className="border-t bg-gray-50">
             <tr>
-              <td colSpan={2} className="px-2 py-1.5 text-sm font-semibold">Totals</td>
-              <td className={`px-2 py-1.5 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
+              <td colSpan={3} className="px-2 py-1.5 text-sm font-semibold">Totals</td>
+              <td className={`px-2 py-1.5 text-right font-mono font-semibold text-sm ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
                 {fmt(totalDr)}
               </td>
-              <td className={`px-2 py-1.5 text-right font-mono font-semibold ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
+              <td className={`px-2 py-1.5 text-right font-mono font-semibold text-sm ${!balanced && totalDr > 0 ? 'text-red-600' : 'text-green-700'}`}>
                 {fmt(totalCr)}
               </td>
               <td />
@@ -234,7 +232,7 @@ function JournalFormModal({ existing, accounts, onClose }) {
   const qc = useQueryClient();
   const isEdit = !!existing;
 
-  const [entryDate,    setEntryDate]    = useState(existing?.entry_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
+  const [entryDate,    setEntryDate]    = useState(existing?.entry_date?.slice(0, 10) ?? new Intl.DateTimeFormat('en-CA').format(new Date()));
   const [description,  setDescription]  = useState(existing?.description ?? '');
   const [reference,    setReference]    = useState(existing?.reference ?? '');
   const [lines,        setLines]        = useState(
@@ -384,8 +382,10 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
     enabled: !!journalId,
   });
 
-  const [voidReason,   setVoidReason]   = useState('');
-  const [showVoidForm, setShowVoidForm] = useState(false);
+  const [voidReason,    setVoidReason]    = useState('');
+  const [showVoidForm,  setShowVoidForm]  = useState(false);
+  const [editingDate,   setEditingDate]   = useState(false);
+  const [newDate,       setNewDate]       = useState('');
 
   const postMut = useMutation({
     mutationFn: () => api.post(`/journals/${journalId}/post`).then((r) => r.data),
@@ -399,6 +399,17 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
     onError:   (e) => toast.error(e.response?.data?.message ?? e.message),
   });
 
+  const dateMut = useMutation({
+    mutationFn: (entryDate) => api.patch(`/journals/${journalId}/date`, { entryDate }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Date updated');
+      qc.invalidateQueries({ queryKey: ['journal', journalId] });
+      qc.invalidateQueries({ queryKey: ['journals'] });
+      setEditingDate(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message ?? e.message),
+  });
+
   return (
     <Modal open title={isLoading ? 'Loading…' : `${j?.journal_number} — ${j?.status?.toUpperCase()}`}
       onClose={onClose} size="lg">
@@ -408,7 +419,34 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
             <div><span className="text-gray-500 text-xs">Number</span><p className="font-mono font-semibold text-sm">{j.journal_number}</p></div>
-            <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(j.entry_date).slice(0, 10)}</p></div>
+            <div>
+              <span className="text-gray-500 text-xs">Date</span>
+              {editingDate ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <input type="date" autoFocus
+                    className="border rounded px-1.5 py-0.5 text-sm focus:border-primary-500 focus:outline-none"
+                    value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  <button onClick={() => dateMut.mutate(newDate)} disabled={!newDate || dateMut.isPending}
+                    className="px-2 py-0.5 text-xs rounded bg-primary-600 text-white disabled:opacity-40">
+                    {dateMut.isPending ? '…' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditingDate(false)}
+                    className="px-2 py-0.5 text-xs rounded border text-gray-600 hover:bg-gray-100">
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="font-medium">{String(j.entry_date).slice(0, 10)}</p>
+                  {j.status !== 'void' && (
+                    <button onClick={() => { setNewDate(String(j.entry_date).slice(0, 10)); setEditingDate(true); }}
+                      className="text-[10px] text-primary-600 underline hover:text-primary-800 cursor-pointer">
+                      edit
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <div><span className="text-gray-500 text-xs">Status</span>
               <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>{j.status}</span></p>
             </div>

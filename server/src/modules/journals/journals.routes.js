@@ -14,6 +14,7 @@ r.get('/',                requireFinance, viewer, ctrl.list);
 r.get('/:id',             requireFinance, viewer, ctrl.getOne);
 r.post('/',               requireFinance, editor, ctrl.create);
 r.patch('/:id',           requireFinance, editor, ctrl.update);
+r.patch('/:id/date',      requireFinance, editor, ctrl.patchDate);
 r.post('/:id/post',       requireFinance, editor, ctrl.post);
 r.post('/:id/void',       requireFinance, editor, ctrl.voidOne);
 r.post('/bulk-import',    requireFinance, editor, ctrl.bulkImport);

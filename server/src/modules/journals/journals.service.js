@@ -243,6 +243,31 @@ async function postJournal(companyId, journalId, userId) {
   return getJournal(companyId, journalId);
 }
 
+// ── Patch date only (works on posted journals to correct timezone errors) ─────
+async function patchJournalDate(companyId, journalId, entryDate) {
+  const dateStr = toDateStr(entryDate);
+  const { rows: [j] } = await query(
+    `SELECT status, ledger_entry_id FROM journals WHERE journal_id = $1 AND company_id = $2`,
+    [journalId, companyId]
+  );
+  if (!j) throw AppError.notFound('Journal');
+  if (j.status === 'void') throw AppError.conflict('Cannot change date on a voided journal');
+
+  await transaction(async (client) => {
+    await client.query(
+      `UPDATE journals SET entry_date = $1, updated_at = now() WHERE journal_id = $2`,
+      [dateStr, journalId]
+    );
+    if (j.ledger_entry_id) {
+      await client.query(
+        `UPDATE journal_entries SET entry_date = $1 WHERE journal_entry_id = $2`,
+        [dateStr, j.ledger_entry_id]
+      );
+    }
+  });
+  return getJournal(companyId, journalId);
+}
+
 // ── Void ──────────────────────────────────────────────────────────────────────
 
 async function voidJournal(companyId, journalId, userId, reason) {
@@ -363,7 +388,7 @@ async function bulkImportJournals(companyId, userId, entries) {
 
 module.exports = {
   listJournals, getJournal,
-  createJournal, updateJournal,
+  createJournal, updateJournal, patchJournalDate,
   postJournal, voidJournal,
   bulkImportJournals,
 };
