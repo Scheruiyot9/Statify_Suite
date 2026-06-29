@@ -38,10 +38,10 @@ function EntryLinesModal({ entryId, onClose, onReverse }) {
   const [newDate,     setNewDate]     = useState('');
 
   const dateMut = useMutation({
-    mutationFn: (d) => api.patch(`/accounts/entry/${entryId}/date`, { entryDate: d }).then((r) => r.data),
-    onSuccess: () => {
+    mutationFn: (d) => api.patch(`/accounts/entry/${entryId}/date`, { entryDate: d }).then((r) => r.data.data),
+    onSuccess: (updated) => {
       toast.success('Date updated');
-      qc.invalidateQueries({ queryKey: ['journal-entry', entryId] });
+      qc.setQueryData(['journal-entry', entryId], updated);
       qc.invalidateQueries({ queryKey: ['bank-ledger'] });
       setEditingDate(false);
     },

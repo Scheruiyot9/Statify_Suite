@@ -1,5 +1,11 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const env = require('./env');
+
+// Return PostgreSQL DATE (OID 1082) as "YYYY-MM-DD" strings instead of JS Date
+// objects. The pg default constructs Date in local time, which shifts the date
+// by UTC offset when serialised to JSON — causing off-by-one-day bugs on servers
+// not running in UTC (e.g. EAT UTC+3).
+types.setTypeParser(1082, (val) => val);
 
 const pool = new Pool({
   host:              env.db.host,

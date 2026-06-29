@@ -401,10 +401,10 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
   });
 
   const dateMut = useMutation({
-    mutationFn: (entryDate) => api.patch(`/journals/${journalId}/date`, { entryDate }).then((r) => r.data),
-    onSuccess: () => {
+    mutationFn: (entryDate) => api.patch(`/journals/${journalId}/date`, { entryDate }).then((r) => r.data.data),
+    onSuccess: (updated) => {
       toast.success('Date updated');
-      qc.invalidateQueries({ queryKey: ['journal', journalId] });
+      qc.setQueryData(['journal', journalId], updated);
       qc.invalidateQueries({ queryKey: ['journals'] });
       setEditingDate(false);
     },
