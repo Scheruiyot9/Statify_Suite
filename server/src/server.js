@@ -2,7 +2,7 @@ const app  = require('./app');
 const env  = require('./config/env');
 const { pool, query } = require('./config/database');
 const { autoSuspendExpired } = require('./modules/platform/platform.service');
-const { postDailySummaryEntry } = require('./modules/journal/journal.service');
+const { postDailySummaryEntry, todayLocal } = require('./modules/journal/journal.service');
 const { verifyMailer } = require('./shared/mailer');
 
 // ── Midnight daily-summary auto-poster ───────────────────────────────────────
@@ -10,9 +10,12 @@ const { verifyMailer } = require('./shared/mailer');
 // sales for every active branch at midnight each night.
 function scheduleDailySummaryPost() {
   const run = async () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const date = yesterday.toISOString().slice(0, 10);
+    // Compute "yesterday" relative to the EAT calendar date (todayLocal()), not the
+    // UTC date — using toISOString() here shifts the target date during the 3-hour
+    // window each night (21:00–23:59 UTC = 00:00–02:59 EAT) when the two disagree,
+    // causing the job to post for the wrong day or find nothing to post.
+    const [y, m, d] = todayLocal().split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 
     try {
       const { rows: companies } = await query(`
@@ -41,14 +44,18 @@ function scheduleDailySummaryPost() {
   };
 
   // Run once immediately on startup (catches any day missed due to a restart),
-  // then schedule the next midnight and repeat every 24 h from there.
+  // then schedule the next EAT midnight and repeat every 24 h from there.
   run();
 
-  const now          = new Date();
-  const midnight     = new Date(now);
-  midnight.setDate(midnight.getDate() + 1);
-  midnight.setHours(0, 0, 0, 0);
-  const msToMidnight = midnight - now;
+  // setHours(0,0,0,0) would target midnight in the Node process's system timezone
+  // (UTC on most hosts), not EAT — compute ms-to-EAT-midnight directly instead.
+  const TZ = process.env.TZ_LOCALE || 'Africa/Nairobi';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t) => parseInt(parts.find((p) => p.type === t).value, 10);
+  const secondsSinceMidnight = get('hour') * 3600 + get('minute') * 60 + get('second');
+  const msToMidnight = (86400 - secondsSinceMidnight) * 1000;
 
   setTimeout(() => {
     run();

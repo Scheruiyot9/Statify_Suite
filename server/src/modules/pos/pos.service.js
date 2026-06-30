@@ -409,6 +409,12 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
   );
   if (!sessionRows.length) throw AppError.notFound('Active session');
 
+  const { rows: coRows } = await query(
+    `SELECT journal_posting_mode FROM companies WHERE company_id = $1`,
+    [companyId]
+  );
+  const postingMode = coRows[0]?.journal_posting_mode || 'per_transaction';
+
   const { rows: cashRows } = await query(`
     SELECT COALESCE(SUM(tp.amount_applied), 0)::numeric AS cash_received
     FROM transaction_payments tp
@@ -493,16 +499,20 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     cash_variance:        parseFloat(rows[0].cash_variance),
   };
 
-  // Always post a session summary at close — postSessionSummaryEntry's NOT_YET_POSTED
-  // filter skips individually-posted transactions (per_transaction mode) and exits
-  // early if the session was already summarised. This also mops up any transactions
-  // that were made while posting mode was session_summary or daily_summary and then
-  // the mode was switched to per_transaction before the session closed.
-  // Note: daily_summary is intentionally NOT triggered here — it is admin-run manually
-  // via POST /journal/daily-summaries so one JE covers the full day across all sessions.
-  await jrn.postSessionSummaryEntry(companyId, sessionId, userId).catch((e) =>
-    console.error('[ledger] session summary at close failed:', e.message)
-  );
+  // Post a session summary at close — postSessionSummaryEntry's NOT_YET_POSTED filter
+  // skips individually-posted transactions (per_transaction mode) and exits early if
+  // the session was already summarised. This also mops up any transactions that were
+  // made while posting mode was session_summary and then switched to per_transaction
+  // before the session closed.
+  // Skipped entirely in daily_summary mode: posting here would cover this session's
+  // sales with a SESSION_SALE_SUMMARY entry, which postDailySummaryEntry's UNPOSTED
+  // filter then treats as "already posted" — leaving nothing for the nightly job to
+  // post and silently defeating daily_summary mode.
+  if (postingMode !== 'daily_summary') {
+    await jrn.postSessionSummaryEntry(companyId, sessionId, userId).catch((e) =>
+      console.error('[ledger] session summary at close failed:', e.message)
+    );
+  }
 
   return result;
 }

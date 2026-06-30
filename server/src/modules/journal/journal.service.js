@@ -1604,6 +1604,7 @@ async function postCreditReceiptEntry(client, companyId, { customerId, customerN
 
 module.exports = {
   findAccIds, _post,
+  todayLocal,
   postCreditReceiptEntry,
   postStockAdjustmentEntry,
   postSaleEntry, postSaleVoidEntry, postSaleEditReversal, postGrnEntry,
