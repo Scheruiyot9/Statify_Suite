@@ -344,16 +344,14 @@ export default function CustomersPage() {
                       <div>
                         <p className="font-medium text-gray-900">{c.customer_name}</p>
                         <p className="text-xs text-gray-400">{c.customer_code}</p>
+                        {creditEnabled && c.allow_credit && c.credit_balance > 0 && (
+                          <p className="text-xs font-semibold text-red-600">Bal: {formatCurrency(c.credit_balance)}</p>
+                        )}
                       </div>
                     </div>
                   </td>
                   <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span>{c.phone ?? '—'}</span>
-                      {creditEnabled && c.allow_credit && c.credit_balance > 0 && (
-                        <span className="font-semibold text-red-600">{formatCurrency(c.credit_balance)}</span>
-                      )}
-                    </div>
+                    <div>{c.phone ?? '—'}</div>
                     {c.email && <div className="text-gray-400">{c.email}</div>}
                   </td>
                   <td className="hidden md:table-cell px-4 py-3">
