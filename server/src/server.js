@@ -24,7 +24,6 @@ function scheduleDailySummaryPost() {
         JOIN branches b ON b.company_id = c.company_id AND b.is_active = TRUE AND b.deleted_at IS NULL
         WHERE c.journal_posting_mode = 'daily_summary'
           AND c.subscription_status = 'active'
-          AND c.deleted_at IS NULL
       `);
 
       for (const { company_id, branch_id } of companies) {

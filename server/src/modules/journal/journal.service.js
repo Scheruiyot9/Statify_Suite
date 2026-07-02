@@ -331,7 +331,7 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
           ${NOT_YET_POSTED}
       `, [sessionId, companyId]);
 
-      const accIds = await findAccIds(client, companyId, ['1000', '1010', '1200', '2100', '4000', '5000']);
+      const accIds = await findAccIds(client, companyId, ['1000', '1010', '1100', '1200', '2100', '4000', '5000']);
       if (!accIds['4000']) return;
 
       const totalAmount = parseFloat(agg.total_amount);
@@ -341,7 +341,13 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
 
       const lines = [];
 
+      // Sum what was actually collected; any shortfall (credit sales with no
+      // payment row) goes to Accounts Receivable so the entry still balances —
+      // without this, one credit sale in the session made the whole entry
+      // unbalanced and _post() rejected it, leaving every sale in the session unposted.
+      let payDebitRemaining = totalAmount;
       for (const pmt of pmtRows) {
+        if (payDebitRemaining <= 0.005) break;
         let drAccId = pmt.gl_account_id || null;
         if (!drAccId) {
           const name = (pmt.method_name || '').toLowerCase();
@@ -349,8 +355,16 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
           drAccId = isBank && accIds['1010'] ? accIds['1010'] : accIds['1000'];
         }
         if (!drAccId) continue;
-        const amt = parseFloat(pmt.total);
-        if (amt > 0.005) lines.push({ accountId: drAccId, debit: +amt.toFixed(4), credit: 0 });
+        const rawAmt = parseFloat(pmt.total);
+        const amt    = +Math.min(rawAmt, payDebitRemaining).toFixed(4);
+        if (amt > 0.005) {
+          lines.push({ accountId: drAccId, debit: amt, credit: 0 });
+          payDebitRemaining -= amt;
+        }
+      }
+      if (payDebitRemaining > 0.005 && accIds['1100']) {
+        lines.push({ accountId: accIds['1100'], debit: +payDebitRemaining.toFixed(4), credit: 0 });
+        payDebitRemaining = 0;
       }
 
       if (totalCOGS > 0.005 && accIds['5000'] && accIds['1200']) {

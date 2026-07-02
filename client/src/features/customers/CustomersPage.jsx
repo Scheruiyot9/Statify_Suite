@@ -328,9 +328,7 @@ export default function CustomersPage() {
                 <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Contact</th>
                 <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Group</th>
                 <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">Total Spent</th>
                 <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Points</th>
-                {creditEnabled && <th className="hidden lg:table-cell px-4 py-3 text-right font-medium text-gray-600">Credit Owed</th>}
                 {canManageCustomers && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
@@ -350,7 +348,12 @@ export default function CustomersPage() {
                     </div>
                   </td>
                   <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
-                    <div>{c.phone ?? '—'}</div>
+                    <div className="flex items-center gap-2">
+                      <span>{c.phone ?? '—'}</span>
+                      {creditEnabled && c.allow_credit && c.credit_balance > 0 && (
+                        <span className="font-semibold text-red-600">{formatCurrency(c.credit_balance)}</span>
+                      )}
+                    </div>
                     {c.email && <div className="text-gray-400">{c.email}</div>}
                   </td>
                   <td className="hidden md:table-cell px-4 py-3">
@@ -359,19 +362,11 @@ export default function CustomersPage() {
                       : <span className="text-gray-400 text-xs">—</span>}
                   </td>
                   <td className="hidden md:table-cell px-4 py-3 text-right text-gray-700">{c.purchase_count}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(c.total_spent)}</td>
                   <td className="hidden sm:table-cell px-4 py-3 text-right">
                     <span className="flex items-center justify-end gap-1 text-secondary-600 font-medium text-xs">
                       <Star className="h-3 w-3" />{c.loyalty_points_balance.toLocaleString()}
                     </span>
                   </td>
-                  {creditEnabled && (
-                    <td className="hidden lg:table-cell px-4 py-3 text-right">
-                      {c.allow_credit && c.credit_balance > 0
-                        ? <span className="font-semibold text-red-600 text-xs">{formatCurrency(c.credit_balance)}</span>
-                        : <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                  )}
                   {canManageCustomers && (
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
@@ -392,7 +387,7 @@ export default function CustomersPage() {
                 </tr>
               ))}
               {customers.length === 0 && (
-                <tr><td colSpan={canManageCustomers ? 7 : 6} className="py-12 text-center text-gray-400">No customers found</td></tr>
+                <tr><td colSpan={canManageCustomers ? 6 : 5} className="py-12 text-center text-gray-400">No customers found</td></tr>
               )}
             </tbody>
           </table>
