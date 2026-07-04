@@ -226,7 +226,7 @@ function PayModesTab() {
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirmDel(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => deleteMut.mutate(confirmDel.payment_method_id)} isLoading={deleteMut.isPending}>
+            <Button variant="danger" onClick={() => deleteMut.mutate(confirmDel.payment_method_id)} loading={deleteMut.isPending}>
               Delete
             </Button>
           </div>
@@ -669,7 +669,7 @@ function TerminalsTab() {
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirmDel(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => termDeleteMut.mutate(confirmDel.terminal_id)} isLoading={termDeleteMut.isPending}>
+            <Button variant="danger" onClick={() => termDeleteMut.mutate(confirmDel.terminal_id)} loading={termDeleteMut.isPending}>
               Delete
             </Button>
           </div>

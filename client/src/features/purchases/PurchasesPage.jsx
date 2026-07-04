@@ -304,7 +304,7 @@ function POModal({ po, suppliers, products, branches, onClose }) {
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} isLoading={isPending}>
+          <Button onClick={handleSubmit} loading={isPending}>
             {isEdit ? 'Save Changes' : 'Create PO'}
           </Button>
         </div>
@@ -371,7 +371,7 @@ function PODetail({ po, onClose, onEdit }) {
 
         <div className="flex flex-wrap justify-between gap-3 pt-2">
           <div className="flex flex-wrap gap-2">
-            {canCancel  && <Button variant="outline" size="sm" onClick={() => cancelM.mutate()}  isLoading={cancelM.isPending}  className="text-red-600 border-red-300 hover:bg-red-50">Cancel PO</Button>}
+            {canCancel  && <Button variant="outline" size="sm" onClick={() => cancelM.mutate()}  loading={cancelM.isPending}  className="text-red-600 border-red-300 hover:bg-red-50">Cancel PO</Button>}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => printLPO(po)}>
@@ -379,7 +379,7 @@ function PODetail({ po, onClose, onEdit }) {
             </Button>
             <Button variant="outline" onClick={onClose}>Close</Button>
             {canEdit   && <Button variant="outline" size="sm" onClick={onEdit}><FileText className="h-4 w-4 mr-1" />Edit</Button>}
-            {canSubmit && <Button size="sm" onClick={() => submitM.mutate()} isLoading={submitM.isPending}><CheckCircle className="h-4 w-4 mr-1" />Approve PO</Button>}
+            {canSubmit && <Button size="sm" onClick={() => submitM.mutate()} loading={submitM.isPending}><CheckCircle className="h-4 w-4 mr-1" />Approve PO</Button>}
           </div>
         </div>
       </div>
@@ -543,7 +543,7 @@ function GRNModal({ po, onClose }) {
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} isLoading={isPending}>
+          <Button onClick={handleSubmit} loading={isPending}>
             <Package className="h-4 w-4 mr-1" />Create GRN
           </Button>
         </div>
@@ -627,7 +627,7 @@ function GRNDetail({ grn, onClose }) {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={onClose}>Close</Button>
             {grn.status === 'draft' && (
-              <Button onClick={() => postM.mutate()} isLoading={postM.isPending}>
+              <Button onClick={() => postM.mutate()} loading={postM.isPending}>
                 <CheckCircle className="h-4 w-4 mr-1" />Post GRN
               </Button>
             )}
@@ -646,7 +646,7 @@ function GRNDetail({ grn, onClose }) {
             <Button
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => deleteM.mutate()}
-              isLoading={deleteM.isPending}>
+              loading={deleteM.isPending}>
               Delete GRN
             </Button>
           </div>
@@ -969,6 +969,13 @@ export default function PurchasesPage() {
     enabled:  !!poIdForFetch,
   });
 
+  // GRN list rows don't include line items — fetch the full record for the detail view
+  const { data: fullGRN, isLoading: fullGRNLoading } = useQuery({
+    queryKey: ['grn', detailGRN?.grn_id],
+    queryFn:  () => api.get(`/grns/${detailGRN.grn_id}`).then((r) => r.data?.data),
+    enabled:  !!detailGRN?.grn_id,
+  });
+
   const PO_STATUSES = ['draft', 'pending_approval', 'approved', 'partially_received', 'received', 'cancelled'];
 
   return (
@@ -1170,8 +1177,9 @@ export default function PurchasesPage() {
                     <td className="py-3 px-4 text-right font-medium">{formatCurrency(grn.total_amount)}</td>
                     <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setDetailGRN(grn)}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
+                        disabled={detailGRN?.grn_id === grn.grn_id && fullGRNLoading}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors disabled:opacity-60">
+                        {detailGRN?.grn_id === grn.grn_id && fullGRNLoading ? 'Loading…' : 'View'}
                       </button>
                     </td>
                   </tr>
@@ -1199,8 +1207,9 @@ export default function PurchasesPage() {
                   </div>
                   <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setDetailGRN(grn)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
+                      disabled={detailGRN?.grn_id === grn.grn_id && fullGRNLoading}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors disabled:opacity-60">
+                      {detailGRN?.grn_id === grn.grn_id && fullGRNLoading ? 'Loading…' : 'View'}
                     </button>
                   </div>
                 </div>
@@ -1232,8 +1241,8 @@ export default function PurchasesPage() {
         <GRNModal po={fullPO} onClose={() => setGrnForPO(null)} />
       )}
 
-      {detailGRN && (
-        <GRNDetail grn={detailGRN} onClose={() => setDetailGRN(null)} />
+      {detailGRN && fullGRN && (
+        <GRNDetail grn={fullGRN} onClose={() => setDetailGRN(null)} />
       )}
 
       {/* Report tabs */}

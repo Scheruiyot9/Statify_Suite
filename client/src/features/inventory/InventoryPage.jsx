@@ -275,7 +275,7 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
 
         <div className="flex justify-end gap-3 pt-1">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} isLoading={isSaving} disabled={!validRows.length}>
+          <Button onClick={handleSubmit} loading={isSaving} disabled={!validRows.length}>
             Apply {validRows.length > 0 ? `${validRows.length} Adjustment${validRows.length > 1 ? 's' : ''}` : 'Adjustments'}
           </Button>
         </div>
@@ -620,7 +620,7 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
 
         <div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} isLoading={isSaving} disabled={!changedItems.length}>
+          <Button onClick={handleSubmit} loading={isSaving} disabled={!changedItems.length}>
             <ClipboardCheck className="h-4 w-4 mr-1" />
             Apply {changedItems.length > 0 ? `${changedItems.length} Update${changedItems.length > 1 ? 's' : ''}` : 'Count'}
           </Button>

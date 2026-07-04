@@ -378,7 +378,7 @@ function PaymentModal({ onClose }) {
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} isLoading={isPending}>
+          <Button onClick={handleSubmit} loading={isPending}>
             <CheckCircle className="h-4 w-4 mr-2" />Record Payment
           </Button>
         </div>
@@ -584,6 +584,13 @@ export default function PaymentsPage() {
   });
   const payments = Array.isArray(paymentsRaw) ? paymentsRaw : (paymentsRaw?.payments ?? []);
 
+  // List rows don't include po_allocations/expense_lines — fetch the full record for the detail view
+  const { data: fullPayment, isLoading: fullPaymentLoading } = useQuery({
+    queryKey: ['supplier-payment', selectedPayment?.payment_id],
+    queryFn:  () => api.get(`/supplier-payments/${selectedPayment.payment_id}`).then((r) => r.data?.data),
+    enabled:  !!selectedPayment?.payment_id,
+  });
+
   const filtered = payments.filter((p) => {
     if (typeFilt && p.payment_type !== typeFilt) return false;
     if (search) {
@@ -675,8 +682,9 @@ export default function PaymentsPage() {
                     <td className="py-3 px-4 text-right text-xs font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
                     <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setSelectedPayment(p)}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
+                        disabled={selectedPayment?.payment_id === p.payment_id && fullPaymentLoading}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors disabled:opacity-60">
+                        {selectedPayment?.payment_id === p.payment_id && fullPaymentLoading ? 'Loading…' : 'View'}
                       </button>
                     </td>
                   </tr>
@@ -719,8 +727,9 @@ export default function PaymentsPage() {
                 </div>
                 <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setSelectedPayment(p)}
-                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                    View
+                    disabled={selectedPayment?.payment_id === p.payment_id && fullPaymentLoading}
+                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors disabled:opacity-60">
+                    {selectedPayment?.payment_id === p.payment_id && fullPaymentLoading ? 'Loading…' : 'View'}
                   </button>
                 </div>
               </div>
@@ -733,7 +742,7 @@ export default function PaymentsPage() {
       )}
 
       {showModal && <PaymentModal onClose={() => setShowModal(false)} />}
-      {selectedPayment && <PaymentDetail payment={selectedPayment} onClose={() => setSelectedPayment(null)} />}
+      {selectedPayment && fullPayment && <PaymentDetail payment={fullPayment} onClose={() => setSelectedPayment(null)} />}
     </div>
   );
 }
