@@ -127,13 +127,13 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
     <Modal open onClose={onClose} title="Bulk Stock Adjustment" size="xl">
       <div className="space-y-4">
 
-        {/* Row table */}
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
+        {/* Row table — desktop */}
+        <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="py-2 pl-3 text-left text-xs font-medium text-gray-500">Product</th>
-                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Branch</th>
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500">Branch</th>
                 <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-20">Current</th>
                 <th className="py-2 px-2 text-center text-xs font-medium text-gray-500 w-32">Adjustment</th>
                 <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-20">New Qty</th>
@@ -151,7 +151,7 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
                     <td className="py-2 pl-3">
                       <p className="font-medium text-gray-900 text-xs">{row.product_name}</p>
                     </td>
-                    <td className="py-2 px-2 text-xs text-gray-500 hidden sm:table-cell">{row.branch_name}</td>
+                    <td className="py-2 px-2 text-xs text-gray-500">{row.branch_name}</td>
                     <td className="py-2 px-2 text-right text-xs font-semibold text-gray-700">{row.quantity_available}</td>
                     <td className="py-2 px-2">
                       <input
@@ -194,6 +194,55 @@ function BulkAdjustModal({ items, allInventory, onClose, onSave, isSaving }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Row cards — mobile */}
+        <div className="sm:hidden space-y-2">
+          {rows.map((row) => {
+            const n       = parseFloat(row.adjustment);
+            const newQty  = isNaN(n) ? null : row.quantity_available + n;
+            const invalid = newQty !== null && newQty < 0;
+            return (
+              <div key={row.key} className={`rounded-lg border p-3 ${invalid ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 text-xs truncate">{row.product_name}</p>
+                    <p className="text-xs text-gray-500">{row.branch_name} · Current: <strong className="text-gray-700">{row.quantity_available}</strong></p>
+                  </div>
+                  <button onClick={() => removeRow(row.key)}
+                    className="shrink-0 text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={row.adjustment}
+                    onChange={(e) => updateRow(row.key, 'adjustment', e.target.value)}
+                    placeholder="e.g. 10 or -5"
+                    className={`flex-1 rounded border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-1 ${
+                      invalid
+                        ? 'border-red-400 focus:ring-red-400'
+                        : 'border-gray-300 focus:ring-primary-400'
+                    }`}
+                  />
+                  <span className={`text-xs font-bold whitespace-nowrap ${invalid ? 'text-red-600' : newQty !== null ? 'text-green-700' : 'text-gray-400'}`}>
+                    New: {newQty !== null ? newQty : '—'}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={row.notes}
+                  onChange={(e) => updateRow(row.key, 'notes', e.target.value)}
+                  placeholder="Reason (optional)"
+                  className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
+                />
+              </div>
+            );
+          })}
+          {rows.length === 0 && (
+            <p className="py-6 text-center text-xs text-gray-400">
+              No items added — use the dropdown below to add products.
+            </p>
+          )}
         </div>
 
         {/* Add more items */}
@@ -413,14 +462,14 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
           Items left blank will not be updated. The system will calculate the adjustment automatically.
         </div>
 
-        {/* Count table */}
-        <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-[45vh] overflow-y-auto">
+        {/* Count table — desktop */}
+        <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 max-h-[45vh] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="py-2 pl-3 text-left text-xs font-medium text-gray-500">Product</th>
-                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">SKU</th>
-                {!branchId && <th className="py-2 px-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Branch</th>}
+                <th className="py-2 px-2 text-left text-xs font-medium text-gray-500">SKU</th>
+                {!branchId && <th className="py-2 px-2 text-left text-xs font-medium text-gray-500">Branch</th>}
                 <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-24">System Bal.</th>
                 <th className="py-2 px-2 text-center text-xs font-medium text-gray-500 w-32">Counted Qty</th>
                 <th className="py-2 px-2 text-right text-xs font-medium text-gray-500 w-24">Variance</th>
@@ -443,8 +492,8 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
                     <td className="py-2 pl-3">
                       <p className="font-medium text-gray-900 text-xs leading-tight">{item.product_name}</p>
                     </td>
-                    <td className="py-2 px-2 text-xs font-mono text-gray-400 hidden sm:table-cell">{item.sku}</td>
-                    {!branchId && <td className="py-2 px-2 text-xs text-gray-500 hidden md:table-cell">{item.branch_name}</td>}
+                    <td className="py-2 px-2 text-xs font-mono text-gray-400">{item.sku}</td>
+                    {!branchId && <td className="py-2 px-2 text-xs text-gray-500">{item.branch_name}</td>}
                     <td className="py-2 px-2 text-right text-xs font-semibold text-gray-700">
                       {item.quantity_available}
                       <span className="ml-0.5 text-gray-400 font-normal">{item.unit_of_measure}</span>
@@ -487,6 +536,66 @@ function StockCountModal({ onClose, onSave, isSaving, branches, categories }) {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Count cards — mobile */}
+        <div className="sm:hidden rounded-lg border border-gray-200 max-h-[45vh] overflow-y-auto space-y-2 p-2">
+          {isLoading ? (
+            <p className="py-8 text-center text-xs text-gray-400">Loading inventory…</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-8 text-center text-xs text-gray-400">No items found</p>
+          ) : filtered.map((item) => {
+            const key     = `${item.product_id}:${item.branch_id}`;
+            const raw     = counts[key] ?? '';
+            const counted = raw !== '' ? parseFloat(raw) : null;
+            const invalid = counted !== null && (isNaN(counted) || counted < 0);
+            const diff    = (!invalid && counted !== null) ? parseFloat((counted - item.quantity_available).toFixed(4)) : null;
+            const hasChange = diff !== null && diff !== 0;
+            return (
+              <div key={key} className={`rounded-lg border p-3 ${invalid ? 'border-red-300 bg-red-50' : hasChange ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200 bg-white'}`}>
+                <p className="font-medium text-gray-900 text-xs leading-tight">{item.product_name}</p>
+                <p className="text-xs text-gray-400 font-mono">
+                  {item.sku}{!branchId && <span className="text-gray-500 font-sans"> · {item.branch_name}</span>}
+                </p>
+                <div className="mt-1.5 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-gray-700">
+                    {item.quantity_available}<span className="ml-0.5 text-gray-400 font-normal">{item.unit_of_measure}</span>
+                  </span>
+                  <span className="font-bold">
+                    {diff === null || invalid ? (
+                      <span className="text-gray-300">—</span>
+                    ) : diff === 0 ? (
+                      <span className="text-gray-400">no change</span>
+                    ) : (
+                      <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}>
+                        {diff > 0 ? '+' : ''}{diff}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex items-center gap-1">
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={raw}
+                    onChange={(e) => setCount(key, e.target.value)}
+                    placeholder={String(item.quantity_available)}
+                    className={`w-full rounded border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-1 ${
+                      invalid
+                        ? 'border-red-400 bg-red-50 focus:ring-red-400'
+                        : raw !== ''
+                          ? 'border-primary-300 bg-primary-50 focus:ring-primary-400'
+                          : 'border-gray-200 focus:ring-primary-400'
+                    }`}
+                  />
+                  {raw !== '' && (
+                    <button onClick={() => clearCount(key)} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Summary + notes */}
@@ -721,8 +830,12 @@ export default function InventoryPage() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : inventory.length === 0 ? (
+          <p className="py-12 text-center text-gray-400">No inventory records found</p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -735,12 +848,12 @@ export default function InventoryPage() {
                   </th>
                 )}
                 <SortTh col="name"     label="Product"       className="text-left" />
-                <SortTh col="sku"      label="SKU"           className="text-left hidden sm:table-cell" />
-                <SortTh col="branch"   label="Branch"        className="text-left hidden md:table-cell" />
-                <SortTh col="category" label="Category"      className="text-left hidden md:table-cell" />
+                <SortTh col="sku"      label="SKU"           className="text-left" />
+                <SortTh col="branch"   label="Branch"        className="text-left" />
+                <SortTh col="category" label="Category"      className="text-left" />
                 <SortTh col="stock"    label="Available"     className="text-right" />
-                <SortTh col="reorder"  label="Min"           className="text-right hidden lg:table-cell w-16" />
-                <SortTh col="price"    label="Selling Price" className="text-right hidden sm:table-cell" />
+                <SortTh col="reorder"  label="Min"           className="text-right w-16" />
+                <SortTh col="price"    label="Selling Price" className="text-right" />
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>
@@ -759,17 +872,17 @@ export default function InventoryPage() {
                       </td>
                     )}
                     <td className="px-3 py-2 font-medium text-gray-900">{item.product_name}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-gray-400 hidden sm:table-cell">{item.sku}</td>
-                    <td className="px-3 py-2 text-gray-600 text-xs hidden md:table-cell">{item.branch_name}</td>
-                    <td className="px-3 py-2 text-gray-500 text-xs hidden md:table-cell">{item.category_name ?? '—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400">{item.sku}</td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{item.branch_name}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs">{item.category_name ?? '—'}</td>
                     <td className="px-3 py-2 text-right">
                       <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
                         {item.quantity_available}
                       </span>
                       <span className="text-xs text-gray-400 ml-1">{item.unit_of_measure}</span>
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-500 text-xs hidden lg:table-cell">{item.reorder_level}</td>
-                    <td className="px-3 py-2 text-right text-gray-700 hidden sm:table-cell">{formatCurrency(item.selling_price)}</td>
+                    <td className="px-3 py-2 text-right text-gray-500 text-xs">{item.reorder_level}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(item.selling_price)}</td>
                     <td className="px-3 py-2 text-center">
                       {item.is_low_stock
                         ? <span className="flex items-center justify-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -794,12 +907,63 @@ export default function InventoryPage() {
                   </tr>
                 );
               })}
-              {inventory.length === 0 && (
-                <tr><td colSpan={canAdjustStock ? 10 : 9} className="py-12 text-center text-gray-400">No inventory records found</td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {inventory.map((item) => {
+              const key = `${item.product_id}:${item.branch_id}`;
+              const isSelected = selected.has(key);
+              return (
+                <div key={key}
+                  className={`rounded-xl border p-3 ${item.is_low_stock ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white'} ${isSelected ? 'ring-1 ring-primary-300' : ''}`}>
+                  <div className="flex items-start gap-2">
+                    {canAdjustStock && (
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(key)}
+                        className="mt-1 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-gray-900 truncate">{item.product_name}</p>
+                        {item.is_low_stock
+                          ? <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                              <AlertTriangle className="h-3 w-3" /> Low
+                            </span>
+                          : <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">OK</span>}
+                      </div>
+                      <p className="font-mono text-xs text-gray-400">{item.sku}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                        <span>{item.branch_name}</span>
+                        {item.category_name && <span>{item.category_name}</span>}
+                        <span className="text-gray-700">{formatCurrency(item.selling_price)}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={`font-bold text-base ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
+                          {item.quantity_available}
+                        </span>
+                        <span className="text-xs text-gray-400">{item.unit_of_measure} available · min {item.reorder_level}</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <button onClick={() => setLedgerItem({ product_id: item.product_id, product_name: item.product_name, branch_id: item.branch_id, branch_name: item.branch_name })}
+                          className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
+                          <BookOpen className="h-3 w-3" />Ledger
+                        </button>
+                        {canAdjustStock && (
+                          <button onClick={() => setAdjustItem(item)}
+                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors">
+                            Adjust
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">

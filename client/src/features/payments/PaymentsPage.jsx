@@ -188,7 +188,7 @@ function PaymentModal({ onClose }) {
             {form.supplier_id && (
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-gray-700">PO Allocations</label>
-                <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <div className="rounded-lg border border-gray-200 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
@@ -272,7 +272,7 @@ function PaymentModal({ onClose }) {
         {/* Direct expense lines */}
         {paymentType === 'direct' && (
           <div className="space-y-2">
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
@@ -501,7 +501,7 @@ function PaymentDetail({ payment, onClose }) {
         {isDirect && expLines.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Expense Lines</p>
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 border-b">
                   <tr>
@@ -637,28 +637,27 @@ export default function PaymentsPage() {
       </div>
 
       {/* Table */}
-      {isLoading ? <PageSpinner /> : (
+      {isLoading ? <PageSpinner /> : filtered.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white py-10 text-center text-gray-400">No payments recorded</div>
+      ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">No.</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Payee / Supplier</th>
-                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
-                  <th className="hidden md:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
-                  <th className="hidden lg:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Method</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Reference</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Type</th>
                   <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
                   <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-gray-400">No payments recorded</td>
-                  </tr>
-                ) : filtered.map((p) => (
+                {filtered.map((p) => (
                   <tr key={p.payment_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                     onClick={() => setSelectedPayment(p)}>
                     <td className="py-3 pl-4 font-mono text-xs text-gray-500">{p.payment_number || '—'}</td>
@@ -666,9 +665,9 @@ export default function PaymentsPage() {
                     <td className="py-3 px-4 font-medium text-gray-900 text-xs">
                       {p.payment_type === 'direct' ? (p.payee_name || '—') : p.supplier_name}
                     </td>
-                    <td className="hidden sm:table-cell py-3 px-4"><MethodBadge method={p.payment_method} /></td>
-                    <td className="hidden md:table-cell py-3 px-4 text-xs text-gray-500">{p.reference_number || '—'}</td>
-                    <td className="hidden lg:table-cell py-3 px-4">
+                    <td className="py-3 px-4"><MethodBadge method={p.payment_method} /></td>
+                    <td className="py-3 px-4 text-xs text-gray-500">{p.reference_number || '—'}</td>
+                    <td className="py-3 px-4">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.payment_type === 'direct' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                         {p.payment_type === 'direct' ? 'Expense' : 'Supplier'}
                       </span>
@@ -683,19 +682,52 @@ export default function PaymentsPage() {
                   </tr>
                 ))}
               </tbody>
-              {filtered.length > 0 && (
-                <tfoot className="border-t border-gray-200 bg-gray-50">
-                  <tr>
-                    <td colSpan={7} className="py-2 pl-4 text-xs font-medium text-gray-500">
-                      {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
-                    </td>
-                    <td className="py-2 pr-4 text-right text-sm font-bold text-gray-900">
-                      {formatCurrency(totalPaid)}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
+              <tfoot className="border-t border-gray-200 bg-gray-50">
+                <tr>
+                  <td colSpan={7} className="py-2 pl-4 text-xs font-medium text-gray-500">
+                    {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
+                  </td>
+                  <td className="py-2 pr-4 text-right text-sm font-bold text-gray-900">
+                    {formatCurrency(totalPaid)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {filtered.map((p) => (
+              <div key={p.payment_id} onClick={() => setSelectedPayment(p)}
+                className="rounded-xl border border-gray-100 bg-white p-3 active:bg-gray-50 transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 text-sm truncate">
+                      {p.payment_type === 'direct' ? (p.payee_name || '—') : p.supplier_name}
+                    </p>
+                    <p className="font-mono text-xs text-gray-400">{p.payment_number || '—'}</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{p.payment_date?.slice(0, 10)}</span>
+                  <MethodBadge method={p.payment_method} />
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.payment_type === 'direct' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {p.payment_type === 'direct' ? 'Expense' : 'Supplier'}
+                  </span>
+                  {p.reference_number && <span>Ref: {p.reference_number}</span>}
+                </div>
+                <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setSelectedPayment(p)}
+                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                    View
+                  </button>
+                </div>
+              </div>
+            ))}
+            <p className="pt-1 text-center text-xs text-gray-400">
+              {filtered.length} payment{filtered.length !== 1 ? 's' : ''} · Total {formatCurrency(totalPaid)}
+            </p>
           </div>
         </div>
       )}

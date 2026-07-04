@@ -285,15 +285,21 @@ export default function SuppliersPage() {
 
       {/* Table */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : suppliers.length === 0 ? (
+          <p className="py-14 text-center text-gray-400">
+            <Truck className="mx-auto mb-2 h-8 w-8 opacity-25" />No suppliers found
+          </p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Supplier</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Contact</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Phone / Email</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Payment Terms</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Contact</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Phone / Email</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Payment Terms</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Balance</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500" colSpan={2}>Action</th>
               </tr>
@@ -305,13 +311,13 @@ export default function SuppliersPage() {
                     <p className="font-medium text-gray-900">{s.supplier_name}</p>
                     {s.tax_pin && <p className="text-xs text-gray-400">PIN: {s.tax_pin}</p>}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-600">{s.contact_person || '—'}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-gray-600">{s.contact_person || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">
                     {s.phone && <p>{s.phone}</p>}
                     {s.email && <p className="text-gray-400">{s.email}</p>}
                     {!s.phone && !s.email && '—'}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-600">{s.payment_terms} days</td>
+                  <td className="px-4 py-3 text-gray-600">{s.payment_terms} days</td>
                   <td className="px-4 py-3">
                     <span className={`font-semibold ${parseFloat(s.current_balance) > 0 ? 'text-red-600' : 'text-gray-900'}`}>
                       {formatCurrency(s.current_balance)}
@@ -331,14 +337,44 @@ export default function SuppliersPage() {
                   </td>
                 </tr>
               ))}
-              {suppliers.length === 0 && (
-                <tr><td colSpan={7} className="py-14 text-center text-gray-400">
-                  <Truck className="mx-auto mb-2 h-8 w-8 opacity-25" />No suppliers found
-                </td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {suppliers.map((s) => (
+              <div key={s.supplier_id}
+                className={`rounded-xl border border-gray-100 bg-white p-3 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{s.supplier_name}</p>
+                    {s.tax_pin && <p className="text-xs text-gray-400">PIN: {s.tax_pin}</p>}
+                  </div>
+                  <span className={`shrink-0 text-sm font-semibold ${parseFloat(s.current_balance) > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {formatCurrency(s.current_balance)}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                  {s.contact_person && <span>{s.contact_person}</span>}
+                  {s.phone && <span>{s.phone}</span>}
+                  {s.email && <span className="text-gray-400">{s.email}</span>}
+                  <span>{s.payment_terms} days</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <button onClick={() => setEditTarget(s)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                    Edit
+                  </button>
+                  <button onClick={() => navigate(`/app/suppliers/${s.supplier_id}/ledger`)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                    Entries
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

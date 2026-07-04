@@ -273,14 +273,16 @@ function BankLedgerModal({ account, onClose }) {
         {isLoading ? <PageSpinner /> : entries.length === 0 ? (
           <p className="py-8 text-center text-gray-400 text-sm">No transactions for this period</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
+          <div className="rounded-lg border border-gray-100 overflow-hidden">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Reference</th>
-                  <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Reference</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">In (Cr)</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-red-500">Out (Dr)</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">Balance</th>
@@ -290,13 +292,13 @@ function BankLedgerModal({ account, onClose }) {
                 {entries.map((e, idx) => (
                   <tr key={`${e.lineId ?? e.entryId ?? idx}`} className="hover:bg-gray-50 active:bg-gray-100">
                     <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatDate(e.entryDate)}</td>
-                    <td className="hidden sm:table-cell px-3 py-2.5">
+                    <td className="px-3 py-2.5">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                         {e.sourceType ?? '—'}
                       </span>
                     </td>
-                    <td className="hidden sm:table-cell px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
-                    <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-700">
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600 truncate">{e.sourceRef ?? e.entryNumber}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700">
                       <p className="truncate" title={e.description}>{e.description}</p>
                     </td>
                     {/* For bank/cash accounts: debit = money in, credit = money out */}
@@ -313,6 +315,30 @@ function BankLedgerModal({ account, onClose }) {
                 ))}
               </tbody>
             </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gray-100">
+              {entries.map((e, idx) => (
+                <div key={`${e.lineId ?? e.entryId ?? idx}`} className="p-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(e.entryDate)}</span>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${BANK_TYPE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {e.sourceType ?? '—'}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 font-mono text-xs text-gray-600">{e.sourceRef ?? e.entryNumber}</p>
+                  {e.description && <p className="mt-0.5 text-xs text-gray-700 truncate" title={e.description}>{e.description}</p>}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
+                    <span>In: {e.debit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}</span>
+                    <span>Out: {e.credit > 0 ? <span className="font-semibold text-red-600">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}</span>
+                    <span className={`font-semibold ${(e.balance ?? 0) >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                      Bal: {e.balance != null ? formatCurrency(e.balance) : '—'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -379,13 +405,13 @@ function ReconciliationModal({ account, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Reconcile — ${account?.account_name}`} size="xl"
       footer={
-        <div className="flex items-center justify-between gap-3 w-full">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between w-full">
           <span className="text-sm text-gray-500">
             {selected.size} selected · Net: <span className={`font-semibold ${selectedTotal >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(selectedTotal)}</span>
           </span>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>Close</Button>
-            <Button disabled={selected.size === 0} loading={isPending}
+            <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
+            <Button fullWidth disabled={selected.size === 0} loading={isPending}
               onClick={() => mutate([...selected])}>
               Mark Reconciled ({selected.size})
             </Button>
@@ -417,7 +443,9 @@ function ReconciliationModal({ account, onClose }) {
             <p className="text-gray-400 text-sm mt-1">No unreconciled cash lines in this period</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
+          <div className="rounded-lg border border-gray-100 overflow-hidden">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -426,9 +454,9 @@ function ReconciliationModal({ account, onClose }) {
                       onChange={toggleAll} className="rounded" />
                   </th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
-                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ref</th>
-                  <th className="hidden sm:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Ref</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-green-600">In</th>
                   <th className="px-3 py-2.5 text-right text-xs font-medium text-red-500">Out</th>
                 </tr>
@@ -441,11 +469,11 @@ function ReconciliationModal({ account, onClose }) {
                       <input type="checkbox" checked={selected.has(l.lineId)} onChange={() => toggle(l.lineId)} className="rounded" />
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{formatDate(l.entryDate)}</td>
-                    <td className="hidden sm:table-cell px-3 py-2.5 font-mono text-xs text-gray-600">{l.entryNumber}</td>
-                    <td className="hidden sm:table-cell px-3 py-2.5">
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{l.entryNumber}</td>
+                    <td className="px-3 py-2.5">
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{l.sourceType}</span>
                     </td>
-                    <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-700 max-w-xs truncate">{l.description}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700 max-w-xs truncate">{l.description}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs">
                       {l.debit > 0 ? <span className="text-green-700 font-semibold">{formatCurrency(l.debit)}</span> : <span className="text-gray-300">—</span>}
                     </td>
@@ -456,6 +484,32 @@ function ReconciliationModal({ account, onClose }) {
                 ))}
               </tbody>
             </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gray-100">
+              {lines.map((l) => (
+                <div key={l.lineId} onClick={() => toggle(l.lineId)}
+                  className={`p-3 cursor-pointer transition-colors ${selected.has(l.lineId) ? 'bg-primary-50' : 'active:bg-gray-50'}`}>
+                  <div className="flex items-start gap-2">
+                    <input type="checkbox" checked={selected.has(l.lineId)} onChange={() => toggle(l.lineId)}
+                      onClick={(e) => e.stopPropagation()} className="mt-0.5 rounded" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(l.entryDate)}</span>
+                        <span className="font-mono text-xs text-gray-600">{l.entryNumber}</span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{l.sourceType}</span>
+                      </div>
+                      {l.description && <p className="mt-0.5 text-xs text-gray-700 truncate">{l.description}</p>}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs font-mono">
+                        <span>In: {l.debit > 0 ? <span className="text-green-700 font-semibold">{formatCurrency(l.debit)}</span> : <span className="text-gray-300">—</span>}</span>
+                        <span>Out: {l.credit > 0 ? <span className="text-red-600 font-semibold">{formatCurrency(l.credit)}</span> : <span className="text-gray-300">—</span>}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

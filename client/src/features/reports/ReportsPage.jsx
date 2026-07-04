@@ -709,7 +709,9 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
         {suppliers.length === 0 ? (
           <p className="text-center text-gray-400 py-6">No outstanding balances</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200">
                 <tr>
@@ -751,6 +753,35 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
               </tfoot>
             </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2">
+            {suppliers.map((s) => {
+              const bucket = AGING_BUCKETS.find((b) => b.key === s.bucket) ?? AGING_BUCKETS[0];
+              return (
+                <div key={s.supplierId} className="rounded-xl border border-gray-100 bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{s.supplierName}</p>
+                      <p className="text-xs text-gray-400">{s.phone || s.email || ''}</p>
+                    </div>
+                    <span className="shrink-0 font-semibold text-red-600">{formatCurrency(s.balance)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span>Oldest: {s.oldestInvoice ?? '—'}</span>
+                    <span>{s.daysOutstanding !== null ? `${s.daysOutstanding} days` : '—'}</span>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${bucket.color}`}>
+                      {bucket.label}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="pt-1 text-center text-xs text-gray-400">
+              Total AP Outstanding · {formatCurrency(totals.total)}
+            </p>
+          </div>
+          </>
         )}
       </SectionCard>
     </div>
@@ -1100,7 +1131,8 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
         </SectionCard>
       ) : (
         <SectionCard title={`Outstanding Receivables — ${receivables.length} invoices`}>
-          <div className="overflow-x-auto">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200">
                 <tr>
@@ -1138,6 +1170,35 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2">
+            {receivables.map((r) => (
+              <div key={r.transactionId} className="rounded-xl border border-gray-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-primary-700">{r.transactionNumber}</p>
+                    <p className="text-gray-700 text-sm truncate">{r.customerName}</p>
+                  </div>
+                  <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(r.outstanding)}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{formatDate(r.transactionDate)}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${bucketColor(r.bucket)}`}>
+                    {r.daysOutstanding}d ({bucketLabel(r.bucket)})
+                  </span>
+                  <span>Original: {formatCurrency(r.arCreated)}</span>
+                  {r.arSettled > 0 && <span className="text-green-600">Settled: {formatCurrency(r.arSettled)}</span>}
+                </div>
+                <div className="mt-2">
+                  <button onClick={() => { setSettling(r); setSettleAmt(r.outstanding.toFixed(2)); setPmId(''); }}
+                    className="rounded px-2 py-1 text-xs font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
+                    Collect
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </SectionCard>
       )}
@@ -1246,7 +1307,9 @@ function StockTab() {
         {items.length === 0 ? (
           <p className="text-center text-gray-400 py-6">No inventory data</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200">
                 <tr>
@@ -1286,6 +1349,34 @@ function StockTab() {
               </tfoot>
             </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2">
+            {items.map((item) => (
+              <div key={`${item.productId}-${item.branchId}`}
+                className={`rounded-xl border p-3 ${item.belowReorder ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-white'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{item.productName}</p>
+                    <p className="text-xs text-gray-400">{item.sku}</p>
+                  </div>
+                  <span className="shrink-0 font-semibold">{item.totalValue > 0 ? formatCurrency(item.totalValue) : '—'}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{item.category}</span>
+                  {!branchId && <span>{item.branchName}</span>}
+                  <span className={item.belowReorder ? 'text-amber-600 font-semibold' : 'text-gray-700'}>
+                    {item.qty.toLocaleString()} {item.uom}
+                  </span>
+                  <span>Unit: {item.unitCost > 0 ? formatCurrency(item.unitCost) : '—'}</span>
+                </div>
+              </div>
+            ))}
+            <p className="pt-1 text-center text-xs text-gray-400">
+              Total · {formatCurrency(totalValue)}
+            </p>
+          </div>
+          </>
         )}
       </SectionCard>
     </div>

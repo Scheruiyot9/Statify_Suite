@@ -501,7 +501,7 @@ function ShiftSummaryModal({ session, onClose }) {
               {/* Per-payment-method breakdown */}
               <div>
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">Payment Method Breakdown</h3>
-                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <div className="rounded-xl border border-gray-100 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">

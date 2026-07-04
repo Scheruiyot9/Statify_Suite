@@ -39,6 +39,7 @@ function TransactionDetail({ txn, onVoid, canVoid, onEdit, canEdit, onPrint }) {
       <div>
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Items</p>
         <div className="rounded-lg border border-gray-100 overflow-hidden">
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -62,6 +63,21 @@ function TransactionDetail({ txn, onVoid, canVoid, onEdit, canEdit, onPrint }) {
               ))}
             </tbody>
           </table>
+          </div>
+          <div className="sm:hidden divide-y divide-gray-50">
+            {txn.items?.map((item, i) => (
+              <div key={item.item_id ?? i} className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 text-sm">{item.product_name}</p>
+                    <p className="text-xs text-gray-400">{item.sku}</p>
+                  </div>
+                  <p className="flex-shrink-0 font-semibold text-sm text-gray-800">{formatCurrency(item.line_total)}</p>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{parseFloat(item.quantity)} × {formatCurrency(item.unit_price)}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
@@ -253,22 +269,28 @@ export default function SalesPage() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : transactions.length === 0 ? (
+          <p className="py-12 text-center text-gray-400">
+            <Receipt className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions found
+          </p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium text-gray-600">TXN #</th>
                 <th className="px-3 py-2.5 text-left font-medium text-gray-600">Date</th>
                 <th className="px-3 py-2.5 text-left font-medium text-gray-600">Customer</th>
-                <th className="px-3 py-2.5 text-left font-medium text-gray-600 hidden md:table-cell">Cashier</th>
-                <th className="px-3 py-2.5 text-left font-medium text-gray-600 hidden sm:table-cell">Payment</th>
-                <th className="px-3 py-2.5 text-right font-medium text-blue-600 hidden lg:table-cell" title="DR Cash/Bank — total received">Dr</th>
-                <th className="px-3 py-2.5 text-right font-medium text-green-600 hidden lg:table-cell" title="CR Revenue — ex-VAT">Cr Rev</th>
-                <th className="px-3 py-2.5 text-right font-medium text-purple-600 hidden lg:table-cell" title="CR Tax Payable — VAT collected">Cr VAT</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">Cashier</th>
+                <th className="px-3 py-2.5 text-left font-medium text-gray-600">Payment</th>
+                <th className="px-3 py-2.5 text-right font-medium text-blue-600" title="DR Cash/Bank — total received">Dr</th>
+                <th className="px-3 py-2.5 text-right font-medium text-green-600" title="CR Revenue — ex-VAT">Cr Rev</th>
+                <th className="px-3 py-2.5 text-right font-medium text-purple-600" title="CR Tax Payable — VAT collected">Cr VAT</th>
                 <th className="px-3 py-2.5 text-right font-medium text-gray-600">Total</th>
-                <th className="px-3 py-2.5 text-right font-medium text-emerald-600 hidden lg:table-cell">Profit</th>
-                <th className="px-3 py-2.5 text-center font-medium text-gray-600 hidden sm:table-cell">Status</th>
+                <th className="px-3 py-2.5 text-right font-medium text-emerald-600">Profit</th>
+                <th className="px-3 py-2.5 text-center font-medium text-gray-600">Status</th>
                 <th className="px-3 py-2.5 text-center font-medium text-gray-600">Action</th>
               </tr>
             </thead>
@@ -278,22 +300,22 @@ export default function SalesPage() {
                   <td className="px-3 py-2.5 font-mono text-primary-600 font-semibold whitespace-nowrap">{t.transaction_number}</td>
                   <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{formatDateTime(t.transaction_date)}</td>
                   <td className="px-3 py-2.5 text-gray-700">{t.customer_name}</td>
-                  <td className="px-3 py-2.5 text-gray-500 hidden md:table-cell">{t.cashier_name}</td>
-                  <td className="px-3 py-2.5 text-gray-500 hidden sm:table-cell">{t.payment_method}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{t.cashier_name}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{t.payment_method}</td>
                   {/* Dr: Cash/Bank = total received */}
-                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono">
                     <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
                       {formatCurrency(t.total_amount)}
                     </span>
                   </td>
                   {/* Cr: Revenue = total ex-VAT */}
-                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono">
                     <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-green-700'}`}>
                       {formatCurrency(parseFloat(t.total_amount) - parseFloat(t.tax_amount || 0))}
                     </span>
                   </td>
                   {/* Cr: VAT Payable */}
-                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono">
                     {parseFloat(t.tax_amount) > 0
                       ? <span className={`font-semibold ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-purple-600'}`}>{formatCurrency(t.tax_amount)}</span>
                       : <span className="text-gray-300">—</span>}
@@ -305,12 +327,12 @@ export default function SalesPage() {
                     </span>
                   </td>
                   {/* Profit = revenue ex-VAT minus COGS */}
-                  <td className="px-3 py-2.5 text-right font-mono hidden lg:table-cell">
+                  <td className="px-3 py-2.5 text-right font-mono">
                     {t.status === 'void'
                       ? <span className="text-gray-300">—</span>
                       : <span className={`font-semibold ${t.profit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(t.profit)}</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-center hidden sm:table-cell">
+                  <td className="px-3 py-2.5 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {t.status}
                     </span>
@@ -323,14 +345,49 @@ export default function SalesPage() {
                   </td>
                 </tr>
               ))}
-              {transactions.length === 0 && (
-                <tr><td colSpan={12} className="py-12 text-center text-gray-400">
-                  <Receipt className="mx-auto mb-2 h-8 w-8 opacity-30" />No transactions found
-                </td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {transactions.map((t) => (
+              <div key={t.transaction_id} className="rounded-xl border border-gray-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-primary-600 font-semibold text-sm">{t.transaction_number}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{formatDateTime(t.transaction_date)}</p>
+                    <p className="text-xs text-gray-700 mt-0.5 truncate">{t.customer_name}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`font-mono font-semibold text-sm ${t.status === 'void' ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
+                      {formatCurrency(t.total_amount)}
+                    </p>
+                    <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{t.cashier_name}</span>
+                  <span>{t.payment_method}</span>
+                  {parseFloat(t.tax_amount) > 0 && (
+                    <span className="font-medium text-purple-600">VAT {formatCurrency(t.tax_amount)}</span>
+                  )}
+                  {t.status !== 'void' && (
+                    <span className={`font-medium ${t.profit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      Profit {formatCurrency(t.profit)}
+                    </span>
+                  )}
+                </div>
+                <button onClick={() => setSelected(t.transaction_id)}
+                  className="mt-2 w-full rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

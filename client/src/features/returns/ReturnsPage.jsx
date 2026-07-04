@@ -79,6 +79,8 @@ function ReturnDetail({ ret }) {
       <div>
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Returned Items</p>
         <div className="rounded-lg border border-gray-100 overflow-hidden">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -120,6 +122,34 @@ function ReturnDetail({ ret }) {
               })}
             </tbody>
           </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-gray-50">
+            {ret.items?.map((item, i) => {
+              const cond = CONDITION_LABELS[item.item_condition] ?? { label: item.item_condition, cls: 'bg-gray-100 text-gray-600' };
+              return (
+                <div key={item.return_item_id ?? i} className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800">{item.product_name}</p>
+                      {item.sku && <p className="text-xs text-gray-400 font-mono">{item.sku}</p>}
+                      {item.line_notes && <p className="text-xs text-gray-400 italic mt-0.5">{item.line_notes}</p>}
+                    </div>
+                    <p className="flex-shrink-0 font-semibold text-gray-800">{formatCurrency(item.line_refund_amount)}</p>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <span className="text-gray-500">Qty: {parseFloat(item.quantity_returned)}</span>
+                    {item.reason_name && <span className="text-gray-500">{item.reason_name}</span>}
+                    <span className={`rounded-full px-2 py-0.5 font-medium ${cond.cls}`}>{cond.label}</span>
+                    {item.return_to_inventory
+                      ? <span className="text-green-600 font-medium">Restocked</span>
+                      : <span className="text-red-400">Not restocked</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -297,16 +327,22 @@ export default function ReturnsPage() {
 
       {/* Table */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : returns.length === 0 ? (
+          <p className="py-12 text-center text-gray-400">
+            <RotateCcw className="mx-auto mb-2 h-8 w-8 opacity-30" />No returns found
+          </p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">RTN #</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Date</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Original TXN</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Processed By</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Date</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Original TXN</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Processed By</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Refunded</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
@@ -316,10 +352,10 @@ export default function ReturnsPage() {
               {returns.map((r) => (
                 <tr key={r.return_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-primary-600 font-semibold">{r.return_number}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">{formatDateTime(r.return_date)}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-600">{r.original_transaction_number}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-600 text-xs">{r.branch_name}</td>
-                  <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs">{r.processed_by}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{formatDateTime(r.return_date)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.original_transaction_number}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{r.branch_name}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{r.processed_by}</td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(r.total_refunded)}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -334,14 +370,39 @@ export default function ReturnsPage() {
                   </td>
                 </tr>
               ))}
-              {returns.length === 0 && (
-                <tr><td colSpan={8} className="py-12 text-center text-gray-400">
-                  <RotateCcw className="mx-auto mb-2 h-8 w-8 opacity-30" />No returns found
-                </td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {returns.map((r) => (
+              <div key={r.return_id} className="rounded-xl border border-gray-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-primary-600 font-semibold">{r.return_number}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{formatDateTime(r.return_date)}</p>
+                    <p className="font-mono text-xs text-gray-600 mt-0.5">{r.original_transaction_number}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-semibold text-gray-900">{formatCurrency(r.total_refunded)}</p>
+                    <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{r.branch_name}</span>
+                  <span>{r.processed_by}</span>
+                </div>
+                <button onClick={() => setSelected(r.return_id)}
+                  className="mt-2 w-full rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
@@ -361,7 +422,7 @@ export default function ReturnsPage() {
         title="Return Details"
         size="lg"
         footer={(
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button variant="secondary" icon={<Printer className="h-4 w-4" />}
               onClick={() => setPrintReturn(selectedRet)}>
               Print

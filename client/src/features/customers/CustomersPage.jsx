@@ -319,16 +319,21 @@ export default function CustomersPage() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : customers.length === 0 ? (
+          <p className="py-12 text-center text-gray-400">No customers found</p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Customer</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Contact</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Group</th>
-                <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-right font-medium text-gray-600">Points</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Contact</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Group</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">Purchases</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">Points</th>
+                {creditEnabled && <th className="px-4 py-3 text-right font-medium text-gray-600">Balance</th>}
                 {canManageCustomers && <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>}
               </tr>
             </thead>
@@ -344,27 +349,31 @@ export default function CustomersPage() {
                       <div>
                         <p className="font-medium text-gray-900">{c.customer_name}</p>
                         <p className="text-xs text-gray-400">{c.customer_code}</p>
-                        {creditEnabled && c.allow_credit && c.credit_balance > 0 && (
-                          <p className="text-xs font-semibold text-red-600">Bal: {formatCurrency(c.credit_balance)}</p>
-                        )}
                       </div>
                     </div>
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-gray-500 text-xs">
                     <div>{c.phone ?? '—'}</div>
                     {c.email && <div className="text-gray-400">{c.email}</div>}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3">
+                  <td className="px-4 py-3">
                     {c.group_name
                       ? <span className="rounded-full bg-secondary-100 px-2 py-0.5 text-xs font-medium text-secondary-700">{c.group_name}</span>
                       : <span className="text-gray-400 text-xs">—</span>}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 text-right text-gray-700">{c.purchase_count}</td>
-                  <td className="hidden sm:table-cell px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right text-gray-700">{c.purchase_count}</td>
+                  <td className="px-4 py-3 text-right">
                     <span className="flex items-center justify-end gap-1 text-secondary-600 font-medium text-xs">
                       <Star className="h-3 w-3" />{c.loyalty_points_balance.toLocaleString()}
                     </span>
                   </td>
+                  {creditEnabled && (
+                    <td className="px-4 py-3 text-right">
+                      {c.allow_credit && c.credit_balance > 0
+                        ? <span className="font-semibold text-red-600 text-xs">{formatCurrency(c.credit_balance)}</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                  )}
                   {canManageCustomers && (
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
@@ -384,12 +393,56 @@ export default function CustomersPage() {
                   )}
                 </tr>
               ))}
-              {customers.length === 0 && (
-                <tr><td colSpan={canManageCustomers ? 6 : 5} className="py-12 text-center text-gray-400">No customers found</td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {customers.map((c) => (
+              <div key={c.customer_id} onClick={() => setDetail(c.customer_id)}
+                className="rounded-xl border border-gray-100 bg-white p-3 active:bg-gray-50 transition-colors">
+                <div className="flex items-start gap-2">
+                  <div className="h-9 w-9 flex-shrink-0 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs">
+                    {c.customer_name[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900 truncate">{c.customer_name}</p>
+                      {creditEnabled && c.allow_credit && c.credit_balance > 0 && (
+                        <span className="shrink-0 text-xs font-semibold text-red-600">{formatCurrency(c.credit_balance)}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{c.customer_code}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                      {c.phone && <span>{c.phone}</span>}
+                      {c.group_name && <span className="rounded-full bg-secondary-100 px-2 py-0.5 font-medium text-secondary-700">{c.group_name}</span>}
+                      <span className="flex items-center gap-1 text-secondary-600 font-medium">
+                        <Star className="h-3 w-3" />{c.loyalty_points_balance.toLocaleString()}
+                      </span>
+                      <span>{c.purchase_count} purchase{c.purchase_count === 1 ? '' : 's'}</span>
+                    </div>
+                  </div>
+                </div>
+                {canManageCustomers && (
+                  <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setDetail(c.customer_id)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                    {c.allow_credit && (
+                      <button onClick={() => navigate(`/app/customers/${c.customer_id}/ledger`)}
+                        title="View credit entries"
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                        <BookOpen className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

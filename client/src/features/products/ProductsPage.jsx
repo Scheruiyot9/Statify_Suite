@@ -499,17 +499,23 @@ export default function ProductsPage() {
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : products.length === 0 ? (
+          <p className="py-12 text-center text-gray-400">
+            <Package className="mx-auto mb-2 h-8 w-8 opacity-30" />No products found
+          </p>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <SortTh col="name"     label="Product"  className="text-left" />
-                <SortTh col="sku"      label="SKU"      className="text-left hidden sm:table-cell" />
-                <SortTh col="category" label="Category" className="text-left hidden md:table-cell" />
-                <th className="hidden md:table-cell px-3 py-2 text-left font-medium text-gray-600">Tax</th>
+                <SortTh col="sku"      label="SKU"      className="text-left" />
+                <SortTh col="category" label="Category" className="text-left" />
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Tax</th>
                 <SortTh col="price"    label="Price"    className="text-right" />
-                <SortTh col="cost"     label="Cost"     className="text-right hidden sm:table-cell" />
+                <SortTh col="cost"     label="Cost"     className="text-right" />
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Action</th>
               </tr>
@@ -530,15 +536,15 @@ export default function ProductsPage() {
                       <p className="font-medium text-gray-900">{p.product_name}</p>
                     </div>
                   </td>
-                  <td className="hidden sm:table-cell px-3 py-2 font-mono text-xs text-gray-600">{p.sku}</td>
-                  <td className="hidden md:table-cell px-3 py-2 text-gray-500">{p.category_name ?? '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-2">
+                  <td className="px-3 py-2 font-mono text-xs text-gray-600">{p.sku}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.category_name ?? '—'}</td>
+                  <td className="px-3 py-2">
                     {p.tax_template_name
                       ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{p.tax_template_name}</span>
                       : <span className="text-xs text-gray-300">default</span>}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatCurrency(p.base_price)}</td>
-                  <td className="hidden sm:table-cell px-3 py-2 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
+                  <td className="px-3 py-2 text-right text-gray-500">{p.cost_price ? formatCurrency(p.cost_price) : '—'}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
@@ -560,14 +566,57 @@ export default function ProductsPage() {
                   </td>
                 </tr>
               ))}
-              {products.length === 0 && (
-                <tr><td colSpan={canManageProducts ? 8 : 7} className="py-12 text-center text-gray-400">
-                  <Package className="mx-auto mb-2 h-8 w-8 opacity-30" />No products found
-                </td></tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {products.map((p) => (
+              <div key={p.product_id} className="rounded-xl border border-gray-100 bg-white p-3">
+                <div className="flex items-start gap-2">
+                  {p.image_url ? (
+                    <img src={p.image_url} alt={p.product_name}
+                      className="h-9 w-9 flex-shrink-0 rounded-lg object-cover border border-gray-100" />
+                  ) : (
+                    <div className="h-9 w-9 flex-shrink-0 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs">
+                      {p.product_name[0]}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900 truncate">{p.product_name}</p>
+                      <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(p.base_price)}</span>
+                    </div>
+                    <p className="font-mono text-xs text-gray-400">{p.sku}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                      {p.category_name && <span className="text-gray-500">{p.category_name}</span>}
+                      {p.tax_template_name && (
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">{p.tax_template_name}</span>
+                      )}
+                      {p.cost_price && <span className="text-gray-500">Cost: {formatCurrency(p.cost_price)}</span>}
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {p.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <button onClick={() => setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
+                        className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
+                        <BookOpen className="h-3 w-3" />Ledger
+                      </button>
+                      {canManageProducts && (
+                        <button onClick={() => setViewProduct(p)}
+                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                          View
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">

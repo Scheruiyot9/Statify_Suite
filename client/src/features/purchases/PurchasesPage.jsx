@@ -336,6 +336,7 @@ function PODetail({ po, onClose, onEdit }) {
           <div><span className="text-gray-500">Status:</span> <StatusBadge status={po.status} /></div>
         </div>
 
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-gray-200">
             <tr>
@@ -364,14 +365,15 @@ function PODetail({ po, onClose, onEdit }) {
             </tr>
           </tfoot>
         </table>
+        </div>
 
         {po.notes && <p className="text-sm text-gray-500 italic">{po.notes}</p>}
 
-        <div className="flex justify-between gap-3 pt-2">
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between gap-3 pt-2">
+          <div className="flex flex-wrap gap-2">
             {canCancel  && <Button variant="outline" size="sm" onClick={() => cancelM.mutate()}  isLoading={cancelM.isPending}  className="text-red-600 border-red-300 hover:bg-red-50">Cancel PO</Button>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => printLPO(po)}>
               <Printer className="h-4 w-4 mr-1" />Print LPO
             </Button>
@@ -578,6 +580,7 @@ function GRNDetail({ grn, onClose }) {
           <div><span className="text-gray-500">Status:</span> <StatusBadge status={grn.status} /></div>
         </div>
 
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-gray-200">
             <tr>
@@ -604,11 +607,12 @@ function GRNDetail({ grn, onClose }) {
             </tr>
           </tfoot>
         </table>
+        </div>
 
         {grn.notes && <p className="text-sm text-gray-500 italic">{grn.notes}</p>}
 
-        <div className="flex justify-between gap-3 pt-2">
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between gap-3 pt-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => printGRN(grn)}>
               <Printer className="h-4 w-4 mr-1" />Print GRN
             </Button>
@@ -620,7 +624,7 @@ function GRNDetail({ grn, onClose }) {
               </Button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={onClose}>Close</Button>
             {grn.status === 'draft' && (
               <Button onClick={() => postM.mutate()} isLoading={postM.isPending}>
@@ -882,6 +886,7 @@ function PurchasesSummaryTab() {
 
         <RptCard title="By Supplier">
           {bySupplier?.length ? (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-gray-200">
                 <th className="pb-2 text-left text-xs font-medium text-gray-500">Supplier</th>
@@ -902,6 +907,7 @@ function PurchasesSummaryTab() {
                 ))}
               </tbody>
             </table>
+            </div>
           ) : <p className="text-center text-gray-400 py-6">No supplier activity</p>}
         </RptCard>
       </div>
@@ -1018,25 +1024,28 @@ export default function PurchasesPage() {
 
       {/* PO Table */}
       {tab === 'po' && (
-        poLoading ? <PageSpinner /> : (
+        poLoading ? <PageSpinner /> : filteredPOs.length === 0 ? (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="overflow-x-auto">
+            <p className="py-10 text-center text-gray-400">No purchase orders found</p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">PO Number</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Date</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Status</th>
-                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Payment</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Payment</th>
                   <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
                   <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredPOs.length === 0 ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-gray-400">No purchase orders found</td></tr>
-                ) : filteredPOs.map((po) => {
+                {filteredPOs.map((po) => {
                   const paid = parseFloat(po.paid_amount || 0);
                   const total = parseFloat(po.total_amount || 0);
                   const payStatus = paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
@@ -1044,9 +1053,9 @@ export default function PurchasesPage() {
                   <tr key={po.po_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => setDetailPO(po)}>
                     <td className="py-3 pl-4 font-mono text-sm font-medium text-primary-700">{po.po_number}</td>
                     <td className="py-3 px-4 text-gray-800">{po.supplier_name}</td>
-                    <td className="hidden sm:table-cell py-3 px-4 text-gray-500">{po.order_date?.slice(0, 10)}</td>
+                    <td className="py-3 px-4 text-gray-500">{po.order_date?.slice(0, 10)}</td>
                     <td className="py-3 px-4"><StatusBadge status={po.status} /></td>
-                    <td className="hidden sm:table-cell py-3 px-4">
+                    <td className="py-3 px-4">
                       {payStatus === 'paid'    && <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span>}
                       {payStatus === 'partial' && <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Partial</span>}
                       {payStatus === 'unpaid'  && <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">Unpaid</span>}
@@ -1078,36 +1087,85 @@ export default function PurchasesPage() {
               </tbody>
             </table>
             </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden space-y-2 p-3">
+              {filteredPOs.map((po) => {
+                const paid = parseFloat(po.paid_amount || 0);
+                const total = parseFloat(po.total_amount || 0);
+                const payStatus = paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+                return (
+                <div key={po.po_id} onClick={() => setDetailPO(po)}
+                  className="rounded-xl border border-gray-100 bg-white p-3 active:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-medium text-primary-700">{po.po_number}</p>
+                      <p className="text-sm text-gray-800 truncate">{po.supplier_name}</p>
+                    </div>
+                    <span className="shrink-0 font-medium text-sm text-gray-900">{formatCurrency(po.total_amount)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <StatusBadge status={po.status} />
+                    {payStatus === 'paid'    && <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span>}
+                    {payStatus === 'partial' && <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Partial</span>}
+                    {payStatus === 'unpaid'  && <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">Unpaid</span>}
+                    <span className="text-xs text-gray-400">{po.order_date?.slice(0, 10)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setDetailPO(po)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                    {po.status === 'draft' && (
+                      <button className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-60"
+                        disabled={editPO?.po_id === po.po_id && fullPOLoading}
+                        onClick={() => setEditPO(po)}>
+                        {editPO?.po_id === po.po_id && fullPOLoading ? 'Loading…' : 'Edit'}
+                      </button>
+                    )}
+                    {['approved', 'partially_received'].includes(po.status) && (
+                      <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                        onClick={() => setGrnForPO(po)}>
+                        Receive
+                      </button>
+                    )}
+                  </div>
+                </div>
+                ); })}
+            </div>
           </div>
         )
       )}
 
       {/* GRN Table */}
       {tab === 'grn' && (
-        grnLoading ? <PageSpinner /> : (
+        grnLoading ? <PageSpinner /> : filteredGRNs.length === 0 ? (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="overflow-x-auto">
+            <p className="py-10 text-center text-gray-400">No GRNs found</p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-3 pl-4 text-left text-xs font-medium text-gray-500">GRN Number</th>
-                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">PO Number</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">PO Number</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Supplier</th>
-                  <th className="hidden sm:table-cell py-3 px-4 text-left text-xs font-medium text-gray-500">Received</th>
+                  <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Received</th>
                   <th className="py-3 px-4 text-left text-xs font-medium text-gray-500">Status</th>
                   <th className="py-3 px-4 text-right text-xs font-medium text-gray-500">Amount</th>
                   <th className="py-3 pr-4 text-center text-xs font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredGRNs.length === 0 ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-gray-400">No GRNs found</td></tr>
-                ) : filteredGRNs.map((grn) => (
+                {filteredGRNs.map((grn) => (
                   <tr key={grn.grn_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer" onClick={() => setDetailGRN(grn)}>
                     <td className="py-3 pl-4 font-mono text-sm font-medium text-primary-700">{grn.grn_number}</td>
-                    <td className="hidden sm:table-cell py-3 px-4 font-mono text-gray-600">{grn.po_number}</td>
+                    <td className="py-3 px-4 font-mono text-gray-600">{grn.po_number}</td>
                     <td className="py-3 px-4 text-gray-800">{grn.supplier_name}</td>
-                    <td className="hidden sm:table-cell py-3 px-4 text-gray-500">{grn.received_date?.slice(0, 10)}</td>
+                    <td className="py-3 px-4 text-gray-500">{grn.received_date?.slice(0, 10)}</td>
                     <td className="py-3 px-4"><StatusBadge status={grn.status} /></td>
                     <td className="py-3 px-4 text-right font-medium">{formatCurrency(grn.total_amount)}</td>
                     <td className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1120,6 +1178,33 @@ export default function PurchasesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden space-y-2 p-3">
+              {filteredGRNs.map((grn) => (
+                <div key={grn.grn_id} onClick={() => setDetailGRN(grn)}
+                  className="rounded-xl border border-gray-100 bg-white p-3 active:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-medium text-primary-700">{grn.grn_number}</p>
+                      <p className="text-sm text-gray-800 truncate">{grn.supplier_name}</p>
+                    </div>
+                    <span className="shrink-0 font-medium text-sm text-gray-900">{formatCurrency(grn.total_amount)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <StatusBadge status={grn.status} />
+                    <span className="font-mono">{grn.po_number}</span>
+                    <span>{grn.received_date?.slice(0, 10)}</span>
+                  </div>
+                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setDetailGRN(grn)}
+                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )

@@ -238,7 +238,8 @@ export default function CustomerLedgerPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop table — every column always visible */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -330,6 +331,73 @@ export default function CustomerLedgerPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="sm:hidden divide-y divide-gray-50">
+          {activity.length === 0 ? (
+            <p className="py-12 text-center text-gray-400 text-sm">No credit activity found</p>
+          ) : activity.map((row) => {
+            const isSale    = row.type === 'SALE';
+            const isPaid    = row.payment_status === 'paid';
+            const isChecked = selected.has(row.id);
+            const canSelect = isSale && !isPaid;
+            return (
+              <div key={row.id}
+                onClick={() => canSelect && toggleSelect(row.id)}
+                className={`p-3 transition-colors ${canSelect ? 'cursor-pointer active:bg-primary-50' : ''} ${isChecked ? 'bg-primary-50' : ''}`}>
+                <div className="flex items-start gap-2">
+                  {canSelect && (
+                    <input type="checkbox" checked={isChecked}
+                      onChange={() => toggleSelect(row.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 text-primary-600 cursor-pointer" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      {isSale ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                          <Receipt className="h-3 w-3" /> Invoice
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          <CreditCard className="h-3 w-3" /> Payment
+                        </span>
+                      )}
+                      <span className={`flex-shrink-0 font-semibold text-xs ${isSale ? 'text-red-600' : 'text-green-700'}`}>
+                        {isSale ? '' : '−'}{formatCurrency(row.amount)}
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-xs font-semibold text-gray-700">{row.ref}</p>
+                    {isSale && row.items?.length > 0 && (
+                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                        {row.items.slice(0, 2).map((i) => `${i.name} ×${i.qty}`).join(', ')}
+                        {row.items.length > 2 && ` +${row.items.length - 2} more`}
+                      </p>
+                    )}
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-500">{formatDate(row.date)}</span>
+                      {isSale ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          isPaid ? 'bg-green-100 text-green-700'
+                          : row.payment_status === 'partial' ? 'bg-amber-100 text-amber-700'
+                          : 'bg-red-100 text-red-600'
+                        }`}>
+                          {isPaid
+                            ? <><CheckCircle className="h-2.5 w-2.5" /> Paid</>
+                            : row.payment_status === 'partial'
+                              ? <><Clock className="h-2.5 w-2.5" /> Partial</>
+                              : <><AlertTriangle className="h-2.5 w-2.5" /> Unpaid</>}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

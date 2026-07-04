@@ -305,7 +305,7 @@ function MpesaPanel({ line, remaining, methods, onReferenceResolved, onUpdate, o
   return (
     <div className="rounded-xl border border-green-200 bg-green-50 p-3 space-y-2">
       {/* Single header row: icon · name · amount · STK/Manual toggle · timer · remove */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Smartphone className="h-4 w-4 text-green-600 flex-shrink-0" />
         <span className="text-sm font-semibold text-green-800 flex-shrink-0">{method?.method_name}</span>
 
@@ -315,7 +315,7 @@ function MpesaPanel({ line, remaining, methods, onReferenceResolved, onUpdate, o
               type="number" step="0.01" min="0"
               value={line.amount}
               onChange={(e) => onUpdate({ ...line, amount: parseFloat(e.target.value) || 0 })}
-              className="w-24 rounded-lg border border-green-300 bg-white px-2 py-1 text-sm font-bold text-green-800 text-right focus:outline-none focus:border-green-500"
+              className="w-24 min-w-0 rounded-lg border border-green-300 bg-white px-2 py-1 text-sm font-bold text-green-800 text-right focus:outline-none focus:border-green-500"
             />
             <div className="flex flex-col gap-0 flex-shrink-0">
               <button onClick={() => nudge(+unit)} title={`+${unit}`}
@@ -487,14 +487,14 @@ function PaymentLine({ line, remaining, methods, onRemove, onUpdate, roundingUni
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
       {/* Row 1: method icon · name · amount · ↑↓ · fill · remove */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Icon className="h-4 w-4 text-gray-500 flex-shrink-0" />
         <span className="text-sm font-medium text-gray-700 flex-shrink-0">{method?.method_name}</span>
         <input
           type="number" step="0.01" min="0"
           value={line.amount}
           onChange={(e) => onUpdate({ ...line, amount: parseFloat(e.target.value) || 0, tendered: isCash ? parseFloat(e.target.value) || 0 : line.tendered })}
-          className="flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
+          className="min-w-[64px] flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm font-semibold text-right focus:border-primary-500 focus:outline-none"
         />
         <div className="flex flex-col gap-0 flex-shrink-0">
           <button onClick={() => nudge(+unit)} title={`+${unit}`}

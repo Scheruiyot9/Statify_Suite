@@ -28,7 +28,7 @@ function scheduleDailySummaryPost() {
 
       for (const { company_id, branch_id } of companies) {
         try {
-          await postDailySummaryEntry(company_id, branch_id, date, 'system');
+          await postDailySummaryEntry(company_id, branch_id, date, null);
           console.log(`[daily-summary] Posted ${date} — company ${company_id} branch ${branch_id}`);
         } catch (err) {
           // "already posted" and "no unposted sales" are normal — skip silently

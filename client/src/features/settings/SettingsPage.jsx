@@ -1742,7 +1742,7 @@ function SubscriptionTab() {
           <span className={`rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap mt-1 ${badge.cls}`}>{badge.label}</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-px bg-gray-100 border-t border-gray-100">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-gray-100 border-t border-gray-100">
           <div className="bg-white px-5 py-3">
             <p className="text-xs text-gray-400 mb-1">Started</p>
             <p className="text-sm font-medium text-gray-900">

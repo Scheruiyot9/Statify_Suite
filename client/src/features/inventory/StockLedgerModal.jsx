@@ -108,30 +108,28 @@ export default function StockLedgerModal({ open, onClose, productId = null, prod
 
         {/* Table */}
         <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
-          {isLoading ? <PageSpinner /> : (
-            <div className="overflow-x-auto">
+          {isLoading ? <PageSpinner /> : movements.length === 0 ? (
+            <p className="py-12 text-center text-gray-400">No movements found for the selected period</p>
+          ) : (
+            <>
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Date & Time</th>
                     {!productId && <th className="px-4 py-3 text-left font-medium text-gray-600">Product</th>}
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">Branch</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Type</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-600">Qty In</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-600">Qty Out</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-600">Balance</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 hidden lg:table-cell">Reference</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 hidden lg:table-cell">User</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Reference</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">User</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {movements.length === 0 ? (
-                    <tr>
-                      <td colSpan={productId ? 8 : 9} className="py-12 text-center text-gray-400">
-                        No movements found for the selected period
-                      </td>
-                    </tr>
-                  ) : movements.map((m) => (
+                  {movements.map((m) => (
                     <tr key={m.movement_id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDateTime(m.created_at)}</td>
                       {!productId && (
@@ -140,7 +138,7 @@ export default function StockLedgerModal({ open, onClose, productId = null, prod
                           {m.sku && <p className="text-xs text-gray-400 font-mono">{m.sku}</p>}
                         </td>
                       )}
-                      <td className="px-4 py-3 text-xs text-gray-500 hidden md:table-cell">{m.branch_name}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{m.branch_name}</td>
                       <td className="px-4 py-3"><MovementBadge type={m.movement_type} /></td>
                       <td className="px-4 py-3 text-right">
                         {m.qty_in > 0 ? (
@@ -157,17 +155,60 @@ export default function StockLedgerModal({ open, onClose, productId = null, prod
                         ) : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-gray-800 text-sm">{m.qty_after}</td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
+                      <td className="px-4 py-3">
                         {m.reference_no
                           ? <span className="font-mono text-xs text-primary-700 bg-primary-50 rounded px-1.5 py-0.5">{m.reference_no}</span>
                           : <span className="text-gray-300 text-xs">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 hidden lg:table-cell">{m.created_by_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{m.created_by_name ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden space-y-2 p-3">
+              {movements.map((m) => (
+                <div key={m.movement_id} className="rounded-xl border border-gray-100 bg-white p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      {!productId ? (
+                        <>
+                          <p className="font-medium text-gray-900 text-xs truncate">{m.product_name}</p>
+                          {m.sku && <p className="text-xs text-gray-400 font-mono">{m.sku}</p>}
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-500">{m.branch_name}</p>
+                      )}
+                    </div>
+                    <MovementBadge type={m.movement_type} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span className="whitespace-nowrap">{formatDateTime(m.created_at)}</span>
+                    {!productId && <span>{m.branch_name}</span>}
+                    <span className="font-bold text-gray-800">Balance: {m.qty_after}</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-4 text-xs">
+                    {m.qty_in > 0 && (
+                      <span className="flex items-center gap-1 text-green-600 font-semibold">
+                        <ArrowDownCircle className="h-3.5 w-3.5" />+{m.qty_in}
+                      </span>
+                    )}
+                    {m.qty_out > 0 && (
+                      <span className="flex items-center gap-1 text-red-500 font-semibold">
+                        <ArrowUpCircle className="h-3.5 w-3.5" />-{m.qty_out}
+                      </span>
+                    )}
+                    {m.reference_no && (
+                      <span className="font-mono text-primary-700 bg-primary-50 rounded px-1.5 py-0.5">{m.reference_no}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">{m.created_by_name ?? '—'}</p>
+                </div>
+              ))}
+            </div>
+            </>
           )}
           {pages > 1 && (
             <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

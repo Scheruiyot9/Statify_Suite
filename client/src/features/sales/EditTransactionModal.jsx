@@ -289,8 +289,9 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
         {/* Items */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Items</p>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full text-sm min-w-[400px]">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Product</th>
@@ -342,6 +343,56 @@ export default function EditTransactionModal({ open, onClose, txn, onSaved }) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2">
+            {computedItems.map((item) => (
+              <div key={item._key} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 text-xs">{item.productName}</p>
+                    {item.sku && <p className="text-[10px] text-gray-400">{item.sku}</p>}
+                  </div>
+                  <button
+                    onClick={() => removeItem(item._key)}
+                    className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors"
+                    title="Remove item"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-0.5">Qty</label>
+                    <input
+                      type="number" min="0.01" step="0.01"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(item._key, 'quantity', e.target.value)}
+                      className="w-full rounded border border-gray-200 px-1.5 py-1 text-right text-xs focus:border-primary-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-400 mb-0.5">Unit Price</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={item.unitPrice}
+                      onChange={(e) => updateItem(item._key, 'unitPrice', e.target.value)}
+                      className="w-full rounded border border-gray-200 px-1.5 py-1 text-right text-xs focus:border-primary-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between border-t border-gray-100 pt-1.5 text-xs">
+                  <span className="text-[10px] text-gray-400">Total</span>
+                  <span className="font-mono font-semibold text-gray-800">
+                    {formatCurrency(item.lineTotal)}
+                    {item.taxAmount > 0 && (
+                      <span className="ml-1.5 text-[9px] font-normal text-gray-400">incl. VAT {formatCurrency(item.taxAmount)}</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Subtotal row */}

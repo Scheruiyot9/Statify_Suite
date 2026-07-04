@@ -424,6 +424,62 @@ function AccountRow({ account, depth, allAccounts, balanceMap, onEdit }) {
   );
 }
 
+// ── Account Card (mobile) ───────────────────────────────────────────────────────
+
+function AccountCard({ account, depth, allAccounts, balanceMap, onEdit }) {
+  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState(true);
+  const children = allAccounts.filter((a) => a.parent_account_id === account.account_id);
+
+  const bal = balanceMap?.[account.account_code];
+  const isDebitNormal = DEBIT_NORMAL.has(account.account_type);
+  const drAmt  = bal?.debit  ?? 0;
+  const crAmt  = bal?.credit ?? 0;
+
+  return (
+    <>
+      <div className={`px-4 py-3 ${!account.is_active ? 'opacity-50' : ''}`} style={{ paddingLeft: `${16 + depth * 16}px` }}>
+        <div className="flex items-start gap-2">
+          {children.length > 0 ? (
+            <button onClick={() => setExpanded((v) => !v)} className="mt-0.5 flex-shrink-0 text-gray-400 hover:text-gray-600">
+              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </button>
+          ) : <span className="w-3.5 flex-shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-mono text-xs text-gray-500">{account.account_code}</span>
+              <span className="text-sm font-medium text-gray-900">{account.account_name}</span>
+              {account.is_system && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">system</span>}
+            </div>
+            {account.account_subtype && <p className="mt-0.5 text-xs text-gray-400">{account.account_subtype}</p>}
+            {(drAmt > 0 || crAmt > 0) && (
+              <div className="mt-1.5 flex items-center gap-4 font-mono text-xs">
+                {drAmt > 0 && <span className={isDebitNormal ? 'font-semibold text-blue-700' : 'text-gray-500'}>Dr {formatCurrency(drAmt)}</span>}
+                {crAmt > 0 && <span className={!isDebitNormal ? 'font-semibold text-green-700' : 'text-gray-500'}>Cr {formatCurrency(crAmt)}</span>}
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-1.5">
+              <button onClick={() => onEdit(account)}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                Edit
+              </button>
+              <button onClick={() => navigate(`/app/accounts/${account.account_id}/ledger`)}
+                className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                View Entries
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {expanded && children.map((child) => (
+        <AccountCard key={child.account_id} account={child} depth={depth + 1}
+          allAccounts={allAccounts} balanceMap={balanceMap}
+          onEdit={onEdit} />
+      ))}
+    </>
+  );
+}
+
 // ── Opening Balances Modal ────────────────────────────────────────────────────
 
 function OpeningBalancesModal({ accounts, onClose }) {
@@ -641,25 +697,38 @@ export default function AccountsPage() {
                       <span className="font-semibold text-sm">{TYPE_LABELS[type]}</span>
                       <span className="text-xs opacity-70">({typeAccounts.length})</span>
                     </div>
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-gray-100 bg-gray-50/50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Account</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subtype</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {roots.map((acc) => (
-                          <AccountRow key={acc.account_id} account={acc} depth={0}
-                            allAccounts={typeAccounts}
-                            balanceMap={balanceMap}
-                            onEdit={setEditTarget} />
-                        ))}
-                      </tbody>
-                    </table>
+                    {/* Desktop table */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-gray-100 bg-gray-50/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Account</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subtype</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-green-600">Credit (Cr)</th>
+                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {roots.map((acc) => (
+                            <AccountRow key={acc.account_id} account={acc} depth={0}
+                              allAccounts={typeAccounts}
+                              balanceMap={balanceMap}
+                              onEdit={setEditTarget} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile cards */}
+                    <div className="sm:hidden divide-y divide-gray-50">
+                      {roots.map((acc) => (
+                        <AccountCard key={acc.account_id} account={acc} depth={0}
+                          allAccounts={typeAccounts}
+                          balanceMap={balanceMap}
+                          onEdit={setEditTarget} />
+                      ))}
+                    </div>
                   </div>
                 );
               })}

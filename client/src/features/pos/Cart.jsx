@@ -950,8 +950,8 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
           </div>
         ) : (
           <>
-            {/* Column headings */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-100 bg-gray-50/95 px-3 py-1.5">
+            {/* Column headings — desktop/tablet only; mobile cards are self-labeled */}
+            <div className="sticky top-0 z-10 hidden items-center gap-2 border-b border-gray-100 bg-gray-50/95 px-3 py-1.5 sm:flex">
               <div className="w-9 flex-shrink-0" />
               <div className="w-[28%] flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Item</div>
               <div className="w-[16%] flex-shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-gray-400">Rate</div>
@@ -961,105 +961,162 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
             </div>
 
             {/* Rows */}
-            {items.map((item) => (
-              <div key={item.product.product_id} className="border-b border-gray-50 last:border-0">
-                <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50/60 transition-colors">
+            {items.map((item) => {
+              // Computed once per item, reused by both the desktop row and the mobile card below
+              // so the qty-stepping logic isn't duplicated.
+              const atMin = allowPartialQty ? item.quantity <= 0.25 : item.quantity <= 1;
+              const handleDown = () => {
+                if (atMin) return;
+                const next = allowPartialQty ? stepDown(item.quantity) : item.quantity - 1;
+                updateQuantity(item.product.product_id, next);
+              };
+              const handleUp = () => {
+                const next = allowPartialQty ? stepUp(item.quantity) : item.quantity + 1;
+                updateQuantity(item.product.product_id, next);
+              };
+              const stepperButtons = (
+                <>
+                  <button
+                    onClick={handleDown}
+                    disabled={atMin}
+                    className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                      atMin
+                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <QtyInput item={item} />
+                  <button
+                    onClick={handleUp}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </>
+              );
 
-                  {/* Thumb */}
-                  <div className="flex-shrink-0">
-                    <ProductThumb product={item.product} size="sm" />
+              return (
+                <div key={item.product.product_id} className="border-b border-gray-50 last:border-0">
+                  {/* Desktop / tablet row */}
+                  <div className="hidden items-center gap-2 px-3 py-2.5 hover:bg-gray-50/60 transition-colors sm:flex">
+
+                    {/* Thumb */}
+                    <div className="flex-shrink-0">
+                      <ProductThumb product={item.product} size="sm" />
+                    </div>
+
+                    {/* Name + SKU */}
+                    <div className="w-[28%] flex-shrink-0 min-w-0">
+                      <p className="truncate text-xs font-semibold text-gray-800 leading-snug">
+                        {item.product.product_name}
+                      </p>
+                      <p className="text-[10px] text-gray-400 font-mono truncate leading-snug">
+                        {item.product.barcode || item.product.sku || `#${item.product.product_id}`}
+                      </p>
+                    </div>
+
+                    {/* Rate column */}
+                    <div className="w-[16%] flex-shrink-0 min-w-0">
+                      <RateCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} />
+                    </div>
+
+                    {/* Stepper */}
+                    <div className="flex items-center gap-1 flex-shrink-0 w-28 justify-center">
+                      {stepperButtons}
+                    </div>
+
+                    {/* Total (editable) */}
+                    <div className="flex-1 min-w-0">
+                      <TotalCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} roundingMode={roundingMode} roundingUnit={roundingUnit} />
+                      {item.discount > 0 && (
+                        <span className="block text-right text-[9px] font-semibold text-green-600">
+                          −{formatCurrency(item.discount)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => setDiscountItemId(discountItemId === item.product.product_id ? null : item.product.product_id)}
+                        title="Item discount"
+                        className={`rounded p-1.5 transition-colors ${
+                          item.discount > 0
+                            ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                            : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'
+                        }`}
+                      >
+                        <Percent className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => removeItem(item.product.product_id)}
+                        className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Name + SKU */}
-                  <div className="w-[28%] flex-shrink-0 min-w-0">
-                    <p className="truncate text-xs font-semibold text-gray-800 leading-snug">
-                      {item.product.product_name}
-                    </p>
-                    <p className="text-[10px] text-gray-400 font-mono truncate leading-snug">
-                      {item.product.barcode || item.product.sku || `#${item.product.product_id}`}
-                    </p>
+                  {/* Mobile card — stacked so nothing gets squeezed off-screen */}
+                  <div className="flex flex-col gap-1.5 px-3 py-2.5 hover:bg-gray-50/60 transition-colors sm:hidden">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-shrink-0">
+                        <ProductThumb product={item.product} size="sm" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-gray-800 leading-snug">
+                          {item.product.product_name}
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-mono truncate leading-snug">
+                          {item.product.barcode || item.product.sku || `#${item.product.product_id}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button
+                          onClick={() => setDiscountItemId(discountItemId === item.product.product_id ? null : item.product.product_id)}
+                          title="Item discount"
+                          className={`rounded p-1.5 transition-colors ${
+                            item.discount > 0
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                              : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'
+                          }`}
+                        >
+                          <Percent className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => removeItem(item.product.product_id)}
+                          className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pl-11">
+                      <div className="w-16 flex-shrink-0">
+                        <RateCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} />
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {stepperButtons}
+                      </div>
+                      <div className="min-w-[64px] flex-shrink-0 text-right">
+                        <TotalCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} roundingMode={roundingMode} roundingUnit={roundingUnit} />
+                        {item.discount > 0 && (
+                          <span className="block text-right text-[9px] font-semibold text-green-600">
+                            −{formatCurrency(item.discount)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Rate column */}
-                  <div className="w-[16%] flex-shrink-0 min-w-0">
-                    <RateCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} />
-                  </div>
-
-                  {/* Stepper */}
-                  <div className="flex items-center gap-1 flex-shrink-0 w-28 justify-center">
-                    {(() => {
-                      const atMin = allowPartialQty ? item.quantity <= 0.25 : item.quantity <= 1;
-                      const handleDown = () => {
-                        if (atMin) return;
-                        const next = allowPartialQty ? stepDown(item.quantity) : item.quantity - 1;
-                        updateQuantity(item.product.product_id, next);
-                      };
-                      const handleUp = () => {
-                        const next = allowPartialQty ? stepUp(item.quantity) : item.quantity + 1;
-                        updateQuantity(item.product.product_id, next);
-                      };
-                      return (
-                        <>
-                          <button
-                            onClick={handleDown}
-                            disabled={atMin}
-                            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                              atMin
-                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                            }`}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <QtyInput item={item} />
-                          <button
-                            onClick={handleUp}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Total (editable) */}
-                  <div className="flex-1 min-w-0">
-                    <TotalCell item={item} editable={allowPriceEdit} preventBelowCost={preventSalesBelowCost} roundingMode={roundingMode} roundingUnit={roundingUnit} />
-                    {item.discount > 0 && (
-                      <span className="block text-right text-[9px] font-semibold text-green-600">
-                        −{formatCurrency(item.discount)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      onClick={() => setDiscountItemId(discountItemId === item.product.product_id ? null : item.product.product_id)}
-                      title="Item discount"
-                      className={`rounded p-1.5 transition-colors ${
-                        item.discount > 0
-                          ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                          : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'
-                      }`}
-                    >
-                      <Percent className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => removeItem(item.product.product_id)}
-                      className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  {discountItemId === item.product.product_id && (
+                    <ItemDiscountRow item={item} onClose={() => setDiscountItemId(null)} />
+                  )}
                 </div>
-
-                {discountItemId === item.product.product_id && (
-                  <ItemDiscountRow item={item} onClose={() => setDiscountItemId(null)} />
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {/* Summary + notes row */}
             <div className="flex items-center justify-between border-t border-gray-50 bg-gray-50 px-3 py-1.5">

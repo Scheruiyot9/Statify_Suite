@@ -269,14 +269,16 @@ export default function SupplierLedgerPage() {
           No journal entries for this supplier in the selected period
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-2 py-1.5 text-left font-medium text-gray-500 w-20">Date</th>
-                <th className="hidden sm:table-cell px-2 py-1.5 text-left font-medium text-gray-500 w-20">Type</th>
-                <th className="hidden sm:table-cell px-2 py-1.5 text-left font-medium text-gray-500 w-28">Reference</th>
-                <th className="hidden md:table-cell px-2 py-1.5 text-left font-medium text-gray-500">Description</th>
+                <th className="px-2 py-1.5 text-left font-medium text-gray-500 w-20">Type</th>
+                <th className="px-2 py-1.5 text-left font-medium text-gray-500 w-28">Reference</th>
+                <th className="px-2 py-1.5 text-left font-medium text-gray-500">Description</th>
                 <th className="px-2 py-1.5 text-right font-medium text-blue-600 w-24">Dr</th>
                 <th className="px-2 py-1.5 text-right font-medium text-green-600 w-24">Cr</th>
                 <th className="px-2 py-1.5 w-12" />
@@ -286,7 +288,7 @@ export default function SupplierLedgerPage() {
               {entries.map((e) => (
                 <tr key={e.entryId} className="transition-colors hover:bg-gray-50">
                   <td className="px-2 py-2 text-gray-500 whitespace-nowrap">{formatDate(e.entryDate)}</td>
-                  <td className="hidden sm:table-cell px-2 py-2">
+                  <td className="px-2 py-2">
                     <div className="flex items-center gap-1 flex-nowrap">
                       <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${SOURCE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
                         {e.sourceType ?? '—'}
@@ -296,8 +298,8 @@ export default function SupplierLedgerPage() {
                       )}
                     </div>
                   </td>
-                  <td className="hidden sm:table-cell px-2 py-2 font-mono text-[11px] text-gray-500">{e.entryNumber ?? '—'}</td>
-                  <td className="hidden md:table-cell px-2 py-2 text-gray-700 truncate max-w-[180px]">{e.description ?? '—'}</td>
+                  <td className="px-2 py-2 font-mono text-[11px] text-gray-500">{e.entryNumber ?? '—'}</td>
+                  <td className="px-2 py-2 text-gray-700 truncate max-w-[180px]">{e.description ?? '—'}</td>
                   <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
                     {e.debit > 0 ? <span className="font-semibold text-blue-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}
                   </td>
@@ -314,6 +316,39 @@ export default function SupplierLedgerPage() {
               ))}
             </tbody>
           </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-gray-100">
+            {entries.map((e) => {
+              const isVoid = e.status === 'void';
+              return (
+                <div key={e.entryId} className={`p-3 ${isVoid ? 'bg-red-50 opacity-70' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(e.entryDate)}</span>
+                        <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${SOURCE_COLORS[e.sourceType] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {e.sourceType ?? '—'}
+                        </span>
+                        {isVoid && <span className="text-[10px] font-medium text-red-400">· voided</span>}
+                      </div>
+                      <p className="mt-0.5 font-mono text-[11px] text-gray-500">{e.entryNumber ?? '—'}</p>
+                      {e.description && <p className="mt-0.5 text-xs text-gray-700 truncate">{e.description}</p>}
+                    </div>
+                    <button onClick={() => setViewing(e.entryId)}
+                      className="flex-shrink-0 rounded border border-primary-200 bg-primary-50 px-2 py-0.5 text-[10px] font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
+                    <span>Dr: {e.debit > 0 ? <span className="font-semibold text-blue-700">{formatCurrency(e.debit)}</span> : <span className="text-gray-300">—</span>}</span>
+                    <span>Cr: {e.credit > 0 ? <span className="font-semibold text-green-700">{formatCurrency(e.credit)}</span> : <span className="text-gray-300">—</span>}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

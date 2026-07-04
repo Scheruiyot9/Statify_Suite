@@ -97,6 +97,8 @@ function ShiftDetail({ sessionId, onForceClose }) {
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Payment Breakdown</h3>
           <div className="rounded-xl border border-gray-100 overflow-hidden">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
@@ -147,6 +149,48 @@ function ShiftDetail({ sessionId, onForceClose }) {
                 })}
               </tbody>
             </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gray-50">
+              {data.payment_breakdown.map((p) => {
+                const isCash     = p.method_name === 'Cash';
+                const open       = payModeOpen.find((a) => a.method_name === p.method_name)
+                                 ?? (isCash && data.opening_cash_amount > 0
+                                     ? { amount: data.opening_cash_amount } : undefined);
+                const closingAmt = isCash
+                  ? data.closing_cash_counted
+                  : payModeClose.find((a) => a.method_name === p.method_name)?.amount ?? null;
+                const expectedAmt = isCash ? data.expected_cash_amount : null;
+                const pmVar      = isCash
+                  ? data.cash_variance
+                  : closingAmt !== null ? closingAmt - p.total : null;
+                return (
+                  <div key={p.method_name} className={`p-3 ${isCash ? 'bg-amber-50/30' : ''}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-800 text-sm">{p.method_name}</span>
+                      <span className="text-green-700 font-medium text-sm">{formatCurrency(p.total)}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      {showOpenCol && <span>Opening: {open ? formatCurrency(open.amount) : '—'}</span>}
+                      {showReconCols && <span>Expected: {expectedAmt !== null ? formatCurrency(expectedAmt) : '—'}</span>}
+                      {showReconCols && <span>Closing: {closingAmt !== null ? formatCurrency(closingAmt) : '—'}</span>}
+                      <span>{p.count} txn{p.count !== 1 ? 's' : ''}</span>
+                      {showReconCols && (
+                        pmVar !== null ? (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            Math.abs(pmVar) < 0.5 ? 'bg-green-100 text-green-700' :
+                            pmVar > 0 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {Math.abs(pmVar) < 0.5 ? '✓ Balanced' : pmVar > 0 ? `+${formatCurrency(pmVar)}` : formatCurrency(pmVar)}
+                          </span>
+                        ) : null
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -187,39 +231,65 @@ function ShiftDetail({ sessionId, onForceClose }) {
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Transactions ({data.txn_count})
         </h3>
-        <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">TXN #</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Time</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Customer</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Payment</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Total</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {data.transactions?.map((t) => (
-                <tr key={t.transaction_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-mono text-xs text-primary-600 font-semibold">{t.transaction_number}</td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">{formatDateTime(t.transaction_date)}</td>
-                  <td className="px-4 py-2.5 text-gray-700">{t.customer_name}</td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">{t.payment_methods}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{formatCurrency(t.total_amount)}</td>
-                  <td className="px-4 py-2.5 text-center">
+        {!data.transactions?.length ? (
+          <div className="rounded-xl border border-gray-100 py-6 text-center text-gray-400 text-xs">No transactions in this shift</div>
+        ) : (
+          <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-100">
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">TXN #</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Time</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Customer</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Payment</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Total</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {data.transactions.map((t) => (
+                  <tr key={t.transaction_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 font-mono text-xs text-primary-600 font-semibold">{t.transaction_number}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">{formatDateTime(t.transaction_date)}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{t.customer_name}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">{t.payment_methods}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{formatCurrency(t.total_amount)}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                        {t.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gray-50">
+              {data.transactions.map((t) => (
+                <div key={t.transaction_id} className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-primary-600 font-semibold">{t.transaction_number}</p>
+                      <p className="text-xs text-gray-500">{formatDateTime(t.transaction_date)}</p>
+                    </div>
+                    <span className="font-semibold text-gray-900 text-sm shrink-0">{formatCurrency(t.total_amount)}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span className="text-gray-700">{t.customer_name}</span>
+                    <span>{t.payment_methods}</span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[t.status] ?? 'bg-gray-100 text-gray-500'}`}>
                       {t.status}
                     </span>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-              {!data.transactions?.length && (
-                <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-xs">No transactions in this shift</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer actions */}
@@ -485,18 +555,25 @@ export default function ShiftsPage() {
 
         {/* ── Shift list ── */}
         <div className={`rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden ${selected ? 'w-full xl:w-[480px] xl:flex-shrink-0' : 'w-full'}`}>
-          {isLoading ? <PageSpinner /> : (
-            <div className="overflow-x-auto">
+          {isLoading ? <PageSpinner /> : sessions.length === 0 ? (
+            <div className="py-12 text-center text-gray-400">
+              <Clock className="mx-auto mb-2 h-8 w-8 opacity-30" />
+              No shifts found
+            </div>
+          ) : (
+            <>
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Date / Time</th>
-                    <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Terminal</th>
-                    <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Terminal</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
                     {!selected && <>
                       <th className="px-4 py-3 text-right font-medium text-gray-600">Sales</th>
-                      <th className="hidden sm:table-cell px-4 py-3 text-center font-medium text-gray-600">Txns</th>
-                      <th className="hidden md:table-cell px-4 py-3 text-right font-medium text-gray-600">Variance</th>
+                      <th className="px-4 py-3 text-center font-medium text-gray-600">Txns</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600">Variance</th>
                     </>}
                     <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
@@ -520,15 +597,15 @@ export default function ShiftsPage() {
                           <p className="text-gray-900 font-medium text-xs">{formatDate(s.session_start)}</p>
                           <p className="text-[11px] text-gray-400">{formatDateTime(s.session_start)}</p>
                         </td>
-                        <td className="hidden sm:table-cell px-4 py-3">
+                        <td className="px-4 py-3">
                           <p className="text-gray-800 font-medium text-xs">{s.terminal_name}</p>
                           <p className="text-[11px] text-gray-400">{s.branch_name}</p>
                         </td>
-                        <td className="hidden md:table-cell px-4 py-3 text-gray-700 text-xs">{s.cashier_name}</td>
+                        <td className="px-4 py-3 text-gray-700 text-xs">{s.cashier_name}</td>
                         {!selected && <>
                           <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">{formatCurrency(s.total_sales)}</td>
-                          <td className="hidden sm:table-cell px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
-                          <td className="hidden md:table-cell px-4 py-3 text-right text-xs">
+                          <td className="px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
+                          <td className="px-4 py-3 text-right text-xs">
                             {s.status === 'open' ? (
                               <span className="text-gray-400">—</span>
                             ) : (
@@ -560,17 +637,64 @@ export default function ShiftsPage() {
                       </tr>
                     );
                   })}
-                  {sessions.length === 0 && (
-                    <tr>
-                      <td colSpan={selected ? 5 : 8} className="py-12 text-center text-gray-400">
-                        <Clock className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                        No shifts found
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden space-y-2 p-3">
+              {sessions.map((s) => {
+                const variance   = s.cash_variance ?? 0;
+                const isSelected = selected === s.session_id;
+                return (
+                  <div key={s.session_id}
+                    onClick={() => setSelected(isSelected ? null : s.session_id)}
+                    className={`rounded-xl border p-3 transition-colors ${
+                      isSelected ? 'border-primary-200 bg-primary-50' : 'border-gray-100 bg-white active:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-gray-900 font-medium text-xs">{formatDate(s.session_start)}</p>
+                        <p className="text-[11px] text-gray-400">{formatDateTime(s.session_start)}</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLES[s.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {STATUS_ICONS[s.status]}{s.status}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                      <span className="text-gray-800 font-medium">{s.terminal_name}</span>
+                      <span className="text-gray-400">{s.branch_name}</span>
+                      <span className="text-gray-600">{s.cashier_name}</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs">
+                      <span className="font-semibold text-gray-900">{formatCurrency(s.total_sales)}</span>
+                      <span className="text-gray-500">{s.txn_count} txn{s.txn_count !== 1 ? 's' : ''}</span>
+                      {s.status !== 'open' && (
+                        <span className={
+                          Math.abs(variance) < 0.5 ? 'text-green-600 font-medium'
+                          : variance > 0 ? 'text-blue-600 font-medium'
+                          : 'text-red-600 font-medium'
+                        }>
+                          {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setSelected(isSelected ? null : s.session_id)}
+                        className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
+                          isSelected
+                            ? 'border-primary-300 bg-primary-100 text-primary-800'
+                            : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
+                        }`}>
+                        {isSelected ? 'Close' : 'View'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </>
           )}
           {pages > 1 && (
             <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">

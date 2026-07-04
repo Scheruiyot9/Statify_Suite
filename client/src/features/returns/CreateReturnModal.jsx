@@ -163,7 +163,7 @@ function StepSelectItems({ transaction, items, setItems, reasons }) {
                   )}
 
                   {selected && (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Qty to return (max {maxReturnable})</label>
                         <input
@@ -266,7 +266,7 @@ function StepRefundMethod({ totalRefund, refunds, setRefunds }) {
           const method = methods.find((m) => m.payment_method_id === r.paymentMethodId);
           return (
             <div key={i} className="rounded-xl border border-gray-100 p-3 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Refund via</label>
                   <select
@@ -338,6 +338,8 @@ function StepReview({ transaction, items, refunds, notes, setNotes }) {
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Items being returned</p>
         <div className="rounded-xl border border-gray-100 overflow-hidden">
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -364,6 +366,26 @@ function StepReview({ transaction, items, refunds, notes, setNotes }) {
               ))}
             </tbody>
           </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-gray-50">
+            {items.map((i) => (
+              <div key={i.originalItemId} className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-gray-800 min-w-0">{i.productName}</p>
+                  <p className="flex-shrink-0 font-semibold">{formatCurrency(i.lineRefundAmount)}</p>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>Qty: {i.quantityReturned}</span>
+                  <span className="capitalize">{i.itemCondition}</span>
+                  {i.returnToInventory
+                    ? <span className="text-green-600">Restocked</span>
+                    : <span className="text-gray-400">Not restocked</span>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -489,7 +511,7 @@ export default function CreateReturnModal({ onClose, preloadedTxn }) {
   const canSubmit = step === STEPS.length - 1;
 
   const footer = (
-    <div className="flex gap-3">
+    <div className="flex flex-wrap gap-3">
       {step > 0 && (
         <Button variant="secondary" onClick={() => setStep((s) => s - 1)} icon={<ChevronLeft className="h-4 w-4" />}>
           Back

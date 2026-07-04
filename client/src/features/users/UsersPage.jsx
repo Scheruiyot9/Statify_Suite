@@ -623,31 +623,33 @@ function UsersListTab({ canManageUsers }) {
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-gray-400">Loading…</div>
+        ) : users.length === 0 ? (
+          <p className="py-12 text-center text-sm text-gray-400">No users found</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Name</th>
-                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Role</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Branch</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Branch</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
-                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500">Last Login</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Last Login</th>
                   {canManageUsers && <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {users.length === 0 ? (
-                  <tr><td colSpan={canManageUsers ? 7 : 6} className="py-12 text-center text-sm text-gray-400">No users found</td></tr>
-                ) : users.map((u) => (
+                {users.map((u) => (
                   <tr key={u.user_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {u.first_name} {u.last_name}
                     </td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-gray-500">{u.email}</td>
+                    <td className="px-4 py-3 text-gray-500">{u.email}</td>
                     <td className="px-4 py-3"><RoleBadge role={u.role_name} /></td>
-                    <td className="hidden md:table-cell px-4 py-3 text-gray-500">{u.branch_name || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500">{u.branch_name || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                         u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -655,7 +657,7 @@ function UsersListTab({ canManageUsers }) {
                         {u.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="hidden md:table-cell px-4 py-3 text-gray-400 text-xs">
+                    <td className="px-4 py-3 text-gray-400 text-xs">
                       {u.last_login ? new Date(u.last_login).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}
                     </td>
                     {canManageUsers && (
@@ -693,6 +695,61 @@ function UsersListTab({ canManageUsers }) {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {users.map((u) => (
+              <div key={u.user_id} className="rounded-xl border border-gray-100 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{u.first_name} {u.last_name}</p>
+                    <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                  </div>
+                  <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {u.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <RoleBadge role={u.role_name} />
+                  {u.branch_name && <span>{u.branch_name}</span>}
+                  <span>
+                    {u.last_login ? new Date(u.last_login).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}
+                  </span>
+                </div>
+                {canManageUsers && (
+                  <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button title="Edit" onClick={() => setFormUser(u)}
+                      className="rounded-md bg-gray-100 p-1.5 text-gray-600 hover:bg-gray-200 transition-colors">
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button title="Reset password" onClick={() => setResetUser(u)}
+                      className="rounded-md bg-blue-50 p-1.5 text-blue-600 hover:bg-blue-100 transition-colors">
+                      <KeyRound className="h-3.5 w-3.5" />
+                    </button>
+                    <button title="Reset terminal PIN" onClick={() => setClearPinUser(u)}
+                      className="rounded-md bg-purple-50 p-1.5 text-purple-600 hover:bg-purple-100 transition-colors">
+                      <ShieldOff className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      title={u.is_active ? 'Deactivate' : 'Activate'}
+                      onClick={() => toggleActive({ userId: u.user_id, is_active: !u.is_active })}
+                      className={`rounded-md p-1.5 transition-colors ${u.is_active
+                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                        : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
+                      {u.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                    </button>
+                    <button title="Delete user" onClick={() => setDeleteUser(u)}
+                      className="rounded-md bg-red-50 p-1.5 text-red-600 hover:bg-red-100 transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
 

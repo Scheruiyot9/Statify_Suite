@@ -896,7 +896,7 @@ export default function JournalPage() {
               <CheckCircle2 className="h-4 w-4" />Post Sales Entries
             </button>
             {showPostPanel && (
-              <div className="absolute right-0 top-full mt-2 z-30 w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-5 space-y-4">
+              <div className="absolute right-0 top-full mt-2 z-30 w-[calc(100vw-2rem)] max-w-[420px] rounded-xl border border-gray-200 bg-white shadow-xl p-5 space-y-4">
                 <p className="text-sm font-semibold text-gray-800">Post Sales Entries</p>
 
                 {/* Mode toggle */}
@@ -1019,15 +1019,17 @@ export default function JournalPage() {
               <p>No posted entries in this period.</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <>
+            {/* Desktop table — every column always visible */}
+            <table className="hidden sm:table w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b z-10">
                 <tr>
                   <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-36">Number</th>
                   <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-28">Date</th>
                   <th className="text-left px-3 py-1.5 font-medium text-gray-600 w-40">Type</th>
-                  <th className="hidden md:table-cell text-left px-3 py-1.5 font-medium text-gray-600">Description</th>
+                  <th className="text-left px-3 py-1.5 font-medium text-gray-600">Description</th>
                   <th className="text-right px-3 py-1.5 font-medium text-gray-600 w-32">Debit</th>
-                  <th className="hidden sm:table-cell text-right px-3 py-1.5 font-medium text-gray-600 w-32">Credit</th>
+                  <th className="text-right px-3 py-1.5 font-medium text-gray-600 w-32">Credit</th>
                   <th className="text-center px-3 py-1.5 font-medium text-gray-600 w-20">Action</th>
                 </tr>
               </thead>
@@ -1048,9 +1050,9 @@ export default function JournalPage() {
                         {e.sourceType?.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="hidden md:table-cell px-3 py-1.5 text-xs text-gray-800 truncate max-w-xs">{e.description ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-xs text-gray-800 truncate max-w-xs">{e.description ?? '—'}</td>
                     <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalDebit)}</td>
-                    <td className="hidden sm:table-cell px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalCredit)}</td>
+                    <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalCredit)}</td>
                     <td className="px-3 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
                       <button onClick={() => setAeSelected(e.journalEntryId)}
                         className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
@@ -1061,6 +1063,42 @@ export default function JournalPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y">
+              {(aeData?.entries ?? []).map((e) => (
+                <div key={e.journalEntryId} onClick={() => setAeSelected(e.journalEntryId)}
+                  className="p-3 active:bg-gray-50 cursor-pointer transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs font-semibold text-gray-700">{e.entryNumber}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{String(e.entryDate).slice(0, 10)}</p>
+                    </div>
+                    <span className={`flex-shrink-0 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      e.sourceType === 'SALE'                 ? 'bg-green-100 text-green-700' :
+                      e.sourceType === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
+                      e.sourceType === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
+                      e.sourceType === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {e.sourceType?.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  {e.description && <p className="mt-1.5 text-xs text-gray-800 truncate">{e.description}</p>}
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-x-3 text-xs font-mono">
+                      <span>Dr {fmt(e.totalDebit)}</span>
+                      <span>Cr {fmt(e.totalCredit)}</span>
+                    </div>
+                    <button onClick={(ev) => { ev.stopPropagation(); setAeSelected(e.journalEntryId); }}
+                      className="flex-shrink-0 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </div>
       ) : activeTab === 'journals' ? (
@@ -1074,15 +1112,17 @@ export default function JournalPage() {
               <p className="text-sm mt-1">Create a manual journal entry using the button above.</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <>
+            {/* Desktop table — every column always visible */}
+            <table className="hidden sm:table w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b z-10">
                 <tr>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Number</th>
-                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Date</th>
-                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Description</th>
-                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Reference</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Date</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600">Description</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Reference</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Debit</th>
-                  <th className="hidden sm:table-cell text-right px-2 py-1.5 font-medium text-gray-600 w-32">Credit</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Credit</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-24">Status</th>
                   <th className="text-center px-2 py-1.5 font-medium text-gray-600 w-20">Action</th>
                 </tr>
@@ -1092,11 +1132,11 @@ export default function JournalPage() {
                   <tr key={j.journalId} className="border-b hover:bg-gray-50 active:bg-gray-100 cursor-pointer"
                     onClick={() => setSelectedId(j.journalId)}>
                     <td className="px-2 py-1.5 font-mono text-xs text-gray-700">{j.journalNumber}</td>
-                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
-                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-2 py-1.5 text-gray-500 text-xs">{j.reference ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{String(j.entryDate).slice(0, 10)}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">{j.description ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-500 text-xs">{j.reference ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalDebit)}</td>
-                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
+                    <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
                     <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
                         {j.status}
@@ -1112,6 +1152,37 @@ export default function JournalPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y">
+              {journals.map((j) => (
+                <div key={j.journalId} onClick={() => setSelectedId(j.journalId)}
+                  className="p-3 active:bg-gray-50 cursor-pointer transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs font-semibold text-gray-700">{j.journalNumber}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{String(j.entryDate).slice(0, 10)}</p>
+                    </div>
+                    <span className={`flex-shrink-0 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
+                      {j.status}
+                    </span>
+                  </div>
+                  {j.description && <p className="mt-1.5 text-xs text-gray-800 truncate">{j.description}</p>}
+                  {j.reference && <p className="mt-0.5 text-xs text-gray-500">Ref: {j.reference}</p>}
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-x-3 text-xs font-mono">
+                      <span>Dr {fmt(j.totalDebit)}</span>
+                      <span>Cr {fmt(j.totalCredit)}</span>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedId(j.journalId); }}
+                      className="flex-shrink-0 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                      View
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </div>
       ) : (
@@ -1124,18 +1195,20 @@ export default function JournalPage() {
               <p>No cash outs in this period.</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <>
+            {/* Desktop table — every column always visible */}
+            <table className="hidden sm:table w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b z-10">
                 <tr>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
-                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Account / Supplier</th>
-                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">Payment</th>
-                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
-                  <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
-                  <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
-                  <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">Posted By</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600">Account / Supplier</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">Payment</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">Posted By</th>
                 </tr>
               </thead>
               <tbody>
@@ -1148,22 +1221,54 @@ export default function JournalPage() {
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(co.amount)}</td>
-                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">
+                    <td className="px-2 py-1.5 text-xs text-gray-800 truncate max-w-xs">
                       {co.supplier_name ?? (
                         co.account_name
                           ? <>{co.account_name}{co.account_code && <span className="ml-1 text-gray-400">({co.account_code})</span>}</>
                           : '—'
                       )}
                     </td>
-                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{co.payment_method_name ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{co.notes ?? '—'}</td>
-                    <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
-                    <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
-                    <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{co.payment_method_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{co.notes ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y">
+              {cashOuts.map((co) => (
+                <div key={co.cash_out_id} className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${OUT_TYPE_COLORS[co.out_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {OUT_TYPE_LABELS[co.out_type] ?? co.out_type}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">{String(co.created_at).slice(0, 10)}</p>
+                    </div>
+                    <span className="flex-shrink-0 text-xs font-mono font-semibold text-gray-800">{fmt(co.amount)}</span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-gray-800 truncate">
+                    {co.supplier_name ?? (
+                      co.account_name
+                        ? <>{co.account_name}{co.account_code && <span className="ml-1 text-gray-400">({co.account_code})</span>}</>
+                        : '—'
+                    )}
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                    {co.payment_method_name && <span>{co.payment_method_name}</span>}
+                    {co.branch_name && <span>{co.branch_name}</span>}
+                    {co.terminal_name && <span>{co.terminal_name}</span>}
+                    {co.created_by_name && <span>By {co.created_by_name}</span>}
+                  </div>
+                  {co.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{co.notes}</p>}
+                </div>
+              ))}
+            </div>
+            </>
           )}
 
           {/* Transfers section */}
@@ -1172,17 +1277,18 @@ export default function JournalPage() {
               <div className="px-4 py-2 border-t border-b bg-gray-50">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pay Mode Transfers</p>
               </div>
-              <table className="w-full text-sm">
+              {/* Desktop table — every column always visible */}
+              <table className="hidden sm:table w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
                     <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
                     <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
-                    <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600">From → To</th>
-                    <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
-                    <th className="hidden lg:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
-                    <th className="hidden sm:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
-                    <th className="hidden md:table-cell text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">From → To</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1200,17 +1306,46 @@ export default function JournalPage() {
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(t.amount)}</td>
-                      <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-800">
+                      <td className="px-2 py-1.5 text-xs text-gray-800">
                         {t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}
                       </td>
-                      <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{t.notes ?? '—'}</td>
-                      <td className="hidden lg:table-cell px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
-                      <td className="hidden sm:table-cell px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
-                      <td className="hidden md:table-cell px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{t.notes ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Mobile cards */}
+              <div className="sm:hidden divide-y">
+                {(trData?.transfers ?? []).map((t) => (
+                  <div key={t.transfer_id} className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
+                          t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {t.transfer_type === 'float_topup' ? 'Float Top-up' :
+                           t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
+                        </span>
+                        <p className="text-xs text-gray-500 mt-1">{String(t.created_at).slice(0, 10)}</p>
+                      </div>
+                      <span className="flex-shrink-0 text-xs font-mono font-semibold text-gray-800">{fmt(t.amount)}</span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-gray-800">{t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                      {t.branch_name && <span>{t.branch_name}</span>}
+                      {t.terminal_name && <span>{t.terminal_name}</span>}
+                      {t.created_by_name && <span>By {t.created_by_name}</span>}
+                    </div>
+                    {t.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{t.notes}</p>}
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </div>

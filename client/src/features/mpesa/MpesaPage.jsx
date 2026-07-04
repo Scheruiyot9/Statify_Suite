@@ -305,14 +305,16 @@ export default function MpesaPage() {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Desktop table — every column always visible */}
+            <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Branch</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Shortcode</th>
-                  <th className="hidden sm:table-cell px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="hidden sm:table-cell px-4 py-2 text-left text-xs font-medium text-gray-500">Environment</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Environment</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
                   <th className="px-4 py-2" />
                 </tr>
@@ -324,8 +326,8 @@ export default function MpesaPage() {
                       {cfg.branch_name ?? <span className="text-gray-400 italic">Company-wide</span>}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{cfg.shortcode}</td>
-                    <td className="hidden sm:table-cell px-4 py-2.5 text-xs text-gray-500 capitalize">{cfg.shortcode_type}</td>
-                    <td className="hidden sm:table-cell px-4 py-2.5">
+                    <td className="px-4 py-2.5 text-xs text-gray-500 capitalize">{cfg.shortcode_type}</td>
+                    <td className="px-4 py-2.5">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         cfg.environment === 'production'
                           ? 'bg-green-100 text-green-700'
@@ -363,6 +365,53 @@ export default function MpesaPage() {
               </tbody>
             </table>
             </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gray-50">
+              {configs.map((cfg) => (
+                <div key={cfg.config_id} className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">
+                        {cfg.branch_name ?? <span className="text-gray-400 italic">Company-wide</span>}
+                      </p>
+                      <p className="font-mono text-xs text-gray-500">{cfg.shortcode}</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      cfg.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {cfg.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span className="capitalize">{cfg.shortcode_type}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      cfg.environment === 'production'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {cfg.environment}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-4">
+                    <button
+                      onClick={() => registerC2B(cfg.branch_id)}
+                      disabled={isRegistering}
+                      title="Register C2B callback URL with Daraja so direct paybill payments appear here"
+                      className="flex items-center gap-1 text-xs text-teal-600 hover:text-teal-800 font-medium disabled:opacity-50">
+                      <Link className="h-3 w-3" />
+                      Register C2B
+                    </button>
+                    <button
+                      onClick={() => { setEditConfig(cfg); setShowConfig(true); }}
+                      className="text-xs text-primary-600 hover:text-primary-800 font-medium">
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </div>
       )}
@@ -425,18 +474,25 @@ export default function MpesaPage() {
 
       {/* ── Table ── */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        {isLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        {isLoading ? <PageSpinner /> : transactions.length === 0 ? (
+          <div className="py-12 text-center text-gray-400">
+            <Smartphone className="mx-auto mb-2 h-8 w-8 opacity-30" />
+            No M-Pesa transactions found
+          </div>
+        ) : (
+          <>
+          {/* Desktop table — every column always visible */}
+          <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Mode</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Phone</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600">Amount</th>
-                <th className="hidden sm:table-cell px-4 py-3 text-left font-medium text-gray-600">Receipt #</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Date &amp; Time</th>
-                <th className="hidden md:table-cell px-4 py-3 text-left font-medium text-gray-600">Branch</th>
-                <th className="hidden lg:table-cell px-4 py-3 text-left font-medium text-gray-600">Linked Sale</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Receipt #</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Date &amp; Time</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Branch</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Linked Sale</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
               </tr>
@@ -447,22 +503,22 @@ export default function MpesaPage() {
                   <td className="px-4 py-3">
                     <ModeBadge mode={t.payment_mode} />
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-gray-700">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-700">
                     {t.phone_number || '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">
                     {formatCurrency(t.amount)}
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3 font-mono text-xs text-green-700 font-semibold">
+                  <td className="px-4 py-3 font-mono text-xs text-green-700 font-semibold">
                     {t.mpesa_receipt_number || <span className="text-gray-400 font-normal">—</span>}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">
+                  <td className="px-4 py-3 text-xs text-gray-500">
                     {formatDateTime(t.initiated_at)}
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 text-xs text-gray-500">
+                  <td className="px-4 py-3 text-xs text-gray-500">
                     {t.branch_name || '—'}
                   </td>
-                  <td className="hidden lg:table-cell px-4 py-3 font-mono text-xs text-primary-600">
+                  <td className="px-4 py-3 font-mono text-xs text-primary-600">
                     {t.sale_number || <span className="text-gray-400 font-normal">—</span>}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -476,17 +532,41 @@ export default function MpesaPage() {
                   </td>
                 </tr>
               ))}
-              {transactions.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-400">
-                    <Smartphone className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    No M-Pesa transactions found
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2 p-3">
+            {transactions.map((t) => (
+              <div key={t.mpesa_txn_id} onClick={() => setSelected(t)}
+                className="rounded-xl border border-gray-100 bg-white p-3 active:bg-gray-50 transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <ModeBadge mode={t.payment_mode} />
+                      <StatusBadge status={t.status} />
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-gray-700">{t.phone_number || '—'}</p>
+                  </div>
+                  <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(t.amount)}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{formatDateTime(t.initiated_at)}</span>
+                  {t.mpesa_receipt_number && <span className="font-mono text-green-700 font-semibold">{t.mpesa_receipt_number}</span>}
+                  {t.branch_name && <span>{t.branch_name}</span>}
+                  {t.sale_number && <span className="font-mono text-primary-600">{t.sale_number}</span>}
+                </div>
+                <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setSelected(t)}
+                    className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                    View
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
 
         {pages > 1 && (
