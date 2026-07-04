@@ -7,6 +7,16 @@
   body { @apply font-sans; }
 }
 
+/* iOS Safari auto-zooms the page when a focused input's font-size is under 16px —
+   the app's text-sm inputs (14px) trigger this, making the whole page appear to
+   "jump"/expand and fields shift whenever the keyboard opens. Force 16px on all
+   form controls below the sm breakpoint so focus never triggers that zoom. */
+@media (max-width: 639px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide { scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
