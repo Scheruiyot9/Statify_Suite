@@ -10,7 +10,7 @@ jest.mock('../config/database', () => ({
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 const { transaction } = require('../config/database');
-const { bulkImportProducts, bulkUpdateProducts } = require('../modules/products/products.service');
+const { bulkImportProducts, bulkUpdateProducts, updateProduct } = require('../modules/products/products.service');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -307,5 +307,60 @@ describe('bulkUpdateProducts', () => {
     // params: [companyId, productId, productName, barcode, description, unitOfMeasure, categoryId, taxTemplateId, basePrice, costPrice, isActive]
     expect(updateCall[1][2]).toBeNull();   // product_name untouched
     expect(updateCall[1][8]).toBe(19.99);  // base_price applied
+  });
+});
+
+// ── updateProduct (reorder_level) ───────────────────────────────────────────────
+
+describe('updateProduct — reorder_level', () => {
+  test('does not touch product_branch_inventory when reorder_level is omitted', async () => {
+    const client = makeClient([
+      { rows: [{ product_id: 'p-1', product_name: 'Test Widget' }] }, // UPDATE products
+    ]);
+    setupTransaction(client);
+
+    await updateProduct('co-1', 'p-1', { product_name: 'Renamed' });
+
+    expect(client.query).toHaveBeenCalledTimes(1);
+  });
+
+  test('throws not found when no product matches', async () => {
+    const client = makeClient([{ rows: [] }]);
+    setupTransaction(client);
+
+    await expect(updateProduct('co-1', 'missing', { product_name: 'X' }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('applies reorder_level to every active branch when provided', async () => {
+    const client = makeClient([
+      { rows: [{ product_id: 'p-1', product_name: 'Test Widget' }] },      // UPDATE products
+      { rows: [{ branch_id: 'b-1' }, { branch_id: 'b-2' }] },              // SELECT branches
+      { rows: [] },                                                        // upsert branch 1
+      { rows: [] },                                                        // upsert branch 2
+    ]);
+    setupTransaction(client);
+
+    await updateProduct('co-1', 'p-1', { reorder_level: '10' });
+
+    expect(client.query).toHaveBeenCalledTimes(4);
+    const upsert1 = client.query.mock.calls[2];
+    const upsert2 = client.query.mock.calls[3];
+    expect(upsert1[1]).toEqual(['p-1', 'b-1', 10]);
+    expect(upsert2[1]).toEqual(['p-1', 'b-2', 10]);
+  });
+
+  test('treats reorder_level 0 as an explicit value, not "no update"', async () => {
+    const client = makeClient([
+      { rows: [{ product_id: 'p-1', product_name: 'Test Widget' }] },
+      { rows: [{ branch_id: 'b-1' }] },
+      { rows: [] },
+    ]);
+    setupTransaction(client);
+
+    await updateProduct('co-1', 'p-1', { reorder_level: 0 });
+
+    expect(client.query).toHaveBeenCalledTimes(3);
+    expect(client.query.mock.calls[2][1]).toEqual(['p-1', 'b-1', 0]);
   });
 });

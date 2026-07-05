@@ -19,7 +19,10 @@ async function listProducts(companyId, { branchId, search, categoryId, isActive,
                      : 'TRUE';
   const conditions = ['p.company_id = $1', activeClause, 'p.deleted_at IS NULL'];
   let branchJoins = '';
-  let branchSelect = `p.base_price::numeric AS branch_price, 0::numeric AS quantity_available, NULL::integer AS reorder_level`;
+  // No specific branch selected — reorder level is set uniformly across branches on save,
+  // so surface whichever value is currently on record (any active branch should match).
+  let branchSelect = `p.base_price::numeric AS branch_price, 0::numeric AS quantity_available,
+      COALESCE((SELECT MAX(reorder_level) FROM product_branch_inventory WHERE product_id = p.product_id), 0)::integer AS reorder_level`;
 
   if (branchId) {
     const bIdx = qb.add(branchId);
@@ -102,7 +105,10 @@ async function listProducts(companyId, { branchId, search, categoryId, isActive,
 async function getProductById(companyId, productId, branchId) {
   const params = [companyId, productId];
   let branchJoins = '';
-  let branchSelect = `p.base_price::numeric AS branch_price, 0::numeric AS quantity_available`;
+  // No specific branch selected — reorder level is set uniformly across branches on save,
+  // so surface whichever value is currently on record (any active branch should match).
+  let branchSelect = `p.base_price::numeric AS branch_price, 0::numeric AS quantity_available,
+    COALESCE((SELECT MAX(reorder_level) FROM product_branch_inventory WHERE product_id = p.product_id), 0)::integer AS reorder_level`;
 
   if (branchId) {
     params.push(branchId);
@@ -110,7 +116,8 @@ async function getProductById(companyId, productId, branchId) {
       LEFT JOIN product_branch_pricing pbp ON pbp.product_id = p.product_id AND pbp.branch_id = $3
       LEFT JOIN product_branch_inventory pbi ON pbi.product_id = p.product_id AND pbi.branch_id = $3`;
     branchSelect = `COALESCE(pbp.selling_price, p.base_price)::numeric AS branch_price,
-      COALESCE(pbi.quantity_available, 0)::numeric AS quantity_available`;
+      COALESCE(pbi.quantity_available, 0)::numeric AS quantity_available,
+      COALESCE(pbi.reorder_level, 0)::integer AS reorder_level`;
   }
 
   const { rows } = await query(`
@@ -137,6 +144,7 @@ async function getProductById(companyId, productId, branchId) {
     cost_price: r.cost_price ? parseFloat(r.cost_price) : null,
     branch_price: parseFloat(r.branch_price),
     quantity_available: parseFloat(r.quantity_available),
+    reorder_level: r.reorder_level != null ? parseInt(r.reorder_level) : 0,
   };
 }
 
@@ -198,32 +206,55 @@ async function updateProduct(companyId, productId, data) {
   const {
     product_name, barcode, description, category_id,
     base_price, cost_price, unit_of_measure, is_active, image_url, tax_template_id,
+    reorder_level,
   } = data;
 
   // Allow explicitly clearing tax_template_id by passing null
   const hasTaxUpdate = 'tax_template_id' in data;
+  const hasReorderUpdate = reorder_level !== undefined && reorder_level !== null && reorder_level !== '';
 
-  const { rows } = await query(`
-    UPDATE products
-    SET product_name    = COALESCE($3, product_name),
-        barcode         = COALESCE($4, barcode),
-        description     = COALESCE($5, description),
-        category_id     = COALESCE($6, category_id),
-        base_price      = COALESCE($7::numeric, base_price),
-        cost_price      = COALESCE($8::numeric, cost_price),
-        unit_of_measure = COALESCE($9, unit_of_measure),
-        is_active       = COALESCE($10, is_active),
-        image_url       = COALESCE($11, image_url),
-        tax_template_id = CASE WHEN $12 THEN $13 ELSE tax_template_id END
-    WHERE company_id = $1 AND product_id = $2 AND deleted_at IS NULL
-    RETURNING *
-  `, [companyId, productId,
-    product_name ?? null, barcode ?? null, description ?? null, category_id ?? null,
-    base_price ?? null, cost_price ?? null, unit_of_measure ?? null, is_active ?? null,
-    image_url ?? null, hasTaxUpdate, tax_template_id ?? null]);
+  return transaction(async (client) => {
+    const { rows } = await client.query(`
+      UPDATE products
+      SET product_name    = COALESCE($3, product_name),
+          barcode         = COALESCE($4, barcode),
+          description     = COALESCE($5, description),
+          category_id     = COALESCE($6, category_id),
+          base_price      = COALESCE($7::numeric, base_price),
+          cost_price      = COALESCE($8::numeric, cost_price),
+          unit_of_measure = COALESCE($9, unit_of_measure),
+          is_active       = COALESCE($10, is_active),
+          image_url       = COALESCE($11, image_url),
+          tax_template_id = CASE WHEN $12 THEN $13 ELSE tax_template_id END
+      WHERE company_id = $1 AND product_id = $2 AND deleted_at IS NULL
+      RETURNING *
+    `, [companyId, productId,
+      product_name ?? null, barcode ?? null, description ?? null, category_id ?? null,
+      base_price ?? null, cost_price ?? null, unit_of_measure ?? null, is_active ?? null,
+      image_url ?? null, hasTaxUpdate, tax_template_id ?? null]);
 
-  if (!rows.length) throw AppError.notFound('Product');
-  return rows[0];
+    if (!rows.length) throw AppError.notFound('Product');
+
+    // Reorder level lives per-branch — apply the same value across every active branch
+    // so it stays a single field on the product edit form.
+    if (hasReorderUpdate) {
+      const level = parseInt(reorder_level) || 0;
+      const { rows: branches } = await client.query(
+        `SELECT branch_id FROM branches WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
+        [companyId]
+      );
+      for (const b of branches) {
+        await client.query(`
+          INSERT INTO product_branch_inventory (product_id, branch_id, reorder_level)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (product_id, branch_id) DO UPDATE
+            SET reorder_level = EXCLUDED.reorder_level, last_updated = now()
+        `, [productId, b.branch_id, level]);
+      }
+    }
+
+    return rows[0];
+  });
 }
 
 async function createCategory(companyId, { category_name, parent_category_id }) {

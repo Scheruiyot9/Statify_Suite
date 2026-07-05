@@ -106,6 +106,7 @@ function ProductForm({ initial, categories, taxRates, onSave, onClose }) {
         <div>
           <label className={labelCls}>Reorder Level</label>
           <input type="number" min="0" className={inputCls} value={form.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} />
+          <p className="mt-1 text-xs text-gray-400">Applies to all branches</p>
         </div>
         {!initial && (
           <div>
