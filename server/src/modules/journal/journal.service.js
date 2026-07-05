@@ -400,13 +400,19 @@ async function postSessionSummaryEntry(companyId, sessionId, userId) {
 // One JE per branch per day — admin-triggered via endpoint.
 async function postDailySummaryEntry(companyId, branchId, date, userId) {
   return transaction(async (client) => {
-    const { rows: existing } = await client.query(`
-      SELECT 1 FROM journal_entries
-      WHERE company_id=$1 AND source_type='DAILY_SALE_SUMMARY' AND source_id=$2 AND entry_date=$3 AND status='posted'
-    `, [companyId, branchId, date]);
-    if (existing.length) throw AppError.badRequest(`Daily summary for ${date} already posted for this branch`);
+    // Posting mid-day permanently locked out any sale that arrived afterward (there was
+    // no way to "top up" a day once posted), which is exactly what caused missed entries
+    // when this was triggered manually before the day was actually over. Refuse to post
+    // a day that isn't finished yet — the nightly job only ever targets "yesterday", so
+    // this only affects manual/admin-triggered calls.
+    if (date >= todayLocal()) {
+      throw AppError.badRequest(`Cannot post a daily summary for ${date} until the day is over`);
+    }
 
-    // Exclude transactions already covered by a session summary OR posted individually
+    // Exclude transactions already covered by a session summary, posted individually, or
+    // covered by an earlier daily-summary post for this same date/branch — correlated by
+    // created_at (not just date/branch) so a transaction that arrived AFTER an earlier
+    // same-day post is still picked up here instead of being treated as already covered.
     const UNPOSTED = `
       AND NOT EXISTS (
         SELECT 1 FROM journal_entries je
@@ -415,6 +421,9 @@ async function postDailySummaryEntry(companyId, branchId, date, userId) {
             (je.source_type = 'SESSION_SALE_SUMMARY' AND je.source_id = st.pos_session_id)
             OR
             (je.source_type = 'SALE' AND je.source_id = st.transaction_id)
+            OR
+            (je.source_type = 'DAILY_SALE_SUMMARY' AND je.source_id = $2 AND je.entry_date = $3
+             AND je.created_at >= st.created_at)
           )
       )`;
 
@@ -527,7 +536,7 @@ async function postUnpostedPerTransaction(companyId, branchId, date, userId) {
           (je.source_type = 'SALE'                AND je.source_id  = st.transaction_id)
           OR (je.source_type = 'SESSION_SALE_SUMMARY' AND je.source_id = st.pos_session_id)
           OR (je.source_type = 'DAILY_SALE_SUMMARY'   AND je.source_id = $2::uuid
-              AND je.entry_date = $3::date)
+              AND je.entry_date = $3::date AND je.created_at >= st.created_at)
         )
     )
   `;

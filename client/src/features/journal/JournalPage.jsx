@@ -742,9 +742,15 @@ export default function JournalPage() {
   const [aeSelected,   setAeSelected]   = useState(null);
 
   // ── Post unposted state ──
+  const yesterdayLocal = () => {
+    const [y, m, d] = todayLocal().split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+  };
   const [postMode,      setPostMode]      = useState('combined');
   const [postBranchId,  setPostBranchId]  = useState('');
-  const [postDate,      setPostDate]      = useState(todayLocal());
+  // Default to yesterday, not today — a Combined post locks that day forever once made,
+  // so posting a day before it's actually over silently drops any sale that arrives after.
+  const [postDate,      setPostDate]      = useState(yesterdayLocal());
   const [showPostPanel, setShowPostPanel] = useState(false);
   const postPanelRef = useRef(null);
 
@@ -902,7 +908,11 @@ export default function JournalPage() {
                 {/* Mode toggle */}
                 <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs w-fit">
                   {[{ value: 'combined', label: 'Combined' }, { value: 'per_transaction', label: 'Per Transaction' }].map((opt, i) => (
-                    <button key={opt.value} onClick={() => setPostMode(opt.value)}
+                    <button key={opt.value} onClick={() => {
+                      setPostMode(opt.value);
+                      // Combined locks the day once posted — never let it default to today
+                      if (opt.value === 'combined' && postDate >= todayLocal()) setPostDate(yesterdayLocal());
+                    }}
                       className={['px-3 py-1.5 transition-colors', i > 0 ? 'border-l border-gray-200' : '',
                         postMode === opt.value ? 'bg-primary-600 text-white font-medium' : 'bg-white text-gray-600 hover:bg-gray-50',
                       ].join(' ')}>
@@ -928,6 +938,7 @@ export default function JournalPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
                     <input type="date" value={postDate} onChange={(e) => setPostDate(e.target.value)}
+                      max={postMode === 'combined' ? yesterdayLocal() : todayLocal()}
                       className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-primary-500 focus:outline-none" />
                   </div>
                   <button
