@@ -57,4 +57,9 @@ const importProducts = async (req, res) => {
   res.status(200).json({ success: true, data: result });
 };
 
-module.exports = { list, getOne, listCategories, create, update, createCategory, updateCategory, remove, listBranchPricing, upsertBranchPricing, importProducts };
+const bulkUpdateProducts = async (req, res) => {
+  const result = await svc.bulkUpdateProducts(req.tenantId, req.body.updates);
+  res.status(200).json({ success: true, data: result });
+};
+
+module.exports = { list, getOne, listCategories, create, update, createCategory, updateCategory, remove, listBranchPricing, upsertBranchPricing, importProducts, bulkUpdateProducts };

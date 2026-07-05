@@ -341,6 +341,155 @@ function ImportProductsModal({ open, onClose, onImported }) {
   );
 }
 
+const BULK_EDIT_COLUMNS = [
+  'sku', 'product_name', 'barcode', 'description', 'category_name',
+  'base_price', 'cost_price', 'unit_of_measure', 'tax_template_name', 'is_active',
+];
+
+function downloadBulkEditTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([BULK_EDIT_COLUMNS]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Products');
+  XLSX.writeFile(wb, 'products_bulk_edit_template.csv', { bookType: 'csv' });
+}
+
+function BulkEditProductsModal({ open, onClose, onUpdated }) {
+  const [rows, setRows]         = useState([]);
+  const [result, setResult]     = useState(null);
+  const [saving, setSaving]     = useState(false);
+  const fileRef = useRef(null);
+
+  function reset() {
+    setRows([]); setResult(null); setSaving(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function handleClose() { reset(); onClose(); }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const wb   = XLSX.read(ev.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      setRows(data.map(normaliseHeaders));
+      setResult(null);
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  async function handleSave() {
+    if (!rows.length) return;
+    setSaving(true);
+    try {
+      const res = await api.post('/products/bulk-update', { updates: rows });
+      const r = res.data.data;
+      setResult(r);
+      if (r.updated > 0) onUpdated();
+      toast.success(`Updated ${r.updated} of ${r.total} products`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Bulk edit failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasErrors = result?.results?.some((r) => !r.success);
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Bulk Edit Products (by SKU)" size="lg">
+      <div className="space-y-4">
+        {!result && (
+          <>
+            <p className="text-xs text-gray-500">
+              Each row is matched to an existing product by <strong>sku</strong>. Leave a column blank to leave that field unchanged — only the columns you fill in get updated.
+            </p>
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" size="sm" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={downloadBulkEditTemplate}>
+                Download Template
+              </Button>
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
+              <Button variant="primary" size="sm" icon={<Upload className="h-4 w-4" />} onClick={() => fileRef.current?.click()}>
+                Choose File
+              </Button>
+              {rows.length > 0 && (
+                <span className="text-sm text-gray-500">{rows.length} row{rows.length !== 1 ? 's' : ''} loaded</span>
+              )}
+            </div>
+
+            {rows.length > 0 && (
+              <>
+                <div className="max-h-64 overflow-auto rounded-lg border border-gray-200 text-xs">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        {BULK_EDIT_COLUMNS.map((c) => (
+                          <th key={c} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rows.slice(0, 20).map((row, i) => (
+                        <tr key={i} className={!row.sku ? 'bg-red-50' : ''}>
+                          {BULK_EDIT_COLUMNS.map((c) => (
+                            <td key={c} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-[140px] truncate">{String(row[c] ?? '')}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {rows.length > 20 && (
+                    <p className="px-3 py-2 text-gray-400 text-xs">…and {rows.length - 20} more rows</p>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">Rows highlighted in red are missing <strong>sku</strong> and will be skipped.</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={reset}>Clear</Button>
+                  <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>
+                    Apply to {rows.length} Products
+                  </Button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {result && (
+          <div className="space-y-3">
+            <div className="flex gap-4 rounded-lg bg-gray-50 p-4">
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-semibold">{result.updated} updated</span>
+              </div>
+              {result.failed > 0 && (
+                <div className="flex items-center gap-2 text-red-600">
+                  <XCircle className="h-5 w-5" />
+                  <span className="font-semibold">{result.failed} failed</span>
+                </div>
+              )}
+            </div>
+            {hasErrors && (
+              <div className="max-h-48 overflow-auto rounded-lg border border-red-100 bg-red-50 p-3 text-xs space-y-1">
+                {result.results.filter((r) => !r.success).map((r) => (
+                  <p key={r.row} className="text-red-700">
+                    <strong>Row {r.row}</strong>{r.sku ? ` (${r.sku})` : ''}: {r.error}
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={reset}>Edit Another File</Button>
+              <Button variant="primary" size="sm" onClick={handleClose}>Done</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function ProductsPage() {
   const qc = useQueryClient();
   const { hasCapability } = usePermission();
@@ -352,6 +501,7 @@ export default function ProductsPage() {
   const [modal, setModal]           = useState(null);
   const [viewProduct, setViewProduct] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [ledgerProduct, setLedgerProduct] = useState(null);
   const [sortBy,  setSortBy]  = useState('name');
   const [sortDir, setSortDir] = useState('asc');
@@ -479,6 +629,10 @@ export default function ProductsPage() {
                   <button onClick={() => { setMoreOpen(false); setShowImport(true); }}
                     className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                     <Upload className="h-4 w-4 text-gray-400" /> Import CSV
+                  </button>
+                  <button onClick={() => { setMoreOpen(false); setShowBulkEdit(true); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <Edit2 className="h-4 w-4 text-gray-400" /> Bulk Edit
                   </button>
                   <div className="my-1 border-t border-gray-100" />
                   <button onClick={() => { setMoreOpen(false); setModal('category'); }}
@@ -662,6 +816,12 @@ export default function ProductsPage() {
         open={canManageProducts && showImport}
         onClose={() => setShowImport(false)}
         onImported={() => qc.invalidateQueries(['products-mgmt'])}
+      />
+
+      <BulkEditProductsModal
+        open={canManageProducts && showBulkEdit}
+        onClose={() => setShowBulkEdit(false)}
+        onUpdated={() => qc.invalidateQueries(['products-mgmt'])}
       />
 
       <StockLedgerModal

@@ -6,11 +6,11 @@ const { verifyTenant, scopeTenant,
 const { requirePermission }                    = require('../../middleware/rbac.middleware');
 const controller                               = require('./products.controller');
 
-// Bulk import is DB-intensive — cap at 10 calls per 15 min per IP
+// Bulk import/edit is DB-intensive — cap at 10 calls per 15 min per IP
 const importLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { success: false, message: 'Too many import requests. Try again in 15 minutes.' },
+  message: { success: false, message: 'Too many bulk requests. Try again in 15 minutes.' },
 });
 
 const router = Router();
@@ -25,6 +25,7 @@ router.get('/:id',                                   controller.getOne);
 router.post('/categories',           requirePermission('manage_products'), controller.createCategory);
 router.put('/categories/:id',        requirePermission('manage_products'), controller.updateCategory);
 router.post('/import',               importLimiter, requirePermission('manage_products'), controller.importProducts);
+router.post('/bulk-update',          importLimiter, requirePermission('manage_products'), controller.bulkUpdateProducts);
 router.post('/',                     requirePermission('manage_products'), controller.create);
 router.put('/:id',                   requirePermission('manage_products'), controller.update);
 router.delete('/:id',                requirePermission('manage_products'), controller.remove);

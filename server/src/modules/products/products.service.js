@@ -396,8 +396,144 @@ async function bulkImportProducts(companyId, rows) {
   });
 }
 
+const TRUE_WORDS  = new Set(['true', '1', 'yes', 'active']);
+const FALSE_WORDS = new Set(['false', '0', 'no', 'inactive']);
+
+async function bulkUpdateProducts(companyId, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) throw AppError.badRequest('No updates provided');
+  if (rows.length > 500) throw AppError.badRequest('Maximum 500 rows per bulk edit');
+
+  return transaction(async (client) => {
+    const { rows: cats } = await client.query(
+      `SELECT category_id, LOWER(category_name) AS lname FROM categories WHERE company_id = $1 AND is_active = TRUE`,
+      [companyId]
+    );
+    const catMap = Object.fromEntries(cats.map((c) => [c.lname, c.category_id]));
+
+    const { rows: taxes } = await client.query(
+      `SELECT tax_template_id, LOWER(template_name) AS lname FROM tax_templates WHERE company_id = $1`,
+      [companyId]
+    );
+    const taxMap = Object.fromEntries(taxes.map((t) => [t.lname, t.tax_template_id]));
+
+    const { rows: existing } = await client.query(
+      `SELECT product_id, sku FROM products WHERE company_id = $1 AND deleted_at IS NULL AND sku IS NOT NULL`,
+      [companyId]
+    );
+    const skuMap = Object.fromEntries(existing.map((p) => [p.sku, p.product_id]));
+
+    const results = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      const sku = (row.sku || '').trim();
+
+      if (!sku) {
+        results.push({ row: rowNum, success: false, error: 'sku is required' });
+        continue;
+      }
+      const productId = skuMap[sku];
+      if (!productId) {
+        results.push({ row: rowNum, success: false, error: `SKU "${sku}" not found`, sku });
+        continue;
+      }
+
+      const has = (k) => row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '';
+
+      let categoryId; // undefined = leave unchanged
+      if (has('category_name')) {
+        categoryId = catMap[row.category_name.trim().toLowerCase()];
+        if (!categoryId) {
+          results.push({ row: rowNum, success: false, error: `Unknown category_name "${row.category_name}"`, sku });
+          continue;
+        }
+      }
+
+      let taxTemplateId;
+      if (has('tax_template_name')) {
+        taxTemplateId = taxMap[row.tax_template_name.trim().toLowerCase()];
+        if (!taxTemplateId) {
+          results.push({ row: rowNum, success: false, error: `Unknown tax_template_name "${row.tax_template_name}"`, sku });
+          continue;
+        }
+      }
+
+      let basePrice;
+      if (has('base_price')) {
+        basePrice = parseFloat(row.base_price);
+        if (isNaN(basePrice) || basePrice < 0) {
+          results.push({ row: rowNum, success: false, error: 'base_price must be a valid number', sku });
+          continue;
+        }
+      }
+
+      let costPrice;
+      if (has('cost_price')) {
+        costPrice = parseFloat(row.cost_price);
+        if (isNaN(costPrice) || costPrice < 0) {
+          results.push({ row: rowNum, success: false, error: 'cost_price must be a valid number', sku });
+          continue;
+        }
+      }
+
+      let isActive;
+      if (has('is_active')) {
+        const v = String(row.is_active).trim().toLowerCase();
+        if (TRUE_WORDS.has(v)) isActive = true;
+        else if (FALSE_WORDS.has(v)) isActive = false;
+        else {
+          results.push({ row: rowNum, success: false, error: `is_active must be true/false, got "${row.is_active}"`, sku });
+          continue;
+        }
+      }
+
+      const productName    = has('product_name')    ? row.product_name.trim()    : undefined;
+      const barcode        = has('barcode')          ? row.barcode.trim()        : undefined;
+      const description    = has('description')      ? row.description.trim()    : undefined;
+      const unitOfMeasure  = has('unit_of_measure')  ? row.unit_of_measure.trim(): undefined;
+
+      const noFieldsGiven = [
+        productName, barcode, description, unitOfMeasure,
+        categoryId, taxTemplateId, basePrice, costPrice, isActive,
+      ].every((v) => v === undefined);
+
+      if (noFieldsGiven) {
+        results.push({ row: rowNum, success: false, error: 'No fields to update', sku });
+        continue;
+      }
+
+      const { rows: updated } = await client.query(`
+        UPDATE products
+        SET product_name    = COALESCE($3, product_name),
+            barcode         = COALESCE($4, barcode),
+            description     = COALESCE($5, description),
+            unit_of_measure = COALESCE($6, unit_of_measure),
+            category_id     = COALESCE($7, category_id),
+            tax_template_id = COALESCE($8, tax_template_id),
+            base_price      = COALESCE($9::numeric, base_price),
+            cost_price      = COALESCE($10::numeric, cost_price),
+            is_active       = COALESCE($11, is_active),
+            updated_at      = now()
+        WHERE company_id = $1 AND product_id = $2 AND deleted_at IS NULL
+        RETURNING product_id, sku, product_name
+      `, [companyId, productId,
+        productName ?? null, barcode ?? null, description ?? null, unitOfMeasure ?? null,
+        categoryId ?? null, taxTemplateId ?? null, basePrice ?? null, costPrice ?? null,
+        isActive ?? null]);
+
+      const p = updated[0];
+      results.push({ row: rowNum, success: true, product_id: p.product_id, sku: p.sku, product_name: p.product_name });
+    }
+
+    const updatedCount = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+    return { updated: updatedCount, failed, total: rows.length, results };
+  });
+}
+
 module.exports = {
   listProducts, getProductById, listCategories, updateCategory,
   createProduct, updateProduct, createCategory, deleteProduct,
-  listBranchPricing, upsertBranchPricing, bulkImportProducts,
+  listBranchPricing, upsertBranchPricing, bulkImportProducts, bulkUpdateProducts,
 };

@@ -10,7 +10,7 @@ jest.mock('../config/database', () => ({
 // ── Imports ────────────────────────────────────────────────────────────────────
 
 const { transaction } = require('../config/database');
-const { bulkImportProducts } = require('../modules/products/products.service');
+const { bulkImportProducts, bulkUpdateProducts } = require('../modules/products/products.service');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -191,5 +191,121 @@ describe('bulkImportProducts', () => {
     expect(result.imported).toBe(2);
     expect(result.failed).toBe(1);
     expect(result.total).toBe(3);
+  });
+});
+
+// ── bulkUpdateProducts ─────────────────────────────────────────────────────────
+
+describe('bulkUpdateProducts', () => {
+  test('throws when called with an empty array', async () => {
+    await expect(bulkUpdateProducts('co-1', []))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('throws when array exceeds 500 rows', async () => {
+    const rows = Array.from({ length: 501 }, (_, i) => ({ sku: `SKU-${i}`, base_price: '9.99' }));
+    await expect(bulkUpdateProducts('co-1', rows))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('skips row with missing sku', async () => {
+    const client = makeClient([{ rows: [] }, { rows: [] }, { rows: [] }]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ base_price: '9.99' }]);
+
+    expect(result.updated).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/sku is required/i);
+  });
+
+  test('skips row when sku is not found', async () => {
+    const client = makeClient([{ rows: [] }, { rows: [] }, { rows: [] }]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'MISSING', base_price: '9.99' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/not found/i);
+  });
+
+  test('skips row with no editable fields provided', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] }, { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/no fields/i);
+  });
+
+  test('successfully updates base_price for a matched sku', async () => {
+    const client = makeClient([
+      { rows: [] },                                             // categories
+      { rows: [] },                                             // tax templates
+      { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },        // existing products
+      { rows: [{ product_id: 'p-1', sku: 'TW-001', product_name: 'Test Widget' }] }, // UPDATE
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', base_price: '19.99' }]);
+
+    expect(result.updated).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.results[0]).toMatchObject({ success: true, sku: 'TW-001' });
+  });
+
+  test('rejects invalid base_price', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] }, { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', base_price: 'oops' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/base_price/i);
+  });
+
+  test('rejects unknown category_name', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] }, { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', category_name: 'Nope' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/unknown category_name/i);
+  });
+
+  test('rejects invalid is_active value', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] }, { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', is_active: 'maybe' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/is_active/i);
+  });
+
+  test('leaves unspecified fields unchanged via null params', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] },
+      { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+      { rows: [{ product_id: 'p-1', sku: 'TW-001', product_name: 'Test Widget' }] },
+    ]);
+    setupTransaction(client);
+
+    await bulkUpdateProducts('co-1', [{ sku: 'TW-001', base_price: '19.99' }]);
+
+    const updateCall = client.query.mock.calls[3];
+    // params: [companyId, productId, productName, barcode, description, unitOfMeasure, categoryId, taxTemplateId, basePrice, costPrice, isActive]
+    expect(updateCall[1][2]).toBeNull();   // product_name untouched
+    expect(updateCall[1][8]).toBe(19.99);  // base_price applied
   });
 });

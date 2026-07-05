@@ -275,7 +275,10 @@ export default function AppLayout() {
         {/* Top bar */}
         <header
           className="relative flex items-center justify-between px-4 py-3 lg:px-6"
-          style={{ background: 'linear-gradient(90deg, #011920 0%, #01303d 50%, #024A59 100%)' }}
+          style={{
+            background: 'linear-gradient(90deg, #011920 0%, #01303d 50%, #024A59 100%)',
+            paddingTop: 'calc(0.75rem + env(safe-area-inset-top))',
+          }}
         >
           {/* Amber accent line at bottom */}
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-secondary-500/60 to-transparent" />

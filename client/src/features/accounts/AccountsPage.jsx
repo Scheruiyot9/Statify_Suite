@@ -256,11 +256,12 @@ function TrialBalanceTab() {
           <Scale className="h-4 w-4 text-gray-500" />
           <span className="font-semibold text-sm text-gray-700">Trial Balance — as of {formatDate(asOf)}</span>
         </div>
-        <div className="overflow-x-auto">
+        {/* Desktop table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50/50 border-b border-gray-200">
               <tr>
-                <th className="hidden sm:table-cell px-2 py-1.5 text-left text-xs font-medium text-gray-500">Code</th>
+                <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500">Code</th>
                 <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500">Account Name</th>
                 <th className="hidden md:table-cell px-2 py-1.5 text-left text-xs font-medium text-gray-500">Type</th>
                 <th className="px-2 py-1.5 text-right text-xs font-medium text-blue-600">Debit (Dr)</th>
@@ -270,7 +271,7 @@ function TrialBalanceTab() {
             <tbody className="divide-y divide-gray-100">
               {rows.map((row) => (
                 <tr key={row.accountCode} className={!row.hasData ? 'opacity-40' : 'hover:bg-gray-50 active:bg-gray-100'}>
-                  <td className="hidden sm:table-cell px-2 py-1.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
+                  <td className="px-2 py-1.5 font-mono text-xs text-gray-500">{row.accountCode}</td>
                   <td className="px-2 py-1.5 font-medium text-gray-900 truncate">{row.accountName}</td>
                   <td className="hidden md:table-cell px-2 py-1.5">
                     <span className={`text-xs font-medium capitalize ${TB_TYPE_COLORS[row.accountType] ?? 'text-gray-600'}`}>
@@ -294,6 +295,34 @@ function TrialBalanceTab() {
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* Mobile cards — stacked Dr/Cr avoids clipping amounts off-screen */}
+        <div className="sm:hidden divide-y divide-gray-50">
+          {rows.map((row) => (
+            <div key={row.accountCode} className={`px-3 py-2.5 ${!row.hasData ? 'opacity-40' : ''}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-gray-400">{row.accountCode}</span>
+                <span className="text-sm font-medium text-gray-900 truncate">{row.accountName}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <span className={`text-xs font-medium capitalize ${TB_TYPE_COLORS[row.accountType] ?? 'text-gray-600'}`}>
+                  {row.accountType}
+                </span>
+                <div className="flex items-center gap-3 font-mono text-xs">
+                  {row.debit > 0 && <span className="font-semibold text-blue-700">Dr {formatCurrency(row.debit)}</span>}
+                  {row.credit > 0 && <span className="font-semibold text-green-700">Cr {formatCurrency(row.credit)}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center justify-between border-t-2 border-gray-400 bg-gray-50 px-3 py-2.5 font-bold">
+            <span className="text-sm text-gray-800">TOTALS</span>
+            <div className="flex items-center gap-3 font-mono text-xs">
+              <span className="text-blue-700">Dr {formatCurrency(totalDebits)}</span>
+              <span className="text-green-700">Cr {formatCurrency(totalCredits)}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
