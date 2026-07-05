@@ -47,7 +47,7 @@ async function listProducts(companyId, { branchId, search, categoryId, isActive,
 
   const { rows } = await query(`
     SELECT
-      p.product_id, p.product_name, p.sku, p.barcode, p.image_url,
+      p.product_id, p.product_name, p.sku, p.barcode, p.image_url, p.description,
       p.base_price::numeric, p.cost_price::numeric, p.unit_of_measure,
       p.category_id, p.is_active, p.track_inventory, p.is_service_item, pc.category_name,
       p.tax_template_id,
@@ -75,6 +75,7 @@ async function listProducts(companyId, { branchId, search, categoryId, isActive,
       sku: r.sku,
       barcode: r.barcode,
       image_url: r.image_url || null,
+      description: r.description || null,
       base_price: parseFloat(r.base_price),
       cost_price: r.cost_price ? parseFloat(r.cost_price) : null,
       unit_of_measure: r.unit_of_measure,

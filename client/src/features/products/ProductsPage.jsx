@@ -357,6 +357,7 @@ function BulkEditProductsModal({ open, onClose, onUpdated }) {
   const [rows, setRows]         = useState([]);
   const [result, setResult]     = useState(null);
   const [saving, setSaving]     = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fileRef = useRef(null);
 
   function reset() {
@@ -365,6 +366,36 @@ function BulkEditProductsModal({ open, onClose, onUpdated }) {
   }
 
   function handleClose() { reset(); onClose(); }
+
+  async function handleExportAll() {
+    setExporting(true);
+    try {
+      const res = await api.get('/products', { params: { page: 1, limit: 100000 } });
+      const all = res.data.data.products ?? [];
+      if (!all.length) { toast.error('No products to export'); return; }
+      const data = all.map((p) => ({
+        sku:               p.sku ?? '',
+        product_name:      p.product_name ?? '',
+        barcode:           p.barcode ?? '',
+        description:       p.description ?? '',
+        category_name:     p.category_name ?? '',
+        base_price:        p.base_price ?? '',
+        cost_price:        p.cost_price ?? '',
+        unit_of_measure:   p.unit_of_measure ?? '',
+        tax_template_name: p.tax_template_name ?? '',
+        is_active:         p.is_active ? 'true' : 'false',
+      }));
+      const ws = XLSX.utils.json_to_sheet(data, { header: BULK_EDIT_COLUMNS });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Products');
+      XLSX.writeFile(wb, 'products_export_for_bulk_edit.csv', { bookType: 'csv' });
+      toast.success(`Exported ${all.length} products`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function handleFile(e) {
     const file = e.target.files?.[0];
@@ -406,9 +437,12 @@ function BulkEditProductsModal({ open, onClose, onUpdated }) {
             <p className="text-xs text-gray-500">
               Each row is matched to an existing product by <strong>sku</strong>. Leave a column blank to leave that field unchanged — only the columns you fill in get updated.
             </p>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} loading={exporting} onClick={handleExportAll}>
+                Export All Products
+              </Button>
               <Button variant="secondary" size="sm" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={downloadBulkEditTemplate}>
-                Download Template
+                Download Blank Template
               </Button>
               <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
               <Button variant="primary" size="sm" icon={<Upload className="h-4 w-4" />} onClick={() => fileRef.current?.click()}>
@@ -418,6 +452,9 @@ function BulkEditProductsModal({ open, onClose, onUpdated }) {
                 <span className="text-sm text-gray-500">{rows.length} row{rows.length !== 1 ? 's' : ''} loaded</span>
               )}
             </div>
+            <p className="text-xs text-gray-400">
+              Tip: use <strong>Export All Products</strong> to get a spreadsheet pre-filled with current values, edit what you need, then upload it back below.
+            </p>
 
             {rows.length > 0 && (
               <>

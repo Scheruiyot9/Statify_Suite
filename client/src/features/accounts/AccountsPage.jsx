@@ -652,9 +652,9 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Tab bar + action buttons on same row */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
+      {/* Tab bar + action buttons — stack on mobile so nothing gets clipped */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1 self-start">
           {[
             { id: 'accounts',      label: 'Accounts',      icon: BookOpen },
             { id: 'trial-balance', label: 'Trial Balance', icon: Scale    },
@@ -668,23 +668,23 @@ export default function AccountsPage() {
           ))}
         </div>
         {activeTab === 'accounts' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {accounts.length === 0 && (
               <Button variant="secondary" size="sm" icon={<Sparkles className="h-4 w-4" />}
                 loading={seedMut.isPending} onClick={() => seedMut.mutate()}>
-                Seed Defaults
+                <span className="hidden sm:inline">Seed Defaults</span>
               </Button>
             )}
             {accounts.length > 0 && (
               <Button variant="secondary" size="sm" icon={<Layers className="h-4 w-4" />}
                 onClick={() => setOpeningBalOpen(true)}>
-                Opening Balances
+                <span className="hidden sm:inline">Opening Balances</span>
               </Button>
             )}
             <Button variant="secondary" size="sm"
               icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
               onClick={() => refetch()}>
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
             <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
               Add Account
@@ -700,7 +700,7 @@ export default function AccountsPage() {
       {activeTab === 'accounts' && (
         <>
           {/* Type filter tabs */}
-          <div className="flex gap-1 border-b border-gray-200">
+          <div className="flex flex-wrap gap-1 border-b border-gray-200">
             <button onClick={() => setTypeFilter('')}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${!typeFilter ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               All ({accounts.length})
