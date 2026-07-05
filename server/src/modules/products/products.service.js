@@ -454,6 +454,11 @@ async function bulkUpdateProducts(companyId, rows) {
     );
     const skuMap = Object.fromEntries(existing.map((p) => [p.sku, p.product_id]));
 
+    const { rows: branches } = await client.query(
+      `SELECT branch_id FROM branches WHERE company_id = $1 AND is_active = TRUE AND deleted_at IS NULL`,
+      [companyId]
+    );
+
     const results = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -520,6 +525,15 @@ async function bulkUpdateProducts(companyId, rows) {
         }
       }
 
+      let reorderLevel;
+      if (has('reorder_level')) {
+        reorderLevel = parseInt(row.reorder_level);
+        if (isNaN(reorderLevel) || reorderLevel < 0) {
+          results.push({ row: rowNum, success: false, error: 'reorder_level must be a whole number ≥ 0', sku });
+          continue;
+        }
+      }
+
       const productName    = has('product_name')    ? row.product_name.trim()    : undefined;
       const barcode        = has('barcode')          ? row.barcode.trim()        : undefined;
       const description    = has('description')      ? row.description.trim()    : undefined;
@@ -527,7 +541,7 @@ async function bulkUpdateProducts(companyId, rows) {
 
       const noFieldsGiven = [
         productName, barcode, description, unitOfMeasure,
-        categoryId, taxTemplateId, basePrice, costPrice, isActive,
+        categoryId, taxTemplateId, basePrice, costPrice, isActive, reorderLevel,
       ].every((v) => v === undefined);
 
       if (noFieldsGiven) {
@@ -555,6 +569,18 @@ async function bulkUpdateProducts(companyId, rows) {
         isActive ?? null]);
 
       const p = updated[0];
+
+      if (reorderLevel !== undefined) {
+        for (const b of branches) {
+          await client.query(`
+            INSERT INTO product_branch_inventory (product_id, branch_id, reorder_level)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (product_id, branch_id) DO UPDATE
+              SET reorder_level = EXCLUDED.reorder_level, last_updated = now()
+          `, [p.product_id, b.branch_id, reorderLevel]);
+        }
+      }
+
       results.push({ row: rowNum, success: true, product_id: p.product_id, sku: p.sku, product_name: p.product_name });
     }
 

@@ -344,7 +344,7 @@ function ImportProductsModal({ open, onClose, onImported }) {
 
 const BULK_EDIT_COLUMNS = [
   'sku', 'product_name', 'barcode', 'description', 'category_name',
-  'base_price', 'cost_price', 'unit_of_measure', 'tax_template_name', 'is_active',
+  'base_price', 'cost_price', 'unit_of_measure', 'tax_template_name', 'is_active', 'reorder_level',
 ];
 
 function downloadBulkEditTemplate() {
@@ -385,6 +385,7 @@ function BulkEditProductsModal({ open, onClose, onUpdated }) {
         unit_of_measure:   p.unit_of_measure ?? '',
         tax_template_name: p.tax_template_name ?? '',
         is_active:         p.is_active ? 'true' : 'false',
+        reorder_level:     p.reorder_level ?? '',
       }));
       const ws = XLSX.utils.json_to_sheet(data, { header: BULK_EDIT_COLUMNS });
       const wb = XLSX.utils.book_new();

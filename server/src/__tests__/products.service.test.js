@@ -246,6 +246,7 @@ describe('bulkUpdateProducts', () => {
       { rows: [] },                                             // categories
       { rows: [] },                                             // tax templates
       { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },        // existing products
+      { rows: [] },                                             // branches
       { rows: [{ product_id: 'p-1', sku: 'TW-001', product_name: 'Test Widget' }] }, // UPDATE
     ]);
     setupTransaction(client);
@@ -297,16 +298,51 @@ describe('bulkUpdateProducts', () => {
     const client = makeClient([
       { rows: [] }, { rows: [] },
       { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+      { rows: [] },                                             // branches
       { rows: [{ product_id: 'p-1', sku: 'TW-001', product_name: 'Test Widget' }] },
     ]);
     setupTransaction(client);
 
     await bulkUpdateProducts('co-1', [{ sku: 'TW-001', base_price: '19.99' }]);
 
-    const updateCall = client.query.mock.calls[3];
+    const updateCall = client.query.mock.calls[4];
     // params: [companyId, productId, productName, barcode, description, unitOfMeasure, categoryId, taxTemplateId, basePrice, costPrice, isActive]
     expect(updateCall[1][2]).toBeNull();   // product_name untouched
     expect(updateCall[1][8]).toBe(19.99);  // base_price applied
+  });
+
+  test('rejects a negative reorder_level', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] },
+      { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+      { rows: [] },
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', reorder_level: '-3' }]);
+
+    expect(result.failed).toBe(1);
+    expect(result.results[0].error).toMatch(/reorder_level/i);
+  });
+
+  test('applies reorder_level across every active branch for a matched sku', async () => {
+    const client = makeClient([
+      { rows: [] }, { rows: [] },
+      { rows: [{ product_id: 'p-1', sku: 'TW-001' }] },
+      { rows: [{ branch_id: 'b-1' }, { branch_id: 'b-2' }] },
+      { rows: [{ product_id: 'p-1', sku: 'TW-001', product_name: 'Test Widget' }] }, // UPDATE
+      { rows: [] },                                                                  // upsert branch 1
+      { rows: [] },                                                                  // upsert branch 2
+    ]);
+    setupTransaction(client);
+
+    const result = await bulkUpdateProducts('co-1', [{ sku: 'TW-001', reorder_level: '12' }]);
+
+    expect(result.updated).toBe(1);
+    const upsert1 = client.query.mock.calls[5];
+    const upsert2 = client.query.mock.calls[6];
+    expect(upsert1[1]).toEqual(['p-1', 'b-1', 12]);
+    expect(upsert2[1]).toEqual(['p-1', 'b-2', 12]);
   });
 });
 
