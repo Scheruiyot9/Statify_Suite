@@ -351,11 +351,29 @@ async function getCustomerLedger(companyId, customerId) {
     }),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  // Outstanding = the net of every transaction shown above, not the stored field —
+  // guarantees the header figure always agrees with the activity list even if a past
+  // posting (e.g. an old manual journal) never applied its delta to credit_balance.
+  const computedBalance = +activity.reduce((sum, a) => {
+    if (a.type === 'SALE') return sum + a.amount;
+    if (a.type === 'PAYMENT') return sum - a.amount;
+    return sum + a.amount; // ADJUSTMENT already carries its own sign
+  }, 0).toFixed(2);
+
+  // Self-heal the stored field so POS credit checks and the customer list don't keep
+  // drifting from what this page (the source of truth) displays.
+  if (Math.abs(computedBalance - parseFloat(cust.credit_balance ?? 0)) > 0.005) {
+    await query(
+      `UPDATE customers SET credit_balance = $2, updated_at = now() WHERE customer_id = $1`,
+      [customerId, computedBalance]
+    );
+  }
+
   return {
     customer: {
       customer_id:    cust.customer_id,
       customer_name:  cust.customer_name,
-      credit_balance: parseFloat(cust.credit_balance ?? 0),
+      credit_balance: computedBalance,
       credit_limit:   parseFloat(cust.credit_limit   ?? 0),
     },
     aging: {

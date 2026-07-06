@@ -164,7 +164,10 @@ export default function CustomerLedgerPage() {
   );
 
   const { customer, aging, activity } = data;
-  const availableCredit = Math.max(0, customer.credit_limit - customer.credit_balance);
+  // Available is how much of the credit limit is unused — capped at the limit itself,
+  // so an advance-credit (overpaid, negative-balance) customer doesn't show "available"
+  // above their actual limit.
+  const availableCredit = Math.min(customer.credit_limit, Math.max(0, customer.credit_limit - customer.credit_balance));
 
   const toggleSelect = (id) => {
     setSelected((prev) => {

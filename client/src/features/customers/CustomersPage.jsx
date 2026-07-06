@@ -114,6 +114,20 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransa
   const creditAvailable = Math.max(0, creditLimit - creditUsed);
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+        <div className="h-12 w-12 flex-shrink-0 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-lg">
+          {customer.customer_name[0]}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-gray-900 truncate">{customer.customer_name}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
+            <span className="font-mono text-xs text-gray-400">{customer.customer_code}</span>
+            {customer.group_name && (
+              <span className="rounded-full bg-secondary-100 px-2 py-0.5 text-[10px] font-medium text-secondary-700">{customer.group_name}</span>
+            )}
+          </div>
+        </div>
+      </div>
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Total Spent', value: formatCurrency(customer.total_spent) },
@@ -187,17 +201,24 @@ function CustomerDetail({ customer, creditEnabled, onRecordPayment, onViewTransa
           )}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        {customer.phone && <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4" />{customer.phone}</div>}
-        {customer.email && <div className="flex items-center gap-2 text-gray-600"><Mail  className="h-4 w-4" />{customer.email}</div>}
-        {customer.group_name && <div className="flex items-center gap-2 text-gray-600"><Star className="h-4 w-4 text-secondary-500" />{customer.group_name}</div>}
-        {customer.id_number && (
-          <div className="text-gray-600 text-xs"><span className="text-gray-400">ID: </span>{customer.id_number}</div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Contact & Details</p>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {customer.phone && <div className="flex items-center gap-2 text-gray-600"><Phone className="h-4 w-4 text-gray-400" />{customer.phone}</div>}
+          {customer.email && <div className="flex items-center gap-2 text-gray-600 truncate"><Mail className="h-4 w-4 text-gray-400 flex-shrink-0" />{customer.email}</div>}
+          {customer.id_number && (
+            <div className="text-gray-600 text-xs"><span className="text-gray-400">ID: </span>{customer.id_number}</div>
+          )}
+          {customer.kra_pin && (
+            <div className="text-gray-600 text-xs font-mono"><span className="text-gray-400 font-sans">KRA: </span>{customer.kra_pin}</div>
+          )}
+          {!customer.phone && !customer.email && !customer.id_number && !customer.kra_pin && (
+            <p className="col-span-full text-gray-400 text-xs">No contact details on file</p>
+          )}
+        </div>
+        {customer.notes && (
+          <p className="mt-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-500">{customer.notes}</p>
         )}
-        {customer.kra_pin && (
-          <div className="text-gray-600 text-xs font-mono"><span className="text-gray-400 font-sans">KRA: </span>{customer.kra_pin}</div>
-        )}
-        {customer.notes && <div className="col-span-full text-gray-500 text-xs">{customer.notes}</div>}
       </div>
     </div>
   );
@@ -260,6 +281,17 @@ export default function CustomersPage() {
     onSuccess: () => { toast.success('Customer updated'); qc.invalidateQueries(['customers']); setModal(null); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
+
+  // The list row doesn't carry every field (e.g. notes) — fetch the full record before
+  // opening the edit form, or an untouched field would submit as '' and blank it out.
+  const openEdit = async (customerId) => {
+    try {
+      const res = await api.get(`/customers/${customerId}`);
+      setModal(res.data.data);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to load customer');
+    }
+  };
 
   const { data: payMethods = [] } = useQuery({
     queryKey: ['payment-methods'],
@@ -342,19 +374,19 @@ export default function CustomersPage() {
                 <tr key={c.customer_id} className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
                   onClick={() => setDetail(c.customer_id)}>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div className="h-8 w-8 flex-shrink-0 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs">
                         {c.customer_name[0]}
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{c.customer_name}</p>
-                        <p className="text-xs text-gray-400">{c.customer_code}</p>
-                      </div>
+                      <p className="font-medium text-gray-900 truncate">
+                        {c.customer_name} <span className="font-normal text-gray-400">· {c.customer_code}</span>
+                      </p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
-                    <div>{c.phone ?? '—'}</div>
-                    {c.email && <div className="text-gray-400">{c.email}</div>}
+                    <p className="truncate max-w-[220px]">
+                      {[c.phone, c.email].filter(Boolean).join('  ·  ') || '—'}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
                     {c.group_name
@@ -377,15 +409,14 @@ export default function CustomersPage() {
                   {canManageCustomers && (
                     <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
-                        <button onClick={() => setDetail(c.customer_id)}
-                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                          View
+                        <button onClick={() => openEdit(c.customer_id)}
+                          className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                          <Edit2 className="h-3 w-3" />Edit
                         </button>
                         {c.allow_credit && (
                           <button onClick={() => navigate(`/app/customers/${c.customer_id}/ledger`)}
-                            title="View credit entries"
-                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-primary-700 transition-colors">
-                            <BookOpen className="h-3.5 w-3.5" />
+                            className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                            <BookOpen className="h-3 w-3" />Entries
                           </button>
                         )}
                       </div>
@@ -426,15 +457,14 @@ export default function CustomersPage() {
                 </div>
                 {canManageCustomers && (
                   <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => setDetail(c.customer_id)}
-                      className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
+                    <button onClick={() => openEdit(c.customer_id)}
+                      className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                      <Edit2 className="h-3.5 w-3.5" />Edit
                     </button>
                     {c.allow_credit && (
                       <button onClick={() => navigate(`/app/customers/${c.customer_id}/ledger`)}
-                        title="View credit entries"
-                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-primary-700 transition-colors">
-                        <BookOpen className="h-3.5 w-3.5" />
+                        className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-primary-700 transition-colors">
+                        <BookOpen className="h-3.5 w-3.5" />Entries
                       </button>
                     )}
                   </div>
