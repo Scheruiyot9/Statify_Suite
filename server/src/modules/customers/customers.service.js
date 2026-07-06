@@ -290,14 +290,20 @@ async function getCustomerLedger(companyId, customerId) {
   }
 
   try {
+    // Credit payments plus any other journal posted directly against this customer's
+    // AR line (e.g. a manual write-off/adjustment) — excludes 'SALE' since that side
+    // of the ledger is already represented via salesRes above and would double-count.
     paymentsRes = await query(`
-      SELECT je.journal_entry_id, je.entry_date, je.description,
-             jel.credit::numeric AS amount
+      SELECT je.journal_entry_id, je.entry_date, je.description, je.source_type,
+             jel.debit::numeric AS debit_amount, jel.credit::numeric AS credit_amount
       FROM journal_entries je
       JOIN ledger_entry_lines jel ON jel.journal_entry_id = je.journal_entry_id
-      WHERE je.company_id = $1 AND je.source_type = 'CREDIT_PAYMENT'
+      JOIN accounts a ON a.account_id = jel.account_id
+      WHERE je.company_id = $1
         AND jel.entity_id = $2
-        AND jel.credit > 0 AND je.status = 'posted'
+        AND a.account_code = '1100'
+        AND je.source_type <> 'SALE'
+        AND je.status = 'posted'
       ORDER BY je.entry_date ASC
     `, [companyId, customerId]);
   } catch (err) {
@@ -328,13 +334,21 @@ async function getCustomerLedger(companyId, customerId) {
       payment_status: r.payment_status,
       items:          r.items,
     })),
-    ...paymentsRes.rows.map((r) => ({
-      type:   'PAYMENT',
-      id:     r.journal_entry_id,
-      ref:    r.description,
-      date:   r.entry_date,
-      amount: parseFloat(r.amount),
-    })),
+    ...paymentsRes.rows.map((r) => {
+      const isPayment = r.source_type === 'CREDIT_PAYMENT';
+      const netAmount = parseFloat(r.debit_amount) - parseFloat(r.credit_amount);
+      return {
+        type:       isPayment ? 'PAYMENT' : 'ADJUSTMENT',
+        id:         r.journal_entry_id,
+        ref:        r.description,
+        date:       r.entry_date,
+        // PAYMENT is always a balance reduction (kept positive for the existing UI,
+        // which prefixes it with "−"); ADJUSTMENT keeps its sign since a manual
+        // journal can either increase (debit) or decrease (credit) what's owed.
+        amount:     isPayment ? parseFloat(r.credit_amount) : netAmount,
+        sourceType: r.source_type,
+      };
+    }),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   return {

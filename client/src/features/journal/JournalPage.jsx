@@ -716,6 +716,20 @@ const OUT_TYPE_COLORS = {
   stock_payment: 'bg-blue-100 text-blue-700',
 };
 
+// Source-type badge styling for posted ledger entries — one shared source of truth so the
+// filter dropdown, table badges, and detail modal always agree on label/color per type.
+const SOURCE_TYPE_META = {
+  SALE:                  { label: 'Sale',              color: 'bg-green-100 text-green-700' },
+  SESSION_SALE_SUMMARY:  { label: 'Session Summary',   color: 'bg-blue-100 text-blue-700' },
+  DAILY_SALE_SUMMARY:    { label: 'Daily Summary',     color: 'bg-purple-100 text-purple-700' },
+  OPENING_BALANCE:       { label: 'Opening Balance',   color: 'bg-amber-100 text-amber-700' },
+  AR_SETTLEMENT:         { label: 'AR Settlement',     color: 'bg-teal-100 text-teal-700' },
+  MANUAL:                { label: 'Manual Journal',    color: 'bg-indigo-100 text-indigo-700' },
+  CREDIT_PAYMENT:        { label: 'Credit Payment',    color: 'bg-emerald-100 text-emerald-700' },
+};
+const sourceTypeBadge = (sourceType) =>
+  SOURCE_TYPE_META[sourceType] ?? { label: sourceType?.replace(/_/g, ' ') ?? '—', color: 'bg-gray-100 text-gray-600' };
+
 export default function JournalPage() {
   const [activeTab,    setActiveTab]    = useState('journals');
 
@@ -1011,6 +1025,8 @@ export default function JournalPage() {
             <option value="DAILY_SALE_SUMMARY">Daily Summary</option>
             <option value="OPENING_BALANCE">Opening Balance</option>
             <option value="AR_SETTLEMENT">AR Settlement</option>
+            <option value="MANUAL">Manual Journal</option>
+            <option value="CREDIT_PAYMENT">Credit Payment</option>
           </select>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['journal-entries'] })}
             className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
@@ -1051,14 +1067,8 @@ export default function JournalPage() {
                     <td className="px-3 py-1.5 font-mono text-xs text-gray-700">{e.entryNumber}</td>
                     <td className="px-3 py-1.5 text-xs text-gray-600">{String(e.entryDate).slice(0, 10)}</td>
                     <td className="px-3 py-1.5">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        e.sourceType === 'SALE'                 ? 'bg-green-100 text-green-700' :
-                        e.sourceType === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
-                        e.sourceType === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
-                        e.sourceType === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {e.sourceType?.replace(/_/g, ' ')}
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${sourceTypeBadge(e.sourceType).color}`}>
+                        {sourceTypeBadge(e.sourceType).label}
                       </span>
                     </td>
                     <td className="px-3 py-1.5 text-xs text-gray-800 truncate max-w-xs">{e.description ?? '—'}</td>
@@ -1085,14 +1095,8 @@ export default function JournalPage() {
                       <p className="font-mono text-xs font-semibold text-gray-700">{e.entryNumber}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{String(e.entryDate).slice(0, 10)}</p>
                     </div>
-                    <span className={`flex-shrink-0 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      e.sourceType === 'SALE'                 ? 'bg-green-100 text-green-700' :
-                      e.sourceType === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
-                      e.sourceType === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
-                      e.sourceType === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {e.sourceType?.replace(/_/g, ' ')}
+                    <span className={`flex-shrink-0 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${sourceTypeBadge(e.sourceType).color}`}>
+                      {sourceTypeBadge(e.sourceType).label}
                     </span>
                   </div>
                   {e.description && <p className="mt-1.5 text-xs text-gray-800 truncate">{e.description}</p>}
@@ -1423,12 +1427,7 @@ export default function JournalPage() {
           ) : aeDetail ? (() => {
             const totalDr = (aeDetail.lines ?? []).reduce((s, l) => s + l.debit,  0);
             const totalCr = (aeDetail.lines ?? []).reduce((s, l) => s + l.credit, 0);
-            const badgeClass =
-              aeDetail.source_type === 'SALE'                 ? 'bg-green-100 text-green-700' :
-              aeDetail.source_type === 'SESSION_SALE_SUMMARY' ? 'bg-blue-100 text-blue-700' :
-              aeDetail.source_type === 'DAILY_SALE_SUMMARY'   ? 'bg-purple-100 text-purple-700' :
-              aeDetail.source_type === 'OPENING_BALANCE'      ? 'bg-amber-100 text-amber-700' :
-              'bg-gray-100 text-gray-600';
+            const badge = sourceTypeBadge(aeDetail.source_type);
             return (
               <div className="space-y-4">
                 {/* Meta row */}
@@ -1442,8 +1441,8 @@ export default function JournalPage() {
                       <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
                     )}
                   </div>
-                  <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeClass}`}>
-                    {aeDetail.source_type?.replace(/_/g, ' ')}
+                  <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badge.color}`}>
+                    {badge.label}
                   </span>
                 </div>
 

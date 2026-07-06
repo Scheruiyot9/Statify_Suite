@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, CreditCard, AlertTriangle, CheckCircle, Clock,
-  RefreshCw, Receipt,
+  RefreshCw, Receipt, FileEdit,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
@@ -11,6 +11,30 @@ import { formatCurrency, formatDate } from '@/utils/formatters';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { PageSpinner } from '@/components/ui/Spinner';
+
+// ── Activity row display (type badge + signed amount) ──────────────────────────
+// SALE and PAYMENT always move the balance in one direction; ADJUSTMENT is a manual
+// journal against AR and can go either way, so its sign/color depends on the amount.
+function rowMeta(row) {
+  if (row.type === 'SALE') {
+    return {
+      Icon: Receipt, label: 'Invoice', badgeClass: 'bg-blue-100 text-blue-700',
+      amountClass: 'text-red-600', amountText: formatCurrency(row.amount),
+    };
+  }
+  if (row.type === 'ADJUSTMENT') {
+    const increasesDebt = row.amount > 0;
+    return {
+      Icon: FileEdit, label: 'Adjustment', badgeClass: 'bg-indigo-100 text-indigo-700',
+      amountClass: increasesDebt ? 'text-red-600' : 'text-green-700',
+      amountText: `${increasesDebt ? '' : '−'}${formatCurrency(Math.abs(row.amount))}`,
+    };
+  }
+  return {
+    Icon: CreditCard, label: 'Payment', badgeClass: 'bg-green-100 text-green-700',
+    amountClass: 'text-green-700', amountText: `−${formatCurrency(row.amount)}`,
+  };
+}
 
 // ── Aging card ────────────────────────────────────────────────────────────────
 
@@ -262,6 +286,7 @@ export default function CustomerLedgerPage() {
                 const isPaid    = row.payment_status === 'paid';
                 const isChecked = selected.has(row.id);
                 const canSelect = isSale && !isPaid;
+                const meta      = rowMeta(row);
                 return (
                   <tr key={row.id}
                     className={`transition-colors ${canSelect ? 'cursor-pointer hover:bg-primary-50' : ''} ${isChecked ? 'bg-primary-50' : ''}`}
@@ -275,15 +300,9 @@ export default function CustomerLedgerPage() {
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {isSale ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                          <Receipt className="h-3 w-3" /> Invoice
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                          <CreditCard className="h-3 w-3" /> Payment
-                        </span>
-                      )}
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
+                        <meta.Icon className="h-3 w-3" /> {meta.label}
+                      </span>
                     </td>
                     <td className="px-3 py-3">
                       <p className="font-mono text-xs font-semibold text-gray-700">{row.ref}</p>
@@ -298,9 +317,7 @@ export default function CustomerLedgerPage() {
                       {formatDate(row.date)}
                     </td>
                     <td className="px-3 py-3 text-right font-semibold text-xs">
-                      <span className={isSale ? 'text-red-600' : 'text-green-700'}>
-                        {isSale ? '' : '−'}{formatCurrency(row.amount)}
-                      </span>
+                      <span className={meta.amountClass}>{meta.amountText}</span>
                     </td>
                     <td className="px-3 py-3 text-center">
                       {isSale ? (
@@ -342,6 +359,7 @@ export default function CustomerLedgerPage() {
             const isPaid    = row.payment_status === 'paid';
             const isChecked = selected.has(row.id);
             const canSelect = isSale && !isPaid;
+            const meta      = rowMeta(row);
             return (
               <div key={row.id}
                 onClick={() => canSelect && toggleSelect(row.id)}
@@ -355,17 +373,11 @@ export default function CustomerLedgerPage() {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      {isSale ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                          <Receipt className="h-3 w-3" /> Invoice
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                          <CreditCard className="h-3 w-3" /> Payment
-                        </span>
-                      )}
-                      <span className={`flex-shrink-0 font-semibold text-xs ${isSale ? 'text-red-600' : 'text-green-700'}`}>
-                        {isSale ? '' : '−'}{formatCurrency(row.amount)}
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
+                        <meta.Icon className="h-3 w-3" /> {meta.label}
+                      </span>
+                      <span className={`flex-shrink-0 font-semibold text-xs ${meta.amountClass}`}>
+                        {meta.amountText}
                       </span>
                     </div>
                     <p className="mt-1 font-mono text-xs font-semibold text-gray-700">{row.ref}</p>

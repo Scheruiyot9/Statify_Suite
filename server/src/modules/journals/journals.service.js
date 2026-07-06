@@ -203,7 +203,7 @@ async function postJournal(companyId, journalId, userId) {
     if (j.status !== 'draft') throw AppError.conflict(`Journal is already ${j.status}`);
 
     const { rows: lines } = await client.query(
-      `SELECT jl.*, a.is_active FROM journal_lines jl
+      `SELECT jl.*, a.is_active, a.account_code FROM journal_lines jl
        JOIN accounts a ON a.account_id = jl.account_id
        WHERE jl.journal_id = $1`,
       [journalId]
@@ -239,6 +239,27 @@ async function postJournal(companyId, journalId, userId) {
       SET status = 'posted', ledger_entry_id = $1, posted_by_user_id = $2, posted_at = now(), updated_at = now()
       WHERE journal_id = $3
     `, [ledgerEntryId, userId, journalId]);
+
+    // Manual journals can post directly against a customer's AR account (e.g. a
+    // write-off or adjustment); apply the same delta to customers.credit_balance
+    // as sales/payments do, or the customer's balance silently drifts out of sync
+    // with the ledger. Incremental (not a full ledger recalc) because AR postings
+    // for credit sales aren't always tagged per-customer in the ledger (summary
+    // posting mode aggregates them), so a recalc would wipe out sale-driven balance.
+    const arDeltaByCustomer = {};
+    for (const l of lines) {
+      if (l.entity_type !== 'customer' || !l.entity_id || l.account_code !== '1100') continue;
+      const delta = parseFloat(l.debit) - parseFloat(l.credit);
+      arDeltaByCustomer[l.entity_id] = (arDeltaByCustomer[l.entity_id] || 0) + delta;
+    }
+    for (const [customerId, delta] of Object.entries(arDeltaByCustomer)) {
+      if (Math.abs(delta) < 0.005) continue;
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance + $3, updated_at = now()
+         WHERE company_id = $1 AND customer_id = $2`,
+        [companyId, customerId, delta]
+      );
+    }
   });
   return getJournal(companyId, journalId);
 }
