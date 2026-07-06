@@ -180,29 +180,34 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
     // arPortion: the part of this sale not covered by real payments — posts to the
     // customer's account balance. If that balance is currently negative (an existing
     // prepayment/advance credit), this simply spends it down rather than creating debt.
-    const arPortion      = isCreditSale ? Math.max(0, +(totalAmount - totalPaid).toFixed(2)) : 0;
-    const paymentStatus  = isCreditSale
-      ? (arPortion > 0.005 ? 'partial' : 'paid')
-      : (totalPaid >= totalAmount ? 'paid' : 'partial');
+    const arPortion = isCreditSale ? Math.max(0, +(totalAmount - totalPaid).toFixed(2)) : 0;
 
     // Validate and lock credit limit before inserting anything — only enforced when this
     // sale would push the customer's balance into new/increased debt (newBalance > 0).
     // Spending down an existing negative balance (advance credit) needs no permission.
+    // arNewBalance also drives payment_status below — if it stays 0 or negative, the
+    // sale is fully absorbed by the customer's existing prepaid balance and is "paid",
+    // not "partial", even though no cash changed hands for this specific invoice.
+    let arNewBalance = null;
     if (arPortion > 0.005) {
       const { rows: cRows } = await client.query(
         `SELECT allow_credit, credit_limit, credit_balance FROM customers WHERE customer_id = $1 AND company_id = $2 FOR UPDATE`,
         [customerId, companyId]
       );
       if (!cRows.length) throw AppError.badRequest('Customer not found');
-      const newBalance = parseFloat(cRows[0].credit_balance) + arPortion;
-      if (newBalance > 0.005) {
+      arNewBalance = parseFloat(cRows[0].credit_balance) + arPortion;
+      if (arNewBalance > 0.005) {
         if (!cRows[0].allow_credit) throw AppError.badRequest('This customer is not enabled for credit sales');
-        if (newBalance > parseFloat(cRows[0].credit_limit)) {
+        if (arNewBalance > parseFloat(cRows[0].credit_limit)) {
           const available = parseFloat(cRows[0].credit_limit) - parseFloat(cRows[0].credit_balance);
           throw AppError.badRequest(`Credit limit exceeded — available credit: ${available.toFixed(2)}`);
         }
       }
     }
+
+    const paymentStatus = isCreditSale
+      ? (arPortion <= 0.005 || arNewBalance <= 0.005 ? 'paid' : 'partial')
+      : (totalPaid >= totalAmount ? 'paid' : 'partial');
 
     const { rows: txnRows } = await client.query(`
       INSERT INTO sales_transactions (

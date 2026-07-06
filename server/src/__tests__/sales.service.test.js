@@ -113,6 +113,63 @@ describe('createTransaction', () => {
     expect(result.transaction_id).toBe('t-1');
     const creditUpdateCall = client.query.mock.calls[7];
     expect(creditUpdateCall[1]).toEqual(['c-1', 500]);
+
+    // Fully absorbed by the pre-existing advance credit (newBalance lands at exactly 0) —
+    // this invoice should read as 'paid', not 'partial', even though no cash was tendered.
+    const insertTxnCall = client.query.mock.calls[3];
+    expect(insertTxnCall[1][10]).toBe('paid');
+  });
+
+  test('marks a credit sale "paid" when an existing advance credit fully covers it, with room to spare', async () => {
+    mockPreTransactionQueries({ isCreditSale: true });
+    const client = makeClient([
+      { rows: [{ txn_counter: 1 }] },
+      { rows: [{ points_earn_rate: 10, points_redeem_rate: 0.1 }] },
+      { rows: [{ allow_credit: true, credit_limit: 1000, credit_balance: -700 }] }, // plenty of prepaid balance
+      { rows: [{ transaction_id: 't-1', transaction_number: 'TXN-1', transaction_date: new Date(), total_amount: 500, payment_status: 'paid' }] },
+      { rows: [{ quantity_available: 100 }] },
+      { rows: [{}] },
+      { rows: [{}] },
+      { rows: [{}] }, // update credit_balance (arPortion = 500, newBalance = -200, still <= 0)
+      { rowCount: 1, rows: [] },
+    ]);
+    setupTransaction(client);
+
+    await createTransaction('co-1', 'b-1', 'u-1', {
+      customerId: 'c-1',
+      items: oneItem,
+      payments: [],
+      isCreditSale: true,
+    });
+
+    const insertTxnCall = client.query.mock.calls[3];
+    expect(insertTxnCall[1][10]).toBe('paid');
+  });
+
+  test('marks a credit sale "partial" when advance credit only partly covers it and real debt remains', async () => {
+    mockPreTransactionQueries({ isCreditSale: true });
+    const client = makeClient([
+      { rows: [{ txn_counter: 1 }] },
+      { rows: [{ points_earn_rate: 10, points_redeem_rate: 0.1 }] },
+      { rows: [{ allow_credit: true, credit_limit: 1000, credit_balance: -200 }] }, // only partial prepaid coverage
+      { rows: [{ transaction_id: 't-1', transaction_number: 'TXN-1', transaction_date: new Date(), total_amount: 500, payment_status: 'partial' }] },
+      { rows: [{ quantity_available: 100 }] },
+      { rows: [{}] },
+      { rows: [{}] },
+      { rows: [{}] }, // update credit_balance (arPortion = 500, newBalance = 300, real debt created)
+      { rowCount: 1, rows: [] },
+    ]);
+    setupTransaction(client);
+
+    await createTransaction('co-1', 'b-1', 'u-1', {
+      customerId: 'c-1',
+      items: oneItem,
+      payments: [],
+      isCreditSale: true,
+    });
+
+    const insertTxnCall = client.query.mock.calls[3];
+    expect(insertTxnCall[1][10]).toBe('partial');
   });
 
   test('rejects a credit sale that would exceed the credit limit', async () => {

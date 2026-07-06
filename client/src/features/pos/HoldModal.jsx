@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Pause, RotateCcw, Trash2, ShoppingCart, UserCircle, Loader2, Printer } from 'lucide-react';
 import { useCartStore, useAuthStore } from '@/app/store';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, applyRounding } from '@/utils/formatters';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 import { printDraft } from '@/utils/printReceipt';
 
-function holdTotal(cartData) {
+function holdTotal(cartData, roundingMode = 'none', roundingUnit = 1) {
   const subtotal = (cartData.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
   const orderDiscountAmt = cartData.orderDiscountType === 'percent'
     ? subtotal * ((cartData.orderDiscount || 0) / 100)
     : Math.min(cartData.orderDiscount || 0, subtotal);
-  return Math.max(0, subtotal - orderDiscountAmt);
+  const netTotal = Math.max(0, subtotal - orderDiscountAmt);
+  return applyRounding(netTotal, roundingMode, roundingUnit);
 }
 
 function timeAgo(isoString) {
@@ -147,7 +148,7 @@ export default function HoldModal({ open, onClose, branchId }) {
                     </div>
                   </div>
                   <p className="text-sm font-bold text-secondary-600 flex-shrink-0">
-                    {formatCurrency(holdTotal(cd))}
+                    {formatCurrency(holdTotal(cd, companySettings?.pos_rounding_mode || 'none', parseFloat(companySettings?.pos_rounding_unit ?? 1)))}
                   </p>
                 </div>
 

@@ -73,6 +73,7 @@ describe('recordCreditPayment', () => {
       { rows: [{ pos_allow_overpayment: true }] },
       { rows: [{ customer_id: 'c-1', customer_name: 'Alex', credit_balance: -50, credit_limit: 500 }] },
       { rows: [] }, // outstanding transactions
+      { rows: [] }, // backstop sweep (newBalance -50 <= 0)
       { rows: [{}] }, // customer_topups insert
     ]);
     setupTransaction(client);
@@ -82,8 +83,31 @@ describe('recordCreditPayment', () => {
     expect(result.advance_credit).toBe(50);
     expect(result.credit_balance).toBe(-50);
 
-    const topupCall = client.query.mock.calls[4];
+    const topupCall = client.query.mock.calls[5];
     expect(topupCall[1]).toEqual(['co-1', 'branch-1', 'sess-1', 'c-1', 150, 'pm-1', 'user-1']);
+  });
+
+  test('sweeps stale partial/unpaid invoices when a payment brings the balance back to zero or below', async () => {
+    // Reproduces: customer already has an advance credit balance (-145) from an earlier
+    // overpayment, but an older invoice is still incorrectly flagged 'partial' (e.g. from
+    // historical drift). A further payment that pushes the balance more negative should
+    // still clear that stale invoice, even though there's no "real debt" left to FIFO against.
+    const client = makeClient([
+      { rows: [{ credit_balance: -145, customer_name: 'Alex' }] },
+      { rows: [{ pos_allow_overpayment: true }] },
+      { rows: [{ customer_id: 'c-1', customer_name: 'Alex', credit_balance: -425, credit_limit: 1000 }] },
+      { rows: [{ transaction_id: 't-39', total_amount: 280 }] }, // stale 'partial' invoice
+      { rows: [] }, // backstop sweep UPDATE
+    ]);
+    setupTransaction(client);
+
+    const result = await recordCreditPayment('co-1', 'c-1', 280, null);
+
+    expect(result.credit_balance).toBe(-425);
+    // The backstop sweep (broad UPDATE keyed only on customerId, not a specific transaction_id)
+    const sweepCall = client.query.mock.calls[4];
+    expect(sweepCall[0]).toMatch(/UPDATE sales_transactions/);
+    expect(sweepCall[1]).toEqual(['c-1']);
   });
 
   test('spending an existing negative balance further still counts as overpayment (advance credit grows)', async () => {

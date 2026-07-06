@@ -1586,7 +1586,7 @@ export default function PosTerminal() {
                 sub="Sweep, float top-up or payment correction"
                 onClick={() => { setTransferOpen(true); setMenuOpen(false); }}
               />
-              {creditSalesEnabled && (
+              {(creditSalesEnabled || allowOverpayment) && (
                 <MenuAction
                   icon={CreditCard}
                   iconBg="bg-blue-100 text-blue-600"
@@ -1724,7 +1724,7 @@ export default function PosTerminal() {
         session={session}
       />
 
-      {creditSalesEnabled && (
+      {(creditSalesEnabled || allowOverpayment) && (
         <CreditPaymentModal
           open={creditPayOpen}
           sessionId={session?.session_id}

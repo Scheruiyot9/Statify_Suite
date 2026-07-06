@@ -958,36 +958,49 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
           </div>
         )}
 
-        {/* Customer account balance + charge remainder to account — requires credit sales enabled */}
-        {companyData?.credit_sales_enabled && !customer?.customer_id && (
+        {/* Customer account balance + charge remainder to account — needs either credit
+            sales (to create debt) or overpayment (to spend/build a prepaid balance) */}
+        {(companyData?.credit_sales_enabled || companyData?.pos_allow_overpayment) && !customer?.customer_id && (
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center gap-2 text-xs text-blue-600">
             <CreditCard className="h-4 w-4 flex-shrink-0 text-blue-400" />
             Select a customer to charge to their account or use their balance.
           </div>
         )}
-        {companyData?.credit_sales_enabled && customer?.customer_id && (() => {
-          const balance          = customer.credit_balance ?? 0;
-          const hasAdvanceCredit = balance < -0.005;
-          // How much of the account can absorb this sale's shortfall: real credit
-          // headroom if allow_credit, else only whatever advance credit they've prepaid.
-          const available = customer.allow_credit
-            ? Math.max(0, (customer.credit_limit ?? 0) - balance)
-            : Math.max(0, -balance);
+        {(companyData?.credit_sales_enabled || companyData?.pos_allow_overpayment) && customer?.customer_id && (() => {
+          const balance     = customer.credit_balance ?? 0;
+          const prepaid     = balance < -0.005 ? -balance : 0;   // overpayment/advance credit — what they've already paid ahead
+          const owed        = balance > 0.005  ?  balance : 0;   // existing debt
+          const creditLimit = customer.allow_credit ? (customer.credit_limit ?? 0) : 0;
+          // Extra room beyond any existing debt — on top of whatever they've prepaid.
+          const creditHeadroom = customer.allow_credit ? Math.max(0, creditLimit - owed) : 0;
+          // How much of the account can absorb this sale's shortfall: prepaid balance
+          // first, then remaining credit headroom if this customer is credit-enabled.
+          const available = prepaid + creditHeadroom;
           if (available <= 0.005) return null;
           return (
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
-                  <CreditCard className="h-4 w-4" /> Customer Account
-                </div>
-                <span className="text-xs text-blue-600">
-                  {balance > 0.005
-                    ? `Owes: ${formatCurrency(balance)}`
-                    : hasAdvanceCredit
-                    ? `Available balance: ${formatCurrency(-balance)}`
-                    : formatCurrency(0)}
-                </span>
+              <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
+                <CreditCard className="h-4 w-4" /> Customer Account
               </div>
+              {/* Overpayment/prepaid balance — shown first, most prominent */}
+              {prepaid > 0.005 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-green-700 font-medium">Prepaid balance</span>
+                  <span className="text-green-700 font-bold">{formatCurrency(prepaid)}</span>
+                </div>
+              )}
+              {owed > 0.005 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-red-600 font-medium">Owes</span>
+                  <span className="text-red-600 font-bold">{formatCurrency(owed)}</span>
+                </div>
+              )}
+              {customer.allow_credit && creditLimit > 0.005 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-blue-600">Credit limit{owed > 0.005 ? ' (remaining)' : ''}</span>
+                  <span className="text-blue-600 font-medium">{formatCurrency(creditHeadroom)}</span>
+                </div>
+              )}
               <Button size="sm" variant="secondary" fullWidth
                 disabled={isPending || remaining <= 0 || remaining > available}
                 onClick={handleChargeToAccount}>

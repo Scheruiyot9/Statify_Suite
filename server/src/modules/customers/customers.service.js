@@ -427,8 +427,10 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     }
     const { rows: txns } = await client.query(txnQuery, txnParams);
 
-    // Only apply up to the actual balance (advance credit doesn't clear extra invoices)
-    let remaining = Math.min(amount, currentBalance);
+    // Only apply up to the real debt that existed before this payment (never negative —
+    // if the customer already had prepaid credit, none of this new amount is "released"
+    // for FIFO clearing; it just grows the advance credit further).
+    let remaining = Math.min(amount, Math.max(0, currentBalance));
     for (const txn of txns) {
       if (remaining <= 0.005) break;
       const txnAmt = parseFloat(txn.total_amount);
@@ -442,6 +444,20 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
         // Partial coverage of this transaction — leave as 'partial' (balance already reduced)
         break;
       }
+    }
+
+    // Data-consistency backstop: if the customer owes nothing after this payment, they
+    // can't have any invoices genuinely outstanding — clear any still flagged
+    // partial/unpaid (e.g. from historical drift, or a prior sale that was fully covered
+    // by an advance credit at creation time but never got its own status corrected).
+    const newBalance = currentBalance - amount;
+    if (newBalance <= 0.005) {
+      await client.query(`
+        UPDATE sales_transactions
+        SET payment_status = 'paid', updated_at = now()
+        WHERE customer_id = $1 AND is_credit_sale = TRUE
+          AND payment_status IN ('partial', 'unpaid') AND status = 'completed'
+      `, [customerId]);
     }
 
     // Post journal entry: DR Cash/Bank  CR AR (1100)
