@@ -8,6 +8,8 @@
  *   - iframe.contentWindow.print() prints the PARENT page, not the iframe
  */
 
+import { applyRounding } from './formatters';
+
 const RECEIPT_STYLES = `
   @page { size: 58mm auto; margin: 2mm; }
   html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
@@ -59,8 +61,10 @@ const RECEIPT_STYLES = `
  *   company        — { company_name, tax_id, logo_url }
  *   paymentDetails — string from branch.payment_details (e.g. "Mpesa Till: 123456")
  *   cashierName    — string
+ *   roundingMode   — company's pos_rounding_mode ('none'|'up'|'down'|'nearest')
+ *   roundingUnit   — company's pos_rounding_unit
  */
-export function printDraft({ cart, company, paymentDetails = '', cashierName = '' }) {
+export function printDraft({ cart, company, paymentDetails = '', cashierName = '', roundingMode = 'none', roundingUnit = 1 }) {
   const fmt = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const items   = cart.items || [];
@@ -68,7 +72,8 @@ export function printDraft({ cart, company, paymentDetails = '', cashierName = '
   const discAmt  = cart.orderDiscountType === 'percent'
     ? subtotal * ((cart.orderDiscount || 0) / 100)
     : Math.min(cart.orderDiscount || 0, subtotal);
-  const total    = Math.max(0, subtotal - discAmt);
+  const netTotal = Math.max(0, subtotal - discAmt);
+  const total    = applyRounding(netTotal, roundingMode, roundingUnit);
 
   const itemRows = items.map((i) => {
     const name   = i.product?.product_name ?? '—';
@@ -109,6 +114,7 @@ export function printDraft({ cart, company, paymentDetails = '', cashierName = '
       <div class="space-y-0.5 mb-2">
         <div class="flex justify-between text-gray-600"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
         ${discAmt > 0 ? `<div class="flex justify-between text-gray-600"><span>Discount</span><span>-${fmt(discAmt)}</span></div>` : ''}
+        ${total !== netTotal ? `<div class="flex justify-between text-gray-500" style="font-size:10px;"><span>Rounded ${roundingMode}</span><span>${fmt(netTotal)} → ${fmt(total)}</span></div>` : ''}
         <div class="flex justify-between font-bold text-sm border-t border-gray-400 pt-1 mt-1"><span>TOTAL DUE</span><span>${fmt(total)}</span></div>
       </div>
       ${payRows ? `

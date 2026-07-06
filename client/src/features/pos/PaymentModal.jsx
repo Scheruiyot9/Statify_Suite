@@ -565,7 +565,6 @@ function PaymentLine({ line, remaining, methods, onRemove, onUpdate, roundingUni
 export default function PaymentModal({ open, onClose, onSuccess }) {
   const { items, customer, session, notes, totals, clearCart, orderDiscount, orderDiscountType } = useCartStore();
   const branchId           = useAuthStore((s) => s.user?.branchIds?.[0]);
-  const companyId          = useAuthStore((s) => s.user?.companyId);
   const enqueueTransaction = usePosDataStore((s) => s.enqueueTransaction);
   const isOnline           = useNetworkStatus();
 
@@ -580,11 +579,13 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   });
   const redeemRate = loyaltySettings?.points_redeem_rate ?? 0.10;
 
+  // Same cache key PosTerminal/Cart already populate on POS load — avoids a race where
+  // this modal's own fetch hasn't resolved yet at checkout and rounding silently falls
+  // back to 'none', posting the raw decimal total instead of the rounded one.
   const { data: companyData } = useQuery({
-    queryKey: ['company-mine', companyId],
+    queryKey: ['my-company'],
     queryFn:  () => api.get('/companies/mine').then((r) => r.data.data),
     staleTime: 5 * 60 * 1000,
-    enabled:  !!companyId,
   });
   const roundingMode = companyData?.pos_rounding_mode || 'none';
   const roundingUnit = parseFloat(companyData?.pos_rounding_unit ?? 1);
@@ -610,16 +611,6 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const remaining      = Math.max(0, effectiveTotal - totalCovered);
   const isFullyCovered = totalCovered >= effectiveTotal && effectiveTotal > 0;
 
-  // Cash line's un-applied tendered amount — the "change" a cashier can choose to
-  // bank to the customer's account instead of handing back, when the setting allows it.
-  const cashLine = paymentLines.find((l) => methods.find((m) => m.payment_method_id === l.methodId)?.method_name === 'Cash');
-  const cashChange = cashLine ? Math.max(0, parseFloat(cashLine.tendered || 0) - cashLine.amount) : 0;
-  const canBankOverpayment = !!(companyData?.pos_allow_overpayment && customer?.customer_id && cashChange > 0.005);
-
-  useEffect(() => {
-    if (!canBankOverpayment) setBankOverpayment(false);
-  }, [canBankOverpayment]);
-
   const { data: liveMethods, isError: methodsError } = useQuery({
     queryKey: ['payment-methods'],
     queryFn:  () => api.get('/pos/payment-methods').then((r) => r.data.data),
@@ -633,6 +624,16 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
 
   // Online: use live data. Offline or errored: fall back to localStorage cache.
   const methods = liveMethods ?? ((!isOnline || methodsError) ? loadMethodsCache() : []);
+
+  // Cash line's un-applied tendered amount — the "change" a cashier can choose to
+  // bank to the customer's account instead of handing back, when the setting allows it.
+  const cashLine = paymentLines.find((l) => methods.find((m) => m.payment_method_id === l.methodId)?.method_name === 'Cash');
+  const cashChange = cashLine ? Math.max(0, parseFloat(cashLine.tendered || 0) - cashLine.amount) : 0;
+  const canBankOverpayment = !!(companyData?.pos_allow_overpayment && customer?.customer_id && cashChange > 0.005);
+
+  useEffect(() => {
+    if (!canBankOverpayment) setBankOverpayment(false);
+  }, [canBankOverpayment]);
 
   useEffect(() => {
     if (open) {

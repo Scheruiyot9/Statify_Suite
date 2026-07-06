@@ -894,6 +894,8 @@ export default function Cart({ session, onCheckout, onSalesReturn, onCartCleared
       company: companySettings,
       paymentDetails: branch?.payment_details ?? '',
       cashierName: user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '',
+      roundingMode: companySettings?.pos_rounding_mode || 'none',
+      roundingUnit: parseFloat(companySettings?.pos_rounding_unit ?? 1),
     });
   };
   const allowPriceEdit          = companySettings?.pos_allow_price_edit          ?? false;

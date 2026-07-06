@@ -47,6 +47,8 @@ export default function HoldModal({ open, onClose, branchId }) {
       company: companySettings,
       paymentDetails: branch?.payment_details ?? '',
       cashierName: user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : '',
+      roundingMode: companySettings?.pos_rounding_mode || 'none',
+      roundingUnit: parseFloat(companySettings?.pos_rounding_unit ?? 1),
     });
   };
 
