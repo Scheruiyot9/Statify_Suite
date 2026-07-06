@@ -1327,7 +1327,7 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
     );
     const customerId = st?.customer_id || null;
 
-    return _post(client, companyId, {
+    const journalEntryId = await _post(client, companyId, {
       entryDate:   todayLocal(),
       description: `AR collection — ${st?.transaction_number || transactionId}`,
       sourceType:  'AR_SETTLEMENT',
@@ -1344,6 +1344,23 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
         },
       ],
     });
+
+    // This CRs the customer's AR line same as recordCreditPayment/postCreditReceiptEntry
+    // do — keep customers.credit_balance and the invoice's payment_status in sync, or
+    // the settlement is invisible outside the raw ledger (same bug as manual journals).
+    if (customerId) {
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance - $2, updated_at = now() WHERE customer_id = $1`,
+        [customerId, amt]
+      );
+    }
+    const remaining = +(outstanding - amt).toFixed(2);
+    await client.query(
+      `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
+      [transactionId, remaining <= 0.005 ? 'paid' : 'partial']
+    );
+
+    return journalEntryId;
   });
 }
 

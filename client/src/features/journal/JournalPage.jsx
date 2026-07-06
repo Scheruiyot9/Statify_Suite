@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ScrollText, Plus, XCircle, RefreshCw, Download, Upload,
   AlertCircle, CheckCircle2, Building2, User, Briefcase, BookOpen, Edit2,
-  ArrowDownLeft, Calendar,
+  ArrowDownLeft, Calendar, ArrowLeftRight,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -748,6 +748,11 @@ export default function JournalPage() {
   const [coEnd,   setCoEnd]   = useState(todayLocal());
   const [coPage,  setCoPage]  = useState(1);
 
+  // ── Pay mode transfers state — its own tab, independent of Cash Outs ──
+  const [trStart, setTrStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
+  const [trEnd,   setTrEnd]   = useState(todayLocal());
+  const [trPage,  setTrPage]  = useState(1);
+
   // ── Posted entries (auto-generated) state ──
   const [aeStart,      setAeStart]      = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
   const [aeEnd,        setAeEnd]        = useState(todayLocal());
@@ -823,12 +828,12 @@ export default function JournalPage() {
   });
 
   const { data: trData, isLoading: trLoading } = useQuery({
-    queryKey: ['pos-transfers-all', coStart, coEnd, coPage],
+    queryKey: ['pos-transfers-all', trStart, trEnd, trPage],
     queryFn: () => api.get('/pos/transfers', {
-      params: { startDate: coStart, endDate: coEnd, page: coPage, limit: 30 },
+      params: { startDate: trStart, endDate: trEnd, page: trPage, limit: 30 },
     }).then((r) => r.data.data),
     placeholderData: (prev) => prev,
-    enabled: activeTab === 'cash-outs',
+    enabled: activeTab === 'transfers',
   });
 
   const aeParams = aeSourceType === '!SALE'
@@ -854,6 +859,9 @@ export default function JournalPage() {
   const cashOuts   = coData?.cashOuts ?? [];
   const coTotal    = coData?.total    ?? 0;
   const coPages    = coData?.pages    ?? 1;
+  const transfers  = trData?.transfers ?? [];
+  const trTotal    = trData?.total     ?? 0;
+  const trPages    = trData?.pages     ?? 1;
 
   return (
     <div className="h-full flex flex-col">
@@ -880,6 +888,14 @@ export default function JournalPage() {
               }`}
             >
               <ArrowDownLeft className="h-3.5 w-3.5" />Cash Outs
+            </button>
+            <button
+              onClick={() => setActiveTab('transfers')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === 'transfers' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />Transfers
             </button>
             <button
               onClick={() => setActiveTab('posted-entries')}
@@ -1002,6 +1018,21 @@ export default function JournalPage() {
               value={coEnd} onChange={(e) => { setCoEnd(e.target.value); setCoPage(1); }} />
           </div>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['pos-cash-outs-all'] })}
+            className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
+            <RefreshCw className="h-4 w-4" />Refresh
+          </button>
+        </div>
+      ) : activeTab === 'transfers' ? (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6 border-b bg-gray-50 flex-shrink-0">
+          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm">
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={trStart} onChange={(e) => { setTrStart(e.target.value); setTrPage(1); }} />
+            <span className="text-gray-400">—</span>
+            <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
+              value={trEnd} onChange={(e) => { setTrEnd(e.target.value); setTrPage(1); }} />
+          </div>
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['pos-transfers-all'] })}
             className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
             <RefreshCw className="h-4 w-4" />Refresh
           </button>
@@ -1200,7 +1231,7 @@ export default function JournalPage() {
             </>
           )}
         </div>
-      ) : (
+      ) : activeTab === 'cash-outs' ? (
         <div className="flex-1 overflow-auto">
           {coLoading ? (
             <div className="py-24 text-center text-gray-400">Loading…</div>
@@ -1285,82 +1316,87 @@ export default function JournalPage() {
             </div>
             </>
           )}
-
-          {/* Transfers section */}
-          {!trLoading && (trData?.transfers ?? []).length > 0 && (
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto">
+          {trLoading ? (
+            <div className="py-24 text-center text-gray-400">Loading…</div>
+          ) : transfers.length === 0 ? (
+            <div className="py-24 text-center text-gray-400">
+              <ArrowLeftRight className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p>No pay mode transfers in this period.</p>
+            </div>
+          ) : (
             <>
-              <div className="px-4 py-2 border-t border-b bg-gray-50">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pay Mode Transfers</p>
-              </div>
-              {/* Desktop table — every column always visible */}
-              <table className="hidden sm:table w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
-                    <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">From → To</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
-                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
+            {/* Desktop table — every column always visible */}
+            <table className="hidden sm:table w-full text-sm">
+              <thead className="sticky top-0 bg-gray-50 border-b z-10">
+                <tr>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-36">Date</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Type</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-600 w-32">Amount</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600">From → To</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600">Notes</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.map((t) => (
+                  <tr key={t.transfer_id} className="border-b hover:bg-gray-50">
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{String(t.created_at).slice(0, 10)}</td>
+                    <td className="px-2 py-1.5">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
+                        t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {t.transfer_type === 'float_topup' ? 'Float Top-up' :
+                         t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(t.amount)}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-800">
+                      {t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{t.notes ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {(trData?.transfers ?? []).map((t) => (
-                    <tr key={t.transfer_id} className="border-b hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-xs text-gray-600">{String(t.created_at).slice(0, 10)}</td>
-                      <td className="px-2 py-1.5">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
-                          t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
-                          'bg-amber-100 text-amber-700'
-                        }`}>
-                          {t.transfer_type === 'float_topup' ? 'Float Top-up' :
-                           t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(t.amount)}</td>
-                      <td className="px-2 py-1.5 text-xs text-gray-800">
-                        {t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-600 truncate max-w-[12rem]">{t.notes ?? '—'}</td>
-                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
-                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
-                      <td className="px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Mobile cards */}
-              <div className="sm:hidden divide-y">
-                {(trData?.transfers ?? []).map((t) => (
-                  <div key={t.transfer_id} className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
-                          t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
-                          'bg-amber-100 text-amber-700'
-                        }`}>
-                          {t.transfer_type === 'float_topup' ? 'Float Top-up' :
-                           t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">{String(t.created_at).slice(0, 10)}</p>
-                      </div>
-                      <span className="flex-shrink-0 text-xs font-mono font-semibold text-gray-800">{fmt(t.amount)}</span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-800">{t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                      {t.branch_name && <span>{t.branch_name}</span>}
-                      {t.terminal_name && <span>{t.terminal_name}</span>}
-                      {t.created_by_name && <span>By {t.created_by_name}</span>}
-                    </div>
-                    {t.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{t.notes}</p>}
-                  </div>
                 ))}
-              </div>
+              </tbody>
+            </table>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y">
+              {transfers.map((t) => (
+                <div key={t.transfer_id} className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        t.transfer_type === 'sweep'       ? 'bg-purple-100 text-purple-700' :
+                        t.transfer_type === 'float_topup' ? 'bg-blue-100 text-blue-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {t.transfer_type === 'float_topup' ? 'Float Top-up' :
+                         t.transfer_type === 'sweep'       ? 'Sweep' : 'Correction'}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">{String(t.created_at).slice(0, 10)}</p>
+                    </div>
+                    <span className="flex-shrink-0 text-xs font-mono font-semibold text-gray-800">{fmt(t.amount)}</span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-gray-800">{t.from_method_name ?? '—'} → {t.to_method_name ?? '—'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                    {t.branch_name && <span>{t.branch_name}</span>}
+                    {t.terminal_name && <span>{t.terminal_name}</span>}
+                    {t.created_by_name && <span>By {t.created_by_name}</span>}
+                  </div>
+                  {t.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{t.notes}</p>}
+                </div>
+              ))}
+            </div>
             </>
           )}
         </div>
@@ -1389,6 +1425,19 @@ export default function JournalPage() {
                 className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
               <span>Page {coPage} of {coPages}</span>
               <button onClick={() => setCoPage((p) => Math.min(coPages, p + 1))} disabled={coPage >= coPages}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+            </div>
+          </div>
+        )
+      ) : activeTab === 'transfers' ? (
+        trTotal > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t bg-white flex-shrink-0 text-sm text-gray-600">
+            <span>{trTotal} transfer{trTotal !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setTrPage((p) => Math.max(1, p - 1))} disabled={trPage <= 1}
+                className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Previous</button>
+              <span>Page {trPage} of {trPages}</span>
+              <button onClick={() => setTrPage((p) => Math.min(trPages, p + 1))} disabled={trPage >= trPages}
                 className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
             </div>
           </div>
