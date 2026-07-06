@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, XCircle, Receipt, CheckCircle,
@@ -26,10 +27,11 @@ const STATUS_ICONS = {
   disputed:   <AlertTriangle className="h-3 w-3" />,
 };
 
-// ── Shift Detail Modal ────────────────────────────────────────────────────────
+// ── Shift Detail (used by ShiftDetailPage) ────────────────────────────────────
 
-function ShiftDetail({ sessionId, onForceClose }) {
+export function ShiftDetail({ sessionId }) {
   const [correcting, setCorrecting] = useState(false);
+  const [forceClose, setForceClose] = useState(false);
   const { hasRole } = usePermission();
   const canCorrect  = hasRole('company_admin');
 
@@ -299,7 +301,7 @@ function ShiftDetail({ sessionId, onForceClose }) {
             <Button
               variant="secondary" fullWidth
               icon={<XCircle className="h-4 w-4 text-red-500" />}
-              onClick={() => onForceClose(sessionId)}
+              onClick={() => setForceClose(true)}
             >
               Force Close Shift
             </Button>
@@ -323,6 +325,16 @@ function ShiftDetail({ sessionId, onForceClose }) {
             session={data}
             onClose={() => setCorrecting(false)}
             onSaved={() => setCorrecting(false)}
+          />
+        </Modal>
+      )}
+
+      {forceClose && (
+        <Modal open title="Force Close Shift" onClose={() => setForceClose(false)} size="sm">
+          <ForceCloseConfirm
+            sessionId={sessionId}
+            onClose={() => setForceClose(false)}
+            onDone={() => setForceClose(false)}
           />
         </Modal>
       )}
@@ -499,12 +511,11 @@ function ForceCloseConfirm({ sessionId, onClose, onDone }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ShiftsPage() {
+  const navigate     = useNavigate();
   const [startDate,  setStartDate]  = useState('');
   const [endDate,    setEndDate]    = useState('');
   const [status,     setStatus]     = useState('');
   const [page,       setPage]       = useState(1);
-  const [selected,   setSelected]   = useState(null);  // session_id shown in detail panel
-  const [forceClose, setForceClose] = useState(null);
 
   const filters = { startDate, endDate, status, page, limit: 20 };
 
@@ -550,11 +561,8 @@ export default function ShiftsPage() {
         </Button>
       </div>
 
-      {/* Master-detail layout */}
-      <div className={`flex gap-4 items-start ${selected ? 'flex-col xl:flex-row' : ''}`}>
-
-        {/* ── Shift list ── */}
-        <div className={`rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden ${selected ? 'w-full xl:w-[480px] xl:flex-shrink-0' : 'w-full'}`}>
+      {/* ── Shift list ── */}
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           {isLoading ? <PageSpinner /> : sessions.length === 0 ? (
             <div className="py-12 text-center text-gray-400">
               <Clock className="mx-auto mb-2 h-8 w-8 opacity-30" />
@@ -570,28 +578,21 @@ export default function ShiftsPage() {
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Date / Time</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Terminal</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Cashier</th>
-                    {!selected && <>
-                      <th className="px-4 py-3 text-right font-medium text-gray-600">Sales</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600">Txns</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-600">Variance</th>
-                    </>}
+                    <th className="px-4 py-3 text-right font-medium text-gray-600">Sales</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-600">Txns</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-600">Variance</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-600">Status</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-600">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sessions.map((s) => {
-                    const variance   = s.cash_variance ?? 0;
-                    const isSelected = selected === s.session_id;
+                    const variance = s.cash_variance ?? 0;
                     return (
                       <tr
                         key={s.session_id}
-                        onClick={() => setSelected(isSelected ? null : s.session_id)}
-                        className={`cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-primary-50 hover:bg-primary-50'
-                            : 'hover:bg-gray-50'
-                        }`}
+                        onClick={() => navigate(`/app/shifts/${s.session_id}`)}
+                        className="cursor-pointer transition-colors hover:bg-gray-50"
                       >
                         <td className="px-4 py-3">
                           <p className="text-gray-900 font-medium text-xs">{formatDate(s.session_start)}</p>
@@ -602,36 +603,30 @@ export default function ShiftsPage() {
                           <p className="text-[11px] text-gray-400">{s.branch_name}</p>
                         </td>
                         <td className="px-4 py-3 text-gray-700 text-xs">{s.cashier_name}</td>
-                        {!selected && <>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">{formatCurrency(s.total_sales)}</td>
-                          <td className="px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
-                          <td className="px-4 py-3 text-right text-xs">
-                            {s.status === 'open' ? (
-                              <span className="text-gray-400">—</span>
-                            ) : (
-                              <span className={
-                                Math.abs(variance) < 0.5 ? 'text-green-600 font-medium'
-                                : variance > 0 ? 'text-blue-600 font-medium'
-                                : 'text-red-600 font-medium'
-                              }>
-                                {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
-                              </span>
-                            )}
-                          </td>
-                        </>}
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">{formatCurrency(s.total_sales)}</td>
+                        <td className="px-4 py-3 text-center text-gray-600 text-xs">{s.txn_count}</td>
+                        <td className="px-4 py-3 text-right text-xs">
+                          {s.status === 'open' ? (
+                            <span className="text-gray-400">—</span>
+                          ) : (
+                            <span className={
+                              Math.abs(variance) < 0.5 ? 'text-green-600 font-medium'
+                              : variance > 0 ? 'text-blue-600 font-medium'
+                              : 'text-red-600 font-medium'
+                            }>
+                              {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLES[s.status] ?? 'bg-gray-100 text-gray-600'}`}>
                             {STATUS_ICONS[s.status]}{s.status}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => setSelected(isSelected ? null : s.session_id)}
-                            className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
-                              isSelected
-                                ? 'border-primary-300 bg-primary-100 text-primary-800'
-                                : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
-                            }`}>
-                            {isSelected ? 'Close' : 'View'}
+                          <button onClick={() => navigate(`/app/shifts/${s.session_id}`)}
+                            className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                            View
                           </button>
                         </td>
                       </tr>
@@ -644,14 +639,11 @@ export default function ShiftsPage() {
             {/* Mobile cards */}
             <div className="sm:hidden space-y-2 p-3">
               {sessions.map((s) => {
-                const variance   = s.cash_variance ?? 0;
-                const isSelected = selected === s.session_id;
+                const variance = s.cash_variance ?? 0;
                 return (
                   <div key={s.session_id}
-                    onClick={() => setSelected(isSelected ? null : s.session_id)}
-                    className={`rounded-xl border p-3 transition-colors ${
-                      isSelected ? 'border-primary-200 bg-primary-50' : 'border-gray-100 bg-white active:bg-gray-50'
-                    }`}
+                    onClick={() => navigate(`/app/shifts/${s.session_id}`)}
+                    className="rounded-xl border border-gray-100 bg-white p-3 transition-colors active:bg-gray-50"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -681,13 +673,9 @@ export default function ShiftsPage() {
                       )}
                     </div>
                     <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => setSelected(isSelected ? null : s.session_id)}
-                        className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
-                          isSelected
-                            ? 'border-primary-300 bg-primary-100 text-primary-800'
-                            : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
-                        }`}>
-                        {isSelected ? 'Close' : 'View'}
+                      <button onClick={() => navigate(`/app/shifts/${s.session_id}`)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     </div>
                   </div>
@@ -711,37 +699,7 @@ export default function ShiftsPage() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* ── Detail panel ── */}
-        {selected && (
-          <div className="flex-1 min-w-0 rounded-xl border border-primary-100 bg-white shadow-sm overflow-hidden">
-            {/* Panel header */}
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 bg-primary-50">
-              <h2 className="text-sm font-semibold text-primary-800">Shift Details</h2>
-              <button onClick={() => setSelected(null)}
-                className="rounded-md p-1 text-primary-400 hover:bg-primary-100 hover:text-primary-700 transition-colors">
-                <XCircle className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(100vh-220px)]">
-              <ShiftDetail
-                sessionId={selected}
-                onForceClose={(id) => setForceClose(id)}
-              />
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* Force Close Modal */}
-      <Modal open={!!forceClose} onClose={() => setForceClose(null)} title="Force Close Shift" size="sm">
-        <ForceCloseConfirm
-          sessionId={forceClose}
-          onClose={() => setForceClose(null)}
-          onDone={() => { setForceClose(null); setSelected(null); }}
-        />
-      </Modal>
     </div>
   );
 }

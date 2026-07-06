@@ -1,4 +1,5 @@
 const svc = require('./customers.service');
+const { resolveBranchId } = require('../../shared/roles');
 
 const list = async (req, res) => {
   const { search, groupId, phone, customerId, creditOutstanding, page, limit } = req.query;
@@ -48,10 +49,12 @@ const creditTransactions = async (req, res) => {
 
 const creditPayment = async (req, res) => {
   const { amount, paymentMethodId, sessionId, transactionIds } = req.body;
+  const branchId = resolveBranchId(req, { from: ['body'], required: false });
   const result = await svc.recordCreditPayment(
     req.tenantId, req.params.id,
     parseFloat(amount), paymentMethodId || null, sessionId || null,
-    Array.isArray(transactionIds) && transactionIds.length ? transactionIds : null
+    Array.isArray(transactionIds) && transactionIds.length ? transactionIds : null,
+    branchId, req.user.userId
   );
   res.json({ success: true, data: result });
 };

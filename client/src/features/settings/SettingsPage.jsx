@@ -316,6 +316,7 @@ function PosBehaviourTab() {
   const [preventSalesBelowCost,  setPreventSalesBelowCost]  = useState(false);
   const [creditSalesEnabled,     setCreditSalesEnabled]     = useState(false);
   const [defaultCreditLimit,     setDefaultCreditLimit]     = useState(0);
+  const [allowOverpayment,       setAllowOverpayment]       = useState(false);
   const [roundingMode,           setRoundingMode]           = useState('none');
   const [roundingUnit,           setRoundingUnit]           = useState(1);
 
@@ -334,6 +335,7 @@ function PosBehaviourTab() {
       setAllowTotalEdit(!!companyData.pos_allow_total_edit);
       setCreditSalesEnabled(!!companyData.credit_sales_enabled);
       setDefaultCreditLimit(parseFloat(companyData.default_credit_limit) || 0);
+      setAllowOverpayment(!!companyData.pos_allow_overpayment);
       setRoundingMode(companyData.pos_rounding_mode  || 'none');
       setRoundingUnit(parseFloat(companyData.pos_rounding_unit) || 1);
     }
@@ -402,6 +404,11 @@ function PosBehaviourTab() {
               label: 'Enable credit sales',
               desc:  'Allow customers marked as credit-enabled to charge purchases to their account. Individual credit limits are set per customer.',
               val: creditSalesEnabled, set: setCreditSalesEnabled, accent: 'primary',
+            },
+            {
+              label: 'Allow customer overpayment / prepayment',
+              desc:  'Customers can pay more than a sale\'s total and bank the difference on their account, or receive a payment on POS with no purchase. That balance can then be spent on a future sale. Requires credit sales to be enabled.',
+              val: allowOverpayment, set: setAllowOverpayment, accent: 'primary',
             },
           ].map(({ label, desc, val, set, accent }) => (
             <label key={label} className="flex items-center justify-between gap-4 px-5 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors">
@@ -488,6 +495,7 @@ function PosBehaviourTab() {
               pos_prevent_sales_below_cost:  preventSalesBelowCost,
               credit_sales_enabled:          creditSalesEnabled,
               default_credit_limit:          defaultCreditLimit,
+              pos_allow_overpayment:         allowOverpayment,
               pos_rounding_mode:             roundingMode,
               pos_rounding_unit:             roundingUnit,
             })}

@@ -1249,6 +1249,7 @@ export default function PosTerminal() {
     staleTime: 5 * 60 * 1000,
   });
   const creditSalesEnabled = !!companySettings?.credit_sales_enabled;
+  const allowOverpayment   = !!companySettings?.pos_allow_overpayment;
 
   // Fetch and apply the default tax rate for this company
   // onSuccess was removed in TanStack Query v5 — use useEffect instead
@@ -1589,8 +1590,10 @@ export default function PosTerminal() {
                 <MenuAction
                   icon={CreditCard}
                   iconBg="bg-blue-100 text-blue-600"
-                  label="Collect Credit Payment"
-                  sub="Record payment against outstanding credit balance"
+                  label={allowOverpayment ? 'Receive Payment' : 'Collect Credit Payment'}
+                  sub={allowOverpayment
+                    ? 'Collect an outstanding balance or top up a customer\'s account'
+                    : 'Record payment against outstanding credit balance'}
                   onClick={() => { setCreditPayOpen(true); setMenuOpen(false); }}
                 />
               )}

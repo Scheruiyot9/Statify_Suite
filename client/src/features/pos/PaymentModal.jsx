@@ -596,6 +596,8 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const [collectCredit,         setCollectCredit]         = useState(false);
   const [collectCreditAmt,      setCollectCreditAmt]      = useState('');
   const [collectCreditMethodId, setCollectCreditMethodId] = useState('');
+  // Bank a cash overpayment to the customer's account instead of giving change
+  const [bankOverpayment, setBankOverpayment] = useState(false);
   const loyaltyDiscount = pointsToRedeem * redeemRate;
   const netTotal        = Math.max(0, cartTotal - loyaltyDiscount);
   const autoRounded     = applyRounding(netTotal, roundingMode, roundingUnit);
@@ -607,6 +609,16 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
   const totalCovered   = paymentLines.reduce((s, l) => s + (l.amount || 0), 0);
   const remaining      = Math.max(0, effectiveTotal - totalCovered);
   const isFullyCovered = totalCovered >= effectiveTotal && effectiveTotal > 0;
+
+  // Cash line's un-applied tendered amount — the "change" a cashier can choose to
+  // bank to the customer's account instead of handing back, when the setting allows it.
+  const cashLine = paymentLines.find((l) => methods.find((m) => m.payment_method_id === l.methodId)?.method_name === 'Cash');
+  const cashChange = cashLine ? Math.max(0, parseFloat(cashLine.tendered || 0) - cashLine.amount) : 0;
+  const canBankOverpayment = !!(companyData?.pos_allow_overpayment && customer?.customer_id && cashChange > 0.005);
+
+  useEffect(() => {
+    if (!canBankOverpayment) setBankOverpayment(false);
+  }, [canBankOverpayment]);
 
   const { data: liveMethods, isError: methodsError } = useQuery({
     queryKey: ['payment-methods'],
@@ -630,6 +642,7 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       setCollectCredit(false);
       setCollectCreditAmt('');
       setCollectCreditMethodId('');
+      setBankOverpayment(false);
     }
   }, [open]);
 
@@ -748,6 +761,18 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
     lineTotal: i.lineTotal,
   }));
 
+  const buildPaymentsPayload = useCallback(() => paymentLines.map((l) => {
+    const m      = methods.find((m) => m.payment_method_id === l.methodId);
+    const isCash = m?.method_name === 'Cash';
+    return {
+      paymentMethodId: l.methodId,
+      amountTendered:  isCash ? parseFloat(l.tendered || 0) : l.amount,
+      amountApplied:   l.amount,
+      changeGiven:     isCash ? Math.max(0, parseFloat(l.tendered || 0) - l.amount) : 0,
+      referenceNumber: l.reference || null,
+    };
+  }), [paymentLines, methods]);
+
   const handleCharge = useCallback(() => {
     if (!canProcess) return;
     processPayment({
@@ -759,33 +784,30 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
       orderDiscount:         cartTotals.orderDiscountAmt,
       effectiveTotal:        effectiveTotal,
       items: buildItemsPayload(),
-      payments: paymentLines.map((l) => {
-        const m      = methods.find((m) => m.payment_method_id === l.methodId);
-        const isCash = m?.method_name === 'Cash';
-        return {
-          paymentMethodId: l.methodId,
-          amountTendered:  isCash ? parseFloat(l.tendered || 0) : l.amount,
-          amountApplied:   l.amount,
-          changeGiven:     isCash ? Math.max(0, parseFloat(l.tendered || 0) - l.amount) : 0,
-          referenceNumber: l.reference || null,
-        };
-      }),
+      payments: buildPaymentsPayload(),
+      bankOverpaymentToCustomer: canBankOverpayment && bankOverpayment,
+      overpaymentAmount:         canBankOverpayment && bankOverpayment ? cashChange : 0,
+      overpaymentPaymentMethodId: cashLine?.methodId ?? null,
     });
-  }, [canProcess, processPayment, branchId, session, customer, notes, cartTotals, items, methods, paymentLines, pointsToRedeem]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canProcess, processPayment, branchId, session, customer, notes, cartTotals, items, buildPaymentsPayload, pointsToRedeem, canBankOverpayment, bankOverpayment, cashChange, cashLine, effectiveTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Charge the sale's shortfall (whatever isn't covered by paymentLines above) to the
+  // customer's account — either creating/increasing debt, or spending down an existing
+  // advance credit balance, depending on the sign of their current credit_balance.
   const handleChargeToAccount = useCallback(() => {
     processPayment({
       branchId,
       sessionId:            session?.session_id ?? null,
       customerId:           customer?.customer_id ?? null,
       notes,
-      loyaltyPointsRedeemed: 0,
+      loyaltyPointsRedeemed: pointsToRedeem,
       orderDiscount:         cartTotals.orderDiscountAmt,
+      effectiveTotal,
       items: buildItemsPayload(),
-      payments: [],
+      payments: buildPaymentsPayload(),
       isCreditSale: true,
     });
-  }, [processPayment, branchId, session, customer, notes, cartTotals, items]); // eslint-disable-line react-hooks/exhaustive-deps -- items covers buildItemsPayload
+  }, [processPayment, branchId, session, customer, notes, cartTotals, items, buildPaymentsPayload, pointsToRedeem, effectiveTotal]); // eslint-disable-line react-hooks/exhaustive-deps -- items covers buildItemsPayload
 
   // Auto-submit after M-Pesa resolves and all payment lines are satisfied.
   useEffect(() => {
@@ -935,34 +957,55 @@ export default function PaymentModal({ open, onClose, onSuccess }) {
           </div>
         )}
 
-        {/* Charge to account — requires credit sales enabled at company level */}
-        {companyData?.credit_sales_enabled && (
-          !customer?.customer_id
-            ? (
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center gap-2 text-xs text-blue-600">
-                <CreditCard className="h-4 w-4 flex-shrink-0 text-blue-400" />
-                Select a customer to use credit account payment.
-              </div>
-            )
-            : !customer?.allow_credit
-            ? null
-            : (
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
-                    <CreditCard className="h-4 w-4" /> Credit Account
-                  </div>
-                  <span className="text-xs text-blue-600">
-                    Available: {formatCurrency(Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0)))}
-                  </span>
+        {/* Customer account balance + charge remainder to account — requires credit sales enabled */}
+        {companyData?.credit_sales_enabled && !customer?.customer_id && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 flex items-center gap-2 text-xs text-blue-600">
+            <CreditCard className="h-4 w-4 flex-shrink-0 text-blue-400" />
+            Select a customer to charge to their account or use their balance.
+          </div>
+        )}
+        {companyData?.credit_sales_enabled && customer?.customer_id && (() => {
+          const balance          = customer.credit_balance ?? 0;
+          const hasAdvanceCredit = balance < -0.005;
+          // How much of the account can absorb this sale's shortfall: real credit
+          // headroom if allow_credit, else only whatever advance credit they've prepaid.
+          const available = customer.allow_credit
+            ? Math.max(0, (customer.credit_limit ?? 0) - balance)
+            : Math.max(0, -balance);
+          if (available <= 0.005) return null;
+          return (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
+                  <CreditCard className="h-4 w-4" /> Customer Account
                 </div>
-                <Button size="sm" variant="secondary" fullWidth
-                  disabled={isPending || effectiveTotal <= 0 || effectiveTotal > Math.max(0, (customer.credit_limit ?? 0) - (customer.credit_balance ?? 0))}
-                  onClick={handleChargeToAccount}>
-                  Charge to Account
-                </Button>
+                <span className="text-xs text-blue-600">
+                  {balance > 0.005
+                    ? `Owes: ${formatCurrency(balance)}`
+                    : hasAdvanceCredit
+                    ? `Available balance: ${formatCurrency(-balance)}`
+                    : formatCurrency(0)}
+                </span>
               </div>
-            )
+              <Button size="sm" variant="secondary" fullWidth
+                disabled={isPending || remaining <= 0 || remaining > available}
+                onClick={handleChargeToAccount}>
+                Charge {formatCurrency(Math.min(remaining, available))} to Account
+              </Button>
+            </div>
+          );
+        })()}
+
+        {/* Overpayment — bank the cash change to the customer's account instead of handing it back */}
+        {canBankOverpayment && (
+          <label className="flex items-start gap-2.5 rounded-xl border border-purple-200 bg-purple-50 p-3 cursor-pointer">
+            <input type="checkbox" checked={bankOverpayment}
+              onChange={(e) => setBankOverpayment(e.target.checked)}
+              className="mt-0.5 rounded border-purple-300 text-primary-600" />
+            <span className="text-xs font-medium text-purple-800">
+              Credit the extra {formatCurrency(cashChange)} to {customer.customer_name}'s account instead of giving change.
+            </span>
+          </label>
         )}
 
         {/* Also collect outstanding credit balance alongside this sale */}

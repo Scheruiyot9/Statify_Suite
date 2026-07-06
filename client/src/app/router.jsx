@@ -15,6 +15,7 @@ import CustomerLedgerPage  from '@/features/customers/CustomerLedgerPage';
 import SalesPage        from '@/features/sales/SalesPage';
 import ReturnsPage      from '@/features/returns/ReturnsPage';
 import ShiftsPage       from '@/features/shifts/ShiftsPage';
+import ShiftDetailPage  from '@/features/shifts/ShiftDetailPage';
 import ReportsPage      from '@/features/reports/ReportsPage';
 import SettingsPage     from '@/features/settings/SettingsPage';
 import AdminPage        from '@/features/admin/AdminPage';
@@ -102,6 +103,11 @@ export default function AppRouter() {
         <Route path="shifts"     element={
           <CapabilityRoute capability="shifts.view">
             <ShiftsPage />
+          </CapabilityRoute>
+        } />
+        <Route path="shifts/:sessionId" element={
+          <CapabilityRoute capability="shifts.view">
+            <ShiftDetailPage />
           </CapabilityRoute>
         } />
         <Route path="reports"    element={<CapabilityRoute capability="reports.view"><ReportsPage /></CapabilityRoute>} />

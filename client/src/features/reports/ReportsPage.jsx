@@ -130,9 +130,9 @@ function KPICard({ label, value, icon: Icon, sub, accent }) {
           <Icon className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-xl font-bold text-gray-900">{value}</p>
-          {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+          <p className="text-xs text-gray-500 truncate">{label}</p>
+          <p className="text-lg sm:text-xl font-bold text-gray-900 truncate" title={typeof value === 'string' ? value : undefined}>{value}</p>
+          {sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>}
         </div>
       </div>
     </div>
@@ -336,7 +336,7 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard label="Total Revenue"     value={formatCurrency(s?.totalSales ?? 0)} icon={TrendingUp} accent />
         <KPICard label="Transactions"      value={(s?.totalTxns ?? 0).toLocaleString()} icon={ShoppingCart} sub={`Avg ${formatCurrency(s?.avgTxn ?? 0)}`} />
         <KPICard label="Unique Customers"  value={(s?.uniqueCustomers ?? 0).toLocaleString()} icon={Users} />
@@ -347,14 +347,14 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
         )} icon={BarChart2} sub={`${(data?.trend ?? []).filter((d) => d.total > 0).length} active days`} />
       </div>
       {(s?.creditSaleCount ?? 0) > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KPICard label="Credit Sales"      value={formatCurrency(s?.creditSaleAmount ?? 0)} icon={ShoppingCart} sub={`${s?.creditSaleCount} txn${s?.creditSaleCount !== 1 ? 's' : ''} charged to account`} />
           <KPICard label="Credit Collected"  value={formatCurrency(s?.creditCollected ?? 0)} icon={ArrowDownLeft} sub="Cash received for credit invoices" />
           <KPICard label="Cash / Paid Sales" value={formatCurrency((s?.totalSales ?? 0) - (s?.creditSaleAmount ?? 0))} icon={TrendingUp} sub="Collected at counter" />
         </div>
       )}
       {(s?.creditSaleCount ?? 0) === 0 && (s?.creditCollected ?? 0) > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KPICard label="Credit Collected" value={formatCurrency(s.creditCollected)} icon={ArrowDownLeft} sub="Cash received for credit invoices" />
         </div>
       )}
@@ -398,7 +398,7 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
                 {data.categories.map((c) => (
                   <tr key={c.categoryName}>
                     <td className="py-1.5 text-gray-700">{c.categoryName}</td>
-                    <td className="py-1.5 text-right font-semibold">{formatCurrency(c.revenue)}</td>
+                    <td className="py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrency(c.revenue)}</td>
                     <td className="py-1.5 text-right text-gray-500">{c.qtySold}</td>
                   </tr>
                 ))}
@@ -420,7 +420,7 @@ function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies
                   <tr key={c.cashierName}>
                     <td className="py-1.5 text-gray-700 font-medium">{c.cashierName}</td>
                     <td className="py-1.5 text-right text-gray-500">{c.txnCount}</td>
-                    <td className="py-1.5 text-right font-semibold">{formatCurrency(c.totalSales)}</td>
+                    <td className="py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrency(c.totalSales)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -440,7 +440,7 @@ function PLRow({ label, value, bold, indent, positive, negative, separator }) {
   return (
     <tr>
       <td className={`py-1.5 text-sm ${indent ? 'pl-6' : ''} ${bold ? 'font-semibold' : 'text-gray-600'}`}>{label}</td>
-      <td className={`py-1.5 text-right text-sm ${bold ? 'font-bold' : ''} ${textColor}`}>{formatCurrency(value)}</td>
+      <td className={`py-1.5 text-right text-sm whitespace-nowrap ${bold ? 'font-bold' : ''} ${textColor}`}>{formatCurrency(value)}</td>
     </tr>
   );
 }
@@ -513,7 +513,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard label="Net Revenue (ex-VAT)" value={formatCurrency(income.netRevenue)} icon={TrendingUp} accent />
         <KPICard label="Gross Profit"   value={formatCurrency(grossProfit)}  icon={BarChart2}
           sub={`${grossMargin.toFixed(1)}% margin`} />
@@ -524,7 +524,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
       </div>
 
       {(income.creditSaleCount ?? 0) > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KPICard label="Credit Sales" value={formatCurrency(income.creditSaleAmount)} icon={ShoppingCart}
             sub={`${income.creditSaleCount} txn${income.creditSaleCount !== 1 ? 's' : ''} — charged to account`} />
           <KPICard label="Credit Collected" value={formatCurrency(income.creditCollected ?? 0)} icon={ArrowDownLeft}
@@ -534,7 +534,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
         </div>
       )}
       {(income.creditSaleCount ?? 0) === 0 && (income.creditCollected ?? 0) > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KPICard label="Credit Collected" value={formatCurrency(income.creditCollected)} icon={ArrowDownLeft}
             sub="Cash received for credit invoices" />
         </div>
@@ -596,7 +596,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
                     <tr key={p.method}>
                       <td className="py-1.5 text-gray-700 font-medium">{p.method}</td>
                       <td className="py-1.5 text-right text-gray-500">{p.txnCount}</td>
-                      <td className="py-1.5 text-right font-semibold">{formatCurrency(p.amount)}</td>
+                      <td className="py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrency(p.amount)}</td>
                       <td className="py-1.5 text-right text-gray-400 text-xs">
                         {income.grossRevenue > 0 ? ((p.amount / income.grossRevenue) * 100).toFixed(1) : 0}%
                       </td>
@@ -621,7 +621,7 @@ function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = 
                     <tr key={e.accountCode}>
                       <td className="py-1.5 text-gray-700 font-medium">{e.accountName}</td>
                       <td className="py-1.5 text-right text-gray-500">{e.accountCode}</td>
-                      <td className="py-1.5 text-right font-semibold text-red-600">{formatCurrency(e.amount)}</td>
+                      <td className="py-1.5 text-right font-semibold text-red-600 whitespace-nowrap">{formatCurrency(e.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -696,7 +696,7 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {AGING_BUCKETS.map((b) => (
           <div key={b.key} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${b.color}`}>{b.label}</span>
@@ -740,7 +740,7 @@ function APAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
                           {bucket.label}
                         </span>
                       </td>
-                      <td className="py-2 text-right font-semibold text-red-600">{formatCurrency(s.balance)}</td>
+                      <td className="py-2 text-right font-semibold text-red-600 whitespace-nowrap">{formatCurrency(s.balance)}</td>
                     </tr>
                   );
                 })}
@@ -858,7 +858,7 @@ function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, co
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard label="Total Assets"      value={formatCurrency(assets.total)}      icon={Scale}   accent />
         <KPICard label="Total Liabilities" value={formatCurrency(liabilities.total)} icon={AlertTriangle} />
         <KPICard label="Equity"            value={formatCurrency(equity)}            icon={TrendingUp} />
@@ -992,7 +992,7 @@ function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compan
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard label="Opening Cash"  value={formatCurrency(d.openingBalance  ?? 0)} icon={Droplets} />
         <KPICard label="Net Cash Flow" value={formatCurrency(d.netCashChange   ?? 0)} icon={ArrowUpRight}
           accent={d.netCashChange >= 0} sub={d.netCashChange >= 0 ? 'Positive' : 'Negative'} />
@@ -1118,7 +1118,7 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
           <Printer className="h-3.5 w-3.5" />Print / PDF
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard label="Total AR"    value={formatCurrency(totals.total   ?? 0)} icon={AlertTriangle} accent />
         <KPICard label="Current"     value={formatCurrency(totals.current ?? 0)} icon={TrendingUp} />
         <KPICard label="31–90 days"  value={formatCurrency((totals['31_60'] ?? 0) + (totals['61_90'] ?? 0))} icon={ShoppingCart} />
@@ -1157,9 +1157,9 @@ function ARAgingTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, compani
                         {r.daysOutstanding}d ({bucketLabel(r.bucket)})
                       </span>
                     </td>
-                    <td className="py-2 text-right text-gray-500">{formatCurrency(r.arCreated)}</td>
-                    <td className="py-2 text-right text-green-600">{r.arSettled > 0 ? formatCurrency(r.arSettled) : '—'}</td>
-                    <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(r.outstanding)}</td>
+                    <td className="py-2 text-right text-gray-500 whitespace-nowrap">{formatCurrency(r.arCreated)}</td>
+                    <td className="py-2 text-right text-green-600 whitespace-nowrap">{r.arSettled > 0 ? formatCurrency(r.arSettled) : '—'}</td>
+                    <td className="py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{formatCurrency(r.outstanding)}</td>
                     <td className="py-2 text-right">
                       <button onClick={() => { setSettling(r); setSettleAmt(r.outstanding.toFixed(2)); setPmId(''); }}
                         className="rounded px-2 py-1 text-xs font-medium bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
@@ -1296,7 +1296,7 @@ function StockTab() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KPICard label="Total Stock Value"   value={formatCurrency(totalValue)} icon={Package} accent />
         <KPICard label="Total Units"         value={totalUnits.toLocaleString()} icon={BarChart2} />
         <KPICard label="Below Reorder Level" value={belowReorder.length} icon={AlertTriangle}
@@ -1336,8 +1336,8 @@ function StockTab() {
                         {item.qty.toLocaleString()} {item.uom}
                       </span>
                     </td>
-                    <td className="py-2 text-right text-gray-500">{item.unitCost > 0 ? formatCurrency(item.unitCost) : '—'}</td>
-                    <td className="py-2 text-right font-semibold">{item.totalValue > 0 ? formatCurrency(item.totalValue) : '—'}</td>
+                    <td className="py-2 text-right text-gray-500 whitespace-nowrap">{item.unitCost > 0 ? formatCurrency(item.unitCost) : '—'}</td>
+                    <td className="py-2 text-right font-semibold whitespace-nowrap">{item.totalValue > 0 ? formatCurrency(item.totalValue) : '—'}</td>
                   </tr>
                 ))}
               </tbody>

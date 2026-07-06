@@ -380,7 +380,7 @@ async function listCreditTransactions(companyId, customerId) {
   }));
 }
 
-async function recordCreditPayment(companyId, customerId, amount, paymentMethodId, sessionId = null, transactionIds = null) {
+async function recordCreditPayment(companyId, customerId, amount, paymentMethodId, sessionId = null, transactionIds = null, branchId = null, userId = null) {
   if (!amount || amount <= 0) throw AppError.badRequest('Payment amount must be positive');
 
   return transaction(async (client) => {
@@ -394,6 +394,13 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     const customerName   = custRows[0].customer_name;
     // Overpayment: excess stored as negative balance (advance credit for future purchases)
     const advanceCredit  = amount > currentBalance ? +(amount - currentBalance).toFixed(2) : 0;
+
+    if (advanceCredit > 0.005) {
+      const { rows: coRows } = await client.query(
+        `SELECT pos_allow_overpayment FROM companies WHERE company_id = $1`, [companyId]
+      );
+      if (!coRows[0]?.pos_allow_overpayment) throw AppError.badRequest('Overpayment is not enabled for this company');
+    }
 
     // Reduce credit balance — allow going negative for advance credit
     const { rows: updated } = await client.query(`
@@ -441,6 +448,14 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     await postCreditReceiptEntry(client, companyId, {
       customerId, customerName, amount, paymentMethodId,
     });
+
+    // Audit trail + POS session cash reconciliation (see pos.service.js closeSession)
+    if (userId) {
+      await client.query(`
+        INSERT INTO customer_topups (company_id, branch_id, session_id, customer_id, amount, payment_method_id, received_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [companyId, branchId, sessionId, customerId, amount, paymentMethodId, userId]);
+    }
 
     return {
       customer_id:    updated[0].customer_id,

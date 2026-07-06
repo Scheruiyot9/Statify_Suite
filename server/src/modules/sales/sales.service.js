@@ -81,12 +81,15 @@ async function getLoyaltyRates(client, companyId) {
 
 async function createTransaction(companyId, branchId, cashierUserId, data) {
   const {
-    sessionId, customerId, notes, items, payments,
+    sessionId, customerId, notes, items, payments = [],
     loyaltyPointsRedeemed = 0,
     orderDiscount = 0,
     idempotencyKey,
     isCreditSale = false,
     effectiveTotal,
+    bankOverpaymentToCustomer = false,
+    overpaymentAmount = 0,
+    overpaymentPaymentMethodId,
   } = data;
 
   if (!items?.length)    throw AppError.badRequest('Cart is empty');
@@ -173,20 +176,31 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       ? parseFloat(effectiveTotal)
       : baseTotal;
 
-    const totalPaid     = isCreditSale ? 0 : payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0);
-    const paymentStatus = isCreditSale ? 'partial' : (totalPaid >= totalAmount ? 'paid' : 'partial');
+    const totalPaid = payments.length ? payments.reduce((s, p) => s + parseFloat(p.amountApplied || 0), 0) : 0;
+    // arPortion: the part of this sale not covered by real payments — posts to the
+    // customer's account balance. If that balance is currently negative (an existing
+    // prepayment/advance credit), this simply spends it down rather than creating debt.
+    const arPortion      = isCreditSale ? Math.max(0, +(totalAmount - totalPaid).toFixed(2)) : 0;
+    const paymentStatus  = isCreditSale
+      ? (arPortion > 0.005 ? 'partial' : 'paid')
+      : (totalPaid >= totalAmount ? 'paid' : 'partial');
 
-    // Validate and lock credit limit before inserting anything
-    if (isCreditSale) {
+    // Validate and lock credit limit before inserting anything — only enforced when this
+    // sale would push the customer's balance into new/increased debt (newBalance > 0).
+    // Spending down an existing negative balance (advance credit) needs no permission.
+    if (arPortion > 0.005) {
       const { rows: cRows } = await client.query(
         `SELECT allow_credit, credit_limit, credit_balance FROM customers WHERE customer_id = $1 AND company_id = $2 FOR UPDATE`,
         [customerId, companyId]
       );
-      if (!cRows.length || !cRows[0].allow_credit) throw AppError.badRequest('This customer is not enabled for credit sales');
-      const newBalance = parseFloat(cRows[0].credit_balance) + totalAmount;
-      if (newBalance > parseFloat(cRows[0].credit_limit)) {
-        const available = parseFloat(cRows[0].credit_limit) - parseFloat(cRows[0].credit_balance);
-        throw AppError.badRequest(`Credit limit exceeded — available credit: ${available.toFixed(2)}`);
+      if (!cRows.length) throw AppError.badRequest('Customer not found');
+      const newBalance = parseFloat(cRows[0].credit_balance) + arPortion;
+      if (newBalance > 0.005) {
+        if (!cRows[0].allow_credit) throw AppError.badRequest('This customer is not enabled for credit sales');
+        if (newBalance > parseFloat(cRows[0].credit_limit)) {
+          const available = parseFloat(cRows[0].credit_limit) - parseFloat(cRows[0].credit_balance);
+          throw AppError.badRequest(`Credit limit exceeded — available credit: ${available.toFixed(2)}`);
+        }
       }
     }
 
@@ -253,7 +267,7 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       }
     }
 
-    if (!isCreditSale) {
+    if (payments.length) {
       for (let i = 0; i < payments.length; i++) {
         const p = payments[i];
         await client.query(`
@@ -276,11 +290,38 @@ async function createTransaction(companyId, branchId, cashierUserId, data) {
       }, items, payments, cogsMap);
     }
 
-    // Charge to credit account
-    if (isCreditSale && customerId) {
+    // Charge unpaid portion to credit account (or spend down an existing advance credit)
+    if (isCreditSale && customerId && arPortion > 0.005) {
       await client.query(
         `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
-        [customerId, totalAmount]
+        [customerId, arPortion]
+      );
+    }
+
+    // Bank an overpaid amount to the customer's account instead of giving change back.
+    // Sent explicitly by the client (the "change" it chose not to hand over) rather than
+    // inferred from totalPaid vs totalAmount, since amountApplied is already capped to
+    // the sale total by the checkout UI — the excess never flows through `payments`.
+    const excess = +parseFloat(overpaymentAmount || 0).toFixed(2);
+    if (!isCreditSale && customerId && bankOverpaymentToCustomer && excess > 0.005) {
+      const { rows: coRows2 } = await client.query(
+        `SELECT pos_allow_overpayment FROM companies WHERE company_id = $1`, [companyId]
+      );
+      if (!coRows2[0]?.pos_allow_overpayment) throw AppError.badRequest('Overpayment is not enabled for this company');
+
+      const { rows: custRows } = await client.query(
+        `SELECT customer_name FROM customers WHERE customer_id = $1 AND company_id = $2`,
+        [customerId, companyId]
+      );
+      if (!custRows.length) throw AppError.badRequest('Customer not found');
+
+      await jrn.postCreditReceiptEntry(client, companyId, {
+        customerId, customerName: custRows[0].customer_name, amount: excess,
+        paymentMethodId: overpaymentPaymentMethodId || null,
+      });
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance - $2, updated_at = now() WHERE customer_id = $1`,
+        [customerId, excess]
       );
     }
 

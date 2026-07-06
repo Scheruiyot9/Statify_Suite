@@ -956,7 +956,7 @@ export default function JournalPage() {
 
       {/* Filters */}
       {activeTab === 'journals' ? (
-        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6 border-b bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2 text-sm">
             <label className="text-gray-500 font-medium">From</label>
             <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
@@ -978,7 +978,7 @@ export default function JournalPage() {
           </button>
         </div>
       ) : activeTab === 'cash-outs' ? (
-        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6 border-b bg-gray-50 flex-shrink-0">
           <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
           <div className="flex items-center gap-2 text-sm">
             <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
@@ -993,7 +993,7 @@ export default function JournalPage() {
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6 border-b bg-gray-50 flex-shrink-0">
           <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
           <div className="flex items-center gap-2 text-sm">
             <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"

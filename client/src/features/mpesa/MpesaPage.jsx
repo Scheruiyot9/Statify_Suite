@@ -418,18 +418,18 @@ export default function MpesaPage() {
 
       {/* ── Summary cards (visible when there's data) ── */}
       {total > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Records</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{total}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm min-w-0">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide truncate">Total Records</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1 truncate">{total}</p>
           </div>
-          <div className="rounded-xl border border-green-100 bg-green-50 p-4">
-            <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Collected (this page)</p>
-            <p className="text-2xl font-bold text-green-700 mt-1">{formatCurrency(completedAmt)}</p>
+          <div className="rounded-xl border border-green-100 bg-green-50 p-4 min-w-0">
+            <p className="text-xs text-green-600 font-medium uppercase tracking-wide truncate">Collected (this page)</p>
+            <p className="text-2xl font-bold text-green-700 mt-1 truncate">{formatCurrency(completedAmt)}</p>
           </div>
-          <div className="rounded-xl border border-green-100 bg-green-50 p-4">
-            <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Completed (this page)</p>
-            <p className="text-2xl font-bold text-green-700 mt-1">{completedCount}</p>
+          <div className="rounded-xl border border-green-100 bg-green-50 p-4 min-w-0">
+            <p className="text-xs text-green-600 font-medium uppercase tracking-wide truncate">Completed (this page)</p>
+            <p className="text-2xl font-bold text-green-700 mt-1 truncate">{completedCount}</p>
           </div>
         </div>
       )}

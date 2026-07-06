@@ -423,6 +423,14 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
     WHERE st.pos_session_id = $1 AND pm.method_name = 'Cash' AND st.status = 'completed'
   `, [sessionId]);
 
+  // Cash received via standalone customer top-ups/overpayments during this session
+  const { rows: topupRows } = await query(`
+    SELECT COALESCE(SUM(ct.amount), 0)::numeric AS cash_received
+    FROM customer_topups ct
+    JOIN payment_methods pm ON pm.payment_method_id = ct.payment_method_id
+    WHERE ct.session_id = $1 AND pm.method_name = 'Cash'
+  `, [sessionId]);
+
   const { rows: cashOutRows } = await query(`
     SELECT payment_method_id, COALESCE(SUM(amount), 0)::numeric AS total
     FROM session_cash_outs
@@ -439,7 +447,7 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
   }
 
   const openingFloat   = parseFloat(sessionRows[0].opening_cash_amount);
-  const cashReceived   = parseFloat(cashRows[0]?.cash_received || 0);
+  const cashReceived   = parseFloat(cashRows[0]?.cash_received || 0) + parseFloat(topupRows[0]?.cash_received || 0);
   // Cash-specific outs: method-matched to Cash + any legacy null-method outs
   const cashMethodId   = (await query(
     `SELECT payment_method_id FROM payment_methods WHERE company_id = $1 AND method_name = 'Cash' LIMIT 1`,

@@ -385,17 +385,23 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
     return () => clearTimeout(t);
   }, [search]);
 
+  // Overpayment/prepayment must be enabled company-wide to search & top up customers
+  // with no outstanding debt — otherwise this stays a narrow "collect what's owed" tool.
+  const companySettings  = qc.getQueryData(['my-company']);
+  const allowOverpayment = !!companySettings?.pos_allow_overpayment;
+
   // Pre-fill amount when customer loads
   const outstanding = parseFloat(customer?.credit_balance ?? 0);
   useEffect(() => {
     if (customer) setAmount(outstanding > 0 ? outstanding.toFixed(2) : '');
   }, [customer?.customer_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Customer search (credit outstanding only)
+  // Customer search — restricted to customers with outstanding debt unless overpayment
+  // is enabled, in which case any customer can be searched (for a pure top-up/prepayment).
   const { data: searchResults = [] } = useQuery({
-    queryKey: ['credit-cust-search', debounced],
+    queryKey: ['credit-cust-search', debounced, allowOverpayment],
     queryFn: () =>
-      api.get('/customers', { params: { search: debounced || undefined, creditOutstanding: 'true', limit: 8 } })
+      api.get('/customers', { params: { search: debounced || undefined, creditOutstanding: allowOverpayment ? undefined : 'true', limit: 8 } })
         .then((r) => r.data.data?.customers ?? r.data.data ?? []),
     enabled: open && !customer && showResults,
     staleTime: 10_000,
@@ -420,8 +426,12 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
     .sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
 
   const payAmount    = parseFloat(amount) || 0;
-  const isOverpay    = payAmount > outstanding && outstanding > 0;
+  // Mirrors the server's advance-credit formula (customers.service.js recordCreditPayment):
+  // any amount beyond the current balance — including when that balance is already
+  // negative (an existing prepayment) — becomes/grows the advance credit.
+  const isOverpay    = payAmount > outstanding;
   const advCredit    = isOverpay ? +(payAmount - outstanding).toFixed(2) : 0;
+  const overpayBlocked = isOverpay && !allowOverpayment;
 
   // Live FIFO preview: which transactions will be cleared?
   const fifoPreview = useCallback(() => {
@@ -458,7 +468,7 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
   return (
     <>
     <ReceiptModal open={!!txnPreviewId} onClose={() => setTxnPreviewId(null)} txn={txnDetail} />
-    <Modal open={open} onClose={onClose} title="Collect Credit Payment" size="md">
+    <Modal open={open} onClose={onClose} title={outstanding > 0 ? 'Collect Credit Payment' : 'Receive Payment'} size="md">
       <div className="space-y-4">
 
         {/* ── Customer selector ── */}
@@ -471,7 +481,7 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
                 ref={searchRef}
                 autoFocus
                 type="text"
-                placeholder="Search customers with outstanding balance…"
+                placeholder={allowOverpayment ? 'Search customers…' : 'Search customers with outstanding balance…'}
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setShowResults(true); }}
                 onFocus={() => setShowResults(true)}
@@ -481,30 +491,49 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
             {showResults && (
               <div className="space-y-1 max-h-52 overflow-y-auto">
                 {searchResults.length === 0 ? (
-                  <p className="text-center text-xs text-gray-400 py-4">No customers with outstanding balance found</p>
-                ) : searchResults.map((c) => (
-                  <button
-                    key={c.customer_id}
-                    onClick={() => { setCustomer(c); setShowResults(false); }}
-                    className="w-full flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5 text-left hover:bg-primary-50 hover:border-primary-200 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{c.customer_name}</p>
-                      {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
-                    </div>
-                    <span className="text-sm font-bold text-red-600">{formatCurrency(c.credit_balance)}</span>
-                  </button>
-                ))}
+                  <p className="text-center text-xs text-gray-400 py-4">
+                    {allowOverpayment ? 'No customers found' : 'No customers with outstanding balance found'}
+                  </p>
+                ) : searchResults.map((c) => {
+                  const bal = parseFloat(c.credit_balance ?? 0);
+                  return (
+                    <button
+                      key={c.customer_id}
+                      onClick={() => { setCustomer(c); setShowResults(false); }}
+                      className="w-full flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5 text-left hover:bg-primary-50 hover:border-primary-200 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{c.customer_name}</p>
+                        {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                      </div>
+                      {bal > 0.005 ? (
+                        <span className="text-sm font-bold text-red-600">{formatCurrency(bal)}</span>
+                      ) : bal < -0.005 ? (
+                        <span className="text-sm font-bold text-blue-600">{formatCurrency(-bal)} credit</span>
+                      ) : (
+                        <span className="text-xs text-gray-300">Ksh 0</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         ) : (
           <>
             {/* ── Selected customer card ── */}
-            <div className="flex items-center justify-between rounded-xl bg-orange-50 border border-orange-200 px-4 py-3">
+            <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
+              outstanding > 0.005 ? 'bg-orange-50 border-orange-200' : outstanding < -0.005 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+            }`}>
               <div>
                 <p className="text-sm font-semibold text-gray-800">{customer.customer_name}</p>
-                <p className="text-xs text-orange-600 mt-0.5">Outstanding balance: <span className="font-bold">{formatCurrency(outstanding)}</span></p>
+                <p className={`text-xs mt-0.5 ${outstanding > 0.005 ? 'text-orange-600' : outstanding < -0.005 ? 'text-blue-600' : 'text-gray-500'}`}>
+                  {outstanding > 0.005
+                    ? <>Outstanding balance: <span className="font-bold">{formatCurrency(outstanding)}</span></>
+                    : outstanding < -0.005
+                    ? <>Available balance: <span className="font-bold">{formatCurrency(-outstanding)}</span></>
+                    : 'No outstanding balance'}
+                </p>
               </div>
               {!preCustomer && (
                 <button
@@ -574,7 +603,7 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
                     <AlertCircle className="h-3 w-3" />Partial on 1 invoice
                   </span>
                 )}
-                {isOverpay && (
+                {isOverpay && !overpayBlocked && (
                   <span className="text-blue-600 flex items-center gap-1">
                     <ArrowUpRight className="h-3 w-3" />{formatCurrency(advCredit)} advance credit
                   </span>
@@ -583,6 +612,12 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
                   <span className="text-gray-500">Remaining balance: {formatCurrency(outstanding - payAmount)}</span>
                 )}
               </div>
+              {overpayBlocked && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                  <AlertCircle className="h-3 w-3" />
+                  This exceeds the outstanding balance — overpayment is not enabled for this company.
+                </p>
+              )}
             </div>
 
             {/* ── Payment method ── */}
@@ -606,7 +641,7 @@ export function CreditPaymentModal({ open, preCustomer = null, sessionId = null,
               <Button
                 variant="primary" fullWidth
                 loading={payMut.isPending}
-                disabled={payAmount <= 0 || payMut.isPending}
+                disabled={payAmount <= 0 || payMut.isPending || overpayBlocked}
                 onClick={() => payMut.mutate()}
               >
                 Record {formatCurrency(payAmount)} Payment
