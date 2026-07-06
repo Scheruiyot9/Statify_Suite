@@ -287,8 +287,8 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search by name, phone or email…"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}

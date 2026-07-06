@@ -843,14 +843,14 @@ export default function JournalPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
+      {/* Header — stacks on mobile so the tab strip and action buttons never get clipped */}
+      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4 border-b bg-white flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
             <ScrollText className="h-5 w-5 text-primary-600" />
           </div>
           {/* Tab strip */}
-          <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          <div className="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
             <button
               onClick={() => setActiveTab('journals')}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -878,14 +878,14 @@ export default function JournalPage() {
           </div>
         </div>
         {activeTab === 'journals' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={downloadTemplate}
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
-              <Download className="h-4 w-4" />Template
+              <Download className="h-4 w-4" /><span className="hidden sm:inline">Template</span>
             </button>
             <button onClick={() => setShowImport(true)}
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg border text-sm text-gray-600 hover:bg-gray-50">
-              <Upload className="h-4 w-4" />Import
+              <Upload className="h-4 w-4" /><span className="hidden sm:inline">Import</span>
             </button>
 <button onClick={() => setShowNew(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
