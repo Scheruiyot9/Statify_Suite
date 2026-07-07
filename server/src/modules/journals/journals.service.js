@@ -272,7 +272,7 @@ async function patchJournalDate(companyId, journalId, entryDate) {
     [journalId, companyId]
   );
   if (!j) throw AppError.notFound('Journal');
-  if (j.status === 'void') throw AppError.conflict('Cannot change date on a voided journal');
+  if (j.status === 'void') throw AppError.conflict('Cannot change date on a reversed journal');
 
   await transaction(async (client) => {
     await client.query(
@@ -298,7 +298,7 @@ async function voidJournal(companyId, journalId, userId, reason) {
       [journalId, companyId]
     );
     if (!j) throw AppError.notFound('Journal');
-    if (j.status === 'void') throw AppError.conflict('Journal is already voided');
+    if (j.status === 'void') throw AppError.conflict('Journal is already reversed');
 
     if (j.status === 'draft') {
       await client.query(`DELETE FROM journals WHERE journal_id = $1`, [journalId]);

@@ -1203,7 +1203,7 @@ async function voidJournalEntry(companyId, jeId, userId, reason, externalClient 
       [jeId, companyId]
     );
     if (!je)                  throw AppError.notFound('Journal entry');
-    if (je.status === 'void') throw AppError.conflict('Journal entry is already voided');
+    if (je.status === 'void') throw AppError.conflict('Journal entry is already reversed');
 
     await client.query(`
       UPDATE journal_entries
@@ -1252,7 +1252,7 @@ async function voidPostedEntry(companyId, jeId, userId, reason) {
     [jeId, companyId]
   );
   if (!je) throw AppError.notFound('Journal entry');
-  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+  if (je.status === 'void') throw AppError.conflict('Entry is already reversed');
 
   if (je.source_type === 'MANUAL') {
     const { rows: [j] } = await query(
@@ -1282,7 +1282,7 @@ async function voidPostedEntry(companyId, jeId, userId, reason) {
     return voidCreditPayment(companyId, jeId, userId, reason);
   }
 
-  throw AppError.badRequest('This entry type must be voided from its original page.');
+  throw AppError.badRequest('This entry type must be reversed from its original page.');
 }
 
 // ── Bulk Opening Balance Entry ─────────────────────────────────────────────────
@@ -1431,7 +1431,7 @@ async function voidArSettlement(companyId, jeId, userId, reason) {
       [jeId, companyId]
     );
     if (!je) throw AppError.notFound('AR settlement entry');
-    if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+    if (je.status === 'void') throw AppError.conflict('Entry is already reversed');
     const transactionId = je.source_id;
 
     const { rows: [line] } = await client.query(
@@ -1495,7 +1495,7 @@ async function voidCreditPayment(companyId, jeId, userId, reason) {
       [jeId, companyId]
     );
     if (!je) throw AppError.notFound('Credit payment entry');
-    if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+    if (je.status === 'void') throw AppError.conflict('Entry is already reversed');
 
     const { rows: [line] } = await client.query(
       `SELECT lel.credit::numeric AS amount, lel.entity_id AS customer_id FROM ledger_entry_lines lel

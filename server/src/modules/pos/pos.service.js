@@ -535,7 +535,7 @@ async function voidCashOut(companyId, cashOutId, userId, reason) {
       [cashOutId, companyId]
     );
     if (!co) throw AppError.notFound('Cash out');
-    if (co.status === 'void') throw AppError.conflict('Cash out is already voided');
+    if (co.status === 'void') throw AppError.conflict('Cash out is already reversed');
 
     // Reuse the existing generic ledger-reversal function — same client/transaction,
     // so the ledger reversal and marking this row void either both land or neither
@@ -574,7 +574,7 @@ async function voidTransfer(companyId, transferId, userId, reason) {
     WHERE transfer_id = $1 AND company_id = $4 AND status <> 'void'
     RETURNING *
   `, [transferId, userId, reason || null, companyId]);
-  if (!rows.length) throw AppError.notFound('Transfer (or already voided)');
+  if (!rows.length) throw AppError.notFound('Transfer (or already reversed)');
   return rows[0];
 }
 

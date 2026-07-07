@@ -22,6 +22,9 @@ const STATUS_COLORS = {
   posted: 'bg-green-100 text-green-700',
   void:   'bg-red-100 text-red-700',
 };
+// Display label for each lifecycle status — keeps the underlying 'void' status
+// value (matches the backend/DB) while showing "Reversed" to the user.
+const STATUS_LABELS = { draft: 'draft', posted: 'posted', void: 'reversed' };
 
 // ── Line type definitions ─────────────────────────────────────────────────────
 
@@ -384,8 +387,8 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
     enabled: !!journalId,
   });
 
-  const [voidReason,    setVoidReason]    = useState('');
-  const [showVoidForm,  setShowVoidForm]  = useState(false);
+  const [reverseReason,    setReverseReason]    = useState('');
+  const [showReverseForm,  setShowReverseForm]  = useState(false);
   const [editingDate,   setEditingDate]   = useState(false);
   const [newDate,       setNewDate]       = useState('');
 
@@ -395,9 +398,9 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
     onError:   (e) => toast.error(e.response?.data?.message ?? e.message),
   });
 
-  const voidMut = useMutation({
-    mutationFn: () => api.post(`/journals/${journalId}/void`, { reason: voidReason }).then((r) => r.data),
-    onSuccess: () => { toast.success('Journal voided'); qc.invalidateQueries({ queryKey: ['journals'] }); onClose(); },
+  const reverseMut = useMutation({
+    mutationFn: () => api.post(`/journals/${journalId}/void`, { reason: reverseReason }).then((r) => r.data),
+    onSuccess: () => { toast.success('Journal reversed'); qc.invalidateQueries({ queryKey: ['journals'] }); onClose(); },
     onError:   (e) => toast.error(e.response?.data?.message ?? e.message),
   });
 
@@ -413,7 +416,7 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
   });
 
   return (
-    <Modal open title={isLoading ? 'Loading…' : `${j?.journal_number} — ${j?.status?.toUpperCase()}`}
+    <Modal open title={isLoading ? 'Loading…' : `${j?.journal_number} — ${STATUS_LABELS[j?.status]?.toUpperCase()}`}
       onClose={onClose} size="lg">
       {isLoading ? (
         <div className="py-12 text-center text-gray-400">Loading…</div>
@@ -450,7 +453,7 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
               )}
             </div>
             <div><span className="text-gray-500 text-xs">Status</span>
-              <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>{j.status}</span></p>
+              <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span></p>
             </div>
             {j.description && <div className="col-span-full"><span className="text-gray-500 text-xs">Description</span><p className="break-words">{j.description}</p></div>}
             {j.reference   && <div><span className="text-gray-500 text-xs">Reference</span><p>{j.reference}</p></div>}
@@ -523,24 +526,24 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
 
           {j.status === 'posted' && (
             <div className="border-t pt-4">
-              {showVoidForm ? (
+              {showReverseForm ? (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input className="flex-1 border rounded-lg px-2 py-2 text-sm"
-                    placeholder="Reason for voiding…"
-                    value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+                    placeholder="Reason for reversing…"
+                    value={reverseReason} onChange={(e) => setReverseReason(e.target.value)} />
                   <div className="flex gap-2">
-                    <button onClick={() => voidMut.mutate()} disabled={!voidReason.trim() || voidMut.isPending}
+                    <button onClick={() => reverseMut.mutate()} disabled={!reverseReason.trim() || reverseMut.isPending}
                       className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg bg-red-600 text-white disabled:opacity-40">
-                      Confirm Void
+                      Confirm Reverse
                     </button>
-                    <button onClick={() => setShowVoidForm(false)}
+                    <button onClick={() => setShowReverseForm(false)}
                       className="flex-1 sm:flex-none px-4 py-2 text-sm rounded-lg border">Cancel</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setShowVoidForm(true)}
+                <button onClick={() => setShowReverseForm(true)}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
-                  <XCircle className="h-4 w-4" />Void Journal
+                  <XCircle className="h-4 w-4" />Reverse Journal
                 </button>
               )}
             </div>
@@ -548,7 +551,7 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
 
           {j.status === 'void' && (
             <div className="border-t pt-4 text-sm text-red-700 bg-red-50 rounded-lg p-3">
-              <strong>Voided</strong>{j.void_reason ? `: ${j.void_reason}` : ''}
+              <strong>Reversed</strong>{j.void_reason ? `: ${j.void_reason}` : ''}
               {j.voided_at ? ` · ${String(j.voided_at).slice(0, 10)}` : ''}
               {j.voided_by ? ` by ${j.voided_by}` : ''}
             </div>
@@ -556,6 +559,79 @@ function JournalDetailModal({ journalId, onClose, onEdit }) {
         </div>
       ) : null}
 
+      <div className="mt-6 flex justify-end border-t pt-4">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">Close</button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Cash Out Detail Modal ─────────────────────────────────────────────────────
+function CashOutDetailModal({ cashOut, onClose, onReverse }) {
+  if (!cashOut) return null;
+  const label = OUT_TYPE_LABELS[cashOut.out_type] ?? cashOut.out_type;
+  return (
+    <Modal open title={label} onClose={onClose} size="lg">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
+          <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(cashOut.created_at).slice(0, 10)}</p></div>
+          <div><span className="text-gray-500 text-xs">Amount</span><p className="font-mono font-semibold">{fmt(cashOut.amount)}</p></div>
+          <div><span className="text-gray-500 text-xs">Payment</span><p>{cashOut.payment_method_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">Terminal</span><p>{cashOut.terminal_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">Branch</span><p>{cashOut.branch_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">Posted By</span><p>{cashOut.created_by_name ?? '—'}</p></div>
+          {(cashOut.supplier_name || cashOut.account_name) && (
+            <div className="col-span-full">
+              <span className="text-gray-500 text-xs">Account / Supplier</span>
+              <p>{cashOut.supplier_name ?? `${cashOut.account_name}${cashOut.account_code ? ` (${cashOut.account_code})` : ''}`}</p>
+            </div>
+          )}
+          {cashOut.notes && (
+            <div className="col-span-full"><span className="text-gray-500 text-xs">Notes</span><p>{cashOut.notes}</p></div>
+          )}
+        </div>
+
+        <div className="border-t pt-4">
+          <button onClick={() => onReverse({ kind: 'cashout', id: cashOut.cash_out_id, label })}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+            <Ban className="h-4 w-4" />Reverse
+          </button>
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end border-t pt-4">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">Close</button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Transfer Detail Modal ─────────────────────────────────────────────────────
+function TransferDetailModal({ transfer, onClose, onReverse }) {
+  if (!transfer) return null;
+  const label = transfer.transfer_type === 'float_topup' ? 'Float Top-up'
+    : transfer.transfer_type === 'sweep' ? 'Sweep' : 'Correction';
+  return (
+    <Modal open title={label} onClose={onClose} size="lg">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
+          <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(transfer.created_at).slice(0, 10)}</p></div>
+          <div><span className="text-gray-500 text-xs">Amount</span><p className="font-mono font-semibold">{fmt(transfer.amount)}</p></div>
+          <div className="col-span-full"><span className="text-gray-500 text-xs">From → To</span><p>{transfer.from_method_name ?? '—'} → {transfer.to_method_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">Terminal</span><p>{transfer.terminal_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">Branch</span><p>{transfer.branch_name ?? '—'}</p></div>
+          <div><span className="text-gray-500 text-xs">By</span><p>{transfer.created_by_name ?? '—'}</p></div>
+          {transfer.notes && (
+            <div className="col-span-full"><span className="text-gray-500 text-xs">Notes</span><p>{transfer.notes}</p></div>
+          )}
+        </div>
+
+        <div className="border-t pt-4">
+          <button onClick={() => onReverse({ kind: 'transfer', id: transfer.transfer_id, label })}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+            <Ban className="h-4 w-4" />Reverse
+          </button>
+        </div>
+      </div>
       <div className="mt-6 flex justify-end border-t pt-4">
         <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">Close</button>
       </div>
@@ -732,7 +808,7 @@ const SOURCE_TYPE_META = {
 const sourceTypeBadge = (sourceType) =>
   SOURCE_TYPE_META[sourceType] ?? { label: sourceType?.replace(/_/g, ' ') ?? '—', color: 'bg-gray-100 text-gray-600' };
 
-// Only these source types are safe to void from the Sales Entries tab. AR_SETTLEMENT
+// Only these source types are safe to reverse from the Sales Entries tab. AR_SETTLEMENT
 // is tied to exactly one transaction, so the server can safely recompute
 // credit_balance/payment_status after reversal. CREDIT_PAYMENT can FIFO-cover several
 // invoices at once, but credit_payment_applications now records exactly which ones
@@ -740,7 +816,7 @@ const sourceTypeBadge = (sourceType) =>
 // still have their own dedicated void flow (Sales page) that also reverses inventory —
 // not duplicated here. See journal.service.js voidPostedEntry for the server-side
 // enforcement of this same restriction.
-const VOIDABLE_SOURCE_TYPES = ['MANUAL', 'cash_out', 'AR_SETTLEMENT', 'CREDIT_PAYMENT'];
+const REVERSIBLE_SOURCE_TYPES = ['MANUAL', 'cash_out', 'AR_SETTLEMENT', 'CREDIT_PAYMENT'];
 
 // ── Session picker — cash-outs/transfers require an OPEN POS session under the
 // hood, so posting one from this (non-terminal) page starts by picking which
@@ -769,8 +845,8 @@ function SessionPickerModal({ title, sessions, loading, onPick, onClose }) {
   );
 }
 
-// ── Void confirmation — shared across Sales Entries / Cash Outs / Transfers ───
-function VoidPromptModal({ target, onClose, onVoided }) {
+// ── Reverse confirmation — shared across Sales Entries / Cash Outs / Transfers ─
+function ReversePromptModal({ target, onClose, onReversed }) {
   const [reason, setReason] = useState('');
   const mut = useMutation({
     mutationFn: () => {
@@ -778,15 +854,15 @@ function VoidPromptModal({ target, onClose, onVoided }) {
       if (target.kind === 'cashout')  return api.post(`/pos/cash-outs/${target.id}/void`, { reason });
       return api.post(`/pos/transfers/${target.id}/void`, { reason });
     },
-    onSuccess: () => { toast.success('Voided'); onVoided(); onClose(); },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to void'),
+    onSuccess: () => { toast.success('Reversed'); onReversed(); onClose(); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to reverse'),
   });
 
   return (
-    <Modal open title={`Void — ${target.label}`} onClose={onClose} size="sm">
+    <Modal open title={`Reverse — ${target.label}`} onClose={onClose} size="sm">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">
-          This posts a reversing entry and marks the record void. This cannot be undone.
+          This posts a reversing entry and marks the record reversed. This cannot be undone.
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-700">Reason (optional)</label>
@@ -799,7 +875,7 @@ function VoidPromptModal({ target, onClose, onVoided }) {
           </button>
           <button onClick={() => mut.mutate()} disabled={mut.isPending}
             className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">
-            {mut.isPending ? 'Voiding…' : 'Confirm Void'}
+            {mut.isPending ? 'Reversing…' : 'Confirm Reverse'}
           </button>
         </div>
       </div>
@@ -855,8 +931,12 @@ export default function JournalPage() {
   const [showNewTransfer, setShowNewTransfer] = useState(false);
   const [pickedSession,   setPickedSession]   = useState(null);
 
-  // ── Void (Sales Entries / Cash Outs / Transfers) ──
-  const [voidTarget, setVoidTarget] = useState(null); // { kind: 'entry'|'cashout'|'transfer', id, label }
+  // ── Reverse (Sales Entries / Cash Outs / Transfers) ──
+  const [reverseTarget, setReverseTarget] = useState(null); // { kind: 'entry'|'cashout'|'transfer', id, label }
+
+  // ── Detail views — Reverse lives inside these, not as a separate row action ──
+  const [coSelected, setCoSelected] = useState(null); // full cash-out row object
+  const [trSelected, setTrSelected] = useState(null); // full transfer row object
 
   useEffect(() => {
     if (!showPostPanel) return;
@@ -895,7 +975,7 @@ export default function JournalPage() {
   const closeNewCashOut  = () => { setShowNewCashOut(false);  setPickedSession(null); qc.invalidateQueries({ queryKey: ['pos-cash-outs-all'] }); };
   const closeNewTransfer = () => { setShowNewTransfer(false); setPickedSession(null); qc.invalidateQueries({ queryKey: ['pos-transfers-all'] }); };
 
-  const voidedQueryKey = { entry: ['journal-entries'], cashout: ['pos-cash-outs-all'], transfer: ['pos-transfers-all'] };
+  const reversedQueryKey = { entry: ['journal-entries'], cashout: ['pos-cash-outs-all'], transfer: ['pos-transfers-all'] };
 
   const postMut = useMutation({
     mutationFn: ({ branchId, date, mode }) =>
@@ -1117,7 +1197,7 @@ export default function JournalPage() {
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="posted">Posted</option>
-            <option value="void">Void</option>
+            <option value="void">Reversed</option>
           </select>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['journals'] })}
             className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
@@ -1224,19 +1304,10 @@ export default function JournalPage() {
                     <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalDebit)}</td>
                     <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalCredit)}</td>
                     <td className="px-3 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button onClick={() => setAeSelected(e.journalEntryId)}
-                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                          View
-                        </button>
-                        {VOIDABLE_SOURCE_TYPES.includes(e.sourceType) && (
-                          <button onClick={() => setVoidTarget({ kind: 'entry', id: e.journalEntryId, label: e.entryNumber })}
-                            title="Void"
-                            className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                            <Ban className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
+                      <button onClick={() => setAeSelected(e.journalEntryId)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1263,13 +1334,7 @@ export default function JournalPage() {
                       <span>Dr {fmt(e.totalDebit)}</span>
                       <span>Cr {fmt(e.totalCredit)}</span>
                     </div>
-                    <div className="flex items-center gap-1.5" onClick={(ev) => ev.stopPropagation()}>
-                      {VOIDABLE_SOURCE_TYPES.includes(e.sourceType) && (
-                        <button onClick={() => setVoidTarget({ kind: 'entry', id: e.journalEntryId, label: e.entryNumber })}
-                          className="flex-shrink-0 rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                          <Ban className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                    <div onClick={(ev) => ev.stopPropagation()}>
                       <button onClick={() => setAeSelected(e.journalEntryId)}
                         className="flex-shrink-0 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                         View
@@ -1320,7 +1385,7 @@ export default function JournalPage() {
                     <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(j.totalCredit)}</td>
                     <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
-                        {j.status}
+                        {STATUS_LABELS[j.status]}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1345,7 +1410,7 @@ export default function JournalPage() {
                       <p className="text-xs text-gray-500 mt-0.5">{String(j.entryDate).slice(0, 10)}</p>
                     </div>
                     <span className={`flex-shrink-0 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[j.status]}`}>
-                      {j.status}
+                      {STATUS_LABELS[j.status]}
                     </span>
                   </div>
                   {j.description && <p className="mt-1.5 text-xs text-gray-800 truncate">{j.description}</p>}
@@ -1395,7 +1460,7 @@ export default function JournalPage() {
               </thead>
               <tbody>
                 {cashOuts.map((co) => (
-                  <tr key={co.cash_out_id} className="border-b hover:bg-gray-50">
+                  <tr key={co.cash_out_id} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setCoSelected(co)}>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{String(co.created_at).slice(0, 10)}</td>
                     <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${OUT_TYPE_COLORS[co.out_type] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -1415,10 +1480,10 @@ export default function JournalPage() {
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
-                    <td className="px-2 py-1.5 text-center">
-                      <button onClick={() => setVoidTarget({ kind: 'cashout', id: co.cash_out_id, label: OUT_TYPE_LABELS[co.out_type] ?? co.out_type })}
-                        title="Void" className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                        <Ban className="h-3.5 w-3.5" />
+                    <td className="px-2 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
+                      <button onClick={() => setCoSelected(co)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     </td>
                   </tr>
@@ -1429,7 +1494,7 @@ export default function JournalPage() {
             {/* Mobile cards */}
             <div className="sm:hidden divide-y">
               {cashOuts.map((co) => (
-                <div key={co.cash_out_id} className="p-3">
+                <div key={co.cash_out_id} className="p-3 active:bg-gray-50 cursor-pointer transition-colors" onClick={() => setCoSelected(co)}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${OUT_TYPE_COLORS[co.out_type] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -1453,10 +1518,6 @@ export default function JournalPage() {
                     {co.created_by_name && <span>By {co.created_by_name}</span>}
                   </div>
                   {co.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{co.notes}</p>}
-                  <button onClick={() => setVoidTarget({ kind: 'cashout', id: co.cash_out_id, label: OUT_TYPE_LABELS[co.out_type] ?? co.out_type })}
-                    className="mt-2 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                    <Ban className="h-3.5 w-3.5" />Void
-                  </button>
                 </div>
               ))}
             </div>
@@ -1491,7 +1552,7 @@ export default function JournalPage() {
               </thead>
               <tbody>
                 {transfers.map((t) => (
-                  <tr key={t.transfer_id} className="border-b hover:bg-gray-50">
+                  <tr key={t.transfer_id} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setTrSelected(t)}>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{String(t.created_at).slice(0, 10)}</td>
                     <td className="px-2 py-1.5">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1511,10 +1572,10 @@ export default function JournalPage() {
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
-                    <td className="px-2 py-1.5 text-center">
-                      <button onClick={() => setVoidTarget({ kind: 'transfer', id: t.transfer_id, label: t.transfer_type })}
-                        title="Void" className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                        <Ban className="h-3.5 w-3.5" />
+                    <td className="px-2 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
+                      <button onClick={() => setTrSelected(t)}
+                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
                       </button>
                     </td>
                   </tr>
@@ -1525,7 +1586,7 @@ export default function JournalPage() {
             {/* Mobile cards */}
             <div className="sm:hidden divide-y">
               {transfers.map((t) => (
-                <div key={t.transfer_id} className="p-3">
+                <div key={t.transfer_id} className="p-3 active:bg-gray-50 cursor-pointer transition-colors" onClick={() => setTrSelected(t)}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1547,10 +1608,6 @@ export default function JournalPage() {
                     {t.created_by_name && <span>By {t.created_by_name}</span>}
                   </div>
                   {t.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{t.notes}</p>}
-                  <button onClick={() => setVoidTarget({ kind: 'transfer', id: t.transfer_id, label: t.transfer_type })}
-                    className="mt-2 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
-                    <Ban className="h-3.5 w-3.5" />Void
-                  </button>
                 </div>
               ))}
             </div>
@@ -1627,7 +1684,9 @@ export default function JournalPage() {
 
       {/* Posted entry detail modal */}
       {aeSelected && (
-        <Modal open title={aeDetail?.entry_number ?? 'Entry Detail'} onClose={() => setAeSelected(null)} size="lg">
+        <Modal open
+          title={aeDetail ? `${aeDetail.entry_number} — ${STATUS_LABELS[aeDetail.status]?.toUpperCase() ?? aeDetail.status}` : 'Entry Detail'}
+          onClose={() => setAeSelected(null)} size="lg">
           {aeDetailLoading ? (
             <div className="py-16 text-center text-gray-400">Loading…</div>
           ) : aeDetail ? (() => {
@@ -1636,24 +1695,22 @@ export default function JournalPage() {
             const badge = sourceTypeBadge(aeDetail.source_type);
             return (
               <div className="space-y-4">
-                {/* Meta row */}
-                <div className="flex items-start justify-between gap-3 border-b pb-3">
-                  <div className="space-y-0.5 min-w-0">
-                    <p className="text-xs text-gray-400">{String(aeDetail.entry_date).slice(0, 10)}</p>
-                    {aeDetail.description && (
-                      <p className="text-sm text-gray-700 break-words">{aeDetail.description}</p>
-                    )}
-                    {aeDetail.created_by && (
-                      <p className="text-xs text-gray-400">Posted by {aeDetail.created_by}</p>
-                    )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-gray-50 rounded-lg p-3">
+                  <div><span className="text-gray-500 text-xs">Number</span><p className="font-mono font-semibold text-sm">{aeDetail.entry_number}</p></div>
+                  <div><span className="text-gray-500 text-xs">Date</span><p className="font-medium">{String(aeDetail.entry_date).slice(0, 10)}</p></div>
+                  <div>
+                    <span className="text-gray-500 text-xs">Type</span>
+                    <p><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${badge.color}`}>{badge.label}</span></p>
                   </div>
-                  <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badge.color}`}>
-                    {badge.label}
-                  </span>
+                  {aeDetail.description && (
+                    <div className="col-span-full"><span className="text-gray-500 text-xs">Description</span><p className="break-words">{aeDetail.description}</p></div>
+                  )}
+                  {aeDetail.created_by && (
+                    <div><span className="text-gray-500 text-xs">Posted by</span><p>{aeDetail.created_by}</p></div>
+                  )}
                 </div>
 
-                {/* Lines table */}
-                <div className="rounded-xl border overflow-hidden">
+                <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b">
                       <tr>
@@ -1688,6 +1745,16 @@ export default function JournalPage() {
                     </tfoot>
                   </table>
                 </div>
+
+                {REVERSIBLE_SOURCE_TYPES.includes(aeDetail.source_type) && aeDetail.status !== 'void' && (
+                  <div className="border-t pt-4">
+                    <button
+                      onClick={() => { setReverseTarget({ kind: 'entry', id: aeDetail.journal_entry_id, label: aeDetail.entry_number }); setAeSelected(null); }}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+                      <Ban className="h-4 w-4" />Reverse
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })() : null}
@@ -1716,10 +1783,22 @@ export default function JournalPage() {
         )
       )}
 
-      {/* Void confirmation */}
-      {voidTarget && (
-        <VoidPromptModal target={voidTarget} onClose={() => setVoidTarget(null)}
-          onVoided={() => qc.invalidateQueries({ queryKey: voidedQueryKey[voidTarget.kind] })} />
+      {/* Cash Out detail — Reverse lives inside this, not as a separate row action */}
+      {coSelected && (
+        <CashOutDetailModal cashOut={coSelected} onClose={() => setCoSelected(null)}
+          onReverse={(target) => { setReverseTarget(target); setCoSelected(null); }} />
+      )}
+
+      {/* Transfer detail — same pattern */}
+      {trSelected && (
+        <TransferDetailModal transfer={trSelected} onClose={() => setTrSelected(null)}
+          onReverse={(target) => { setReverseTarget(target); setTrSelected(null); }} />
+      )}
+
+      {/* Reverse confirmation */}
+      {reverseTarget && (
+        <ReversePromptModal target={reverseTarget} onClose={() => setReverseTarget(null)}
+          onReversed={() => qc.invalidateQueries({ queryKey: reversedQueryKey[reverseTarget.kind] })} />
       )}
     </div>
   );
