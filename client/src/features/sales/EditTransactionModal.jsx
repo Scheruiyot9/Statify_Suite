@@ -59,8 +59,8 @@ function ProductSearch({ branchId, onSelect }) {
 
   const { data: results = [] } = useQuery({
     queryKey: ['edit-product-search', q, branchId],
-    queryFn:  () => api.get('/pos/products', { params: { q, branchId, limit: 8 } })
-                       .then((r) => r.data.data ?? []),
+    queryFn:  () => api.get('/pos/products', { params: { search: q, branchId, limit: 8 } })
+                       .then((r) => r.data.data?.products ?? []),
     enabled: q.length >= 2 && !!branchId,
     staleTime: 30_000,
   });
