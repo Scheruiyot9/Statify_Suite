@@ -529,27 +529,40 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
 
 // ── Void: Cash Out ────────────────────────────────────────────────────────────
 async function voidCashOut(companyId, cashOutId, userId, reason) {
-  const { rows: [co] } = await query(
-    `SELECT * FROM session_cash_outs WHERE cash_out_id = $1 AND company_id = $2`,
-    [cashOutId, companyId]
-  );
-  if (!co) throw AppError.notFound('Cash out');
-  if (co.status === 'void') throw AppError.conflict('Cash out is already voided');
+  return transaction(async (client) => {
+    const { rows: [co] } = await client.query(
+      `SELECT * FROM session_cash_outs WHERE cash_out_id = $1 AND company_id = $2 FOR UPDATE`,
+      [cashOutId, companyId]
+    );
+    if (!co) throw AppError.notFound('Cash out');
+    if (co.status === 'void') throw AppError.conflict('Cash out is already voided');
 
-  // Reuse the existing generic ledger-reversal function — same reversal pattern
-  // manual journals use — before marking the cash-out row itself void.
-  if (co.journal_entry_id) {
-    await jrn.voidJournalEntry(companyId, co.journal_entry_id, userId, reason);
-  }
+    // Reuse the existing generic ledger-reversal function — same client/transaction,
+    // so the ledger reversal and marking this row void either both land or neither
+    // does (previously these were separate calls; anything that interrupted
+    // execution between them left the ledger voided but this row still "active" —
+    // stuck showing in lists forever, since re-voiding just hit "already voided").
+    if (co.journal_entry_id) {
+      const { rows: [je] } = await client.query(
+        `SELECT status FROM journal_entries WHERE journal_entry_id = $1`,
+        [co.journal_entry_id]
+      );
+      // Self-heal a row already stuck in that state from before this was atomic —
+      // if the ledger side is already void, don't re-throw, just finish the job.
+      if (je && je.status !== 'void') {
+        await jrn.voidJournalEntry(companyId, co.journal_entry_id, userId, reason, client);
+      }
+    }
 
-  const { rows } = await query(`
-    UPDATE session_cash_outs
-    SET status = 'void', voided_by_user_id = $2, voided_at = now(), void_reason = $3
-    WHERE cash_out_id = $1
-    RETURNING *
-  `, [cashOutId, userId, reason || null]);
+    const { rows } = await client.query(`
+      UPDATE session_cash_outs
+      SET status = 'void', voided_by_user_id = $2, voided_at = now(), void_reason = $3
+      WHERE cash_out_id = $1
+      RETURNING *
+    `, [cashOutId, userId, reason || null]);
 
-  return rows[0];
+    return rows[0];
+  });
 }
 
 // ── Void: Pay Mode Transfer ────────────────────────────────────────────────────

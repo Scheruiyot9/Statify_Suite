@@ -1189,8 +1189,15 @@ async function postManualEntry(companyId, userId, data) {
 
 // ── Void a Posted Entry ────────────────────────────────────────────────────────
 // Creates a reversal entry; marks original as void (immutable audit trail)
-async function voidJournalEntry(companyId, jeId, userId, reason) {
-  return transaction(async (client) => {
+// Accepts an optional external transaction client so callers that also need to
+// update other tables (customers.credit_balance, sales_transactions.payment_status,
+// session_cash_outs.status, etc.) can wrap the whole operation in one atomic
+// transaction instead of leaving it possible to reverse the ledger and then fail
+// before finishing the rest — which left rows permanently stuck (ledger voided,
+// but the owning record still shows as active and re-voiding it just throws
+// "already voided" forever, since it is never a no-op retry).
+async function voidJournalEntry(companyId, jeId, userId, reason, externalClient = null) {
+  const run = async (client) => {
     const { rows: [je] } = await client.query(
       `SELECT * FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 FOR UPDATE`,
       [jeId, companyId]
@@ -1228,7 +1235,9 @@ async function voidJournalEntry(companyId, jeId, userId, reason) {
       userId,
       lines: reversalLines,
     });
-  });
+  };
+
+  return externalClient ? run(externalClient) : transaction(run);
 }
 
 // ── Void a Posted Entry — Sales Entries tab dispatcher ─────────────────────────
@@ -1416,57 +1425,61 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
 // true outstanding balance for that transaction and derive payment_status from
 // it, using the identical query postArSettlementEntry already trusts.
 async function voidArSettlement(companyId, jeId, userId, reason) {
-  const { rows: [je] } = await query(
-    `SELECT source_id, status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'AR_SETTLEMENT'`,
-    [jeId, companyId]
-  );
-  if (!je) throw AppError.notFound('AR settlement entry');
-  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
-  const transactionId = je.source_id;
-
-  const { rows: [line] } = await query(
-    `SELECT lel.credit::numeric AS amount FROM ledger_entry_lines lel
-     JOIN accounts a ON a.account_id = lel.account_id
-     WHERE lel.journal_entry_id = $1 AND a.account_code = '1100'`,
-    [jeId]
-  );
-  const amt = parseFloat(line?.amount || 0);
-
-  const { rows: [st] } = await query(
-    `SELECT customer_id, total_amount::numeric FROM sales_transactions WHERE transaction_id = $1`,
-    [transactionId]
-  );
-
-  // Reuse the existing generic reversal — same reversal every other void uses.
-  await voidJournalEntry(companyId, jeId, userId, reason);
-
-  if (st?.customer_id && amt > 0.005) {
-    await query(
-      `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
-      [st.customer_id, amt]
+  return transaction(async (client) => {
+    const { rows: [je] } = await client.query(
+      `SELECT source_id, status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'AR_SETTLEMENT'`,
+      [jeId, companyId]
     );
-  }
+    if (!je) throw AppError.notFound('AR settlement entry');
+    if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+    const transactionId = je.source_id;
 
-  // Recompute outstanding now that this settlement's ledger lines are excluded
-  // (voidJournalEntry marked them status='void', so the 'posted' filter drops them).
-  const { rows: [bal] } = await query(`
-    SELECT COALESCE(SUM(lel.debit)  FILTER (WHERE je.source_type = 'SALE'),          0)
-         - COALESCE(SUM(lel.credit) FILTER (WHERE je.source_type = 'AR_SETTLEMENT'), 0) AS outstanding
-    FROM ledger_entry_lines lel
-    JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
-    JOIN accounts a ON a.account_id = lel.account_id
-    WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_id = $2 AND a.account_code = '1100'
-  `, [companyId, transactionId]);
-  const outstanding = parseFloat(bal?.outstanding || 0);
-  const totalAmount = parseFloat(st?.total_amount || 0);
-  const newStatus = outstanding <= 0.005 ? 'paid' : (outstanding >= totalAmount - 0.005 ? 'unpaid' : 'partial');
+    const { rows: [line] } = await client.query(
+      `SELECT lel.credit::numeric AS amount FROM ledger_entry_lines lel
+       JOIN accounts a ON a.account_id = lel.account_id
+       WHERE lel.journal_entry_id = $1 AND a.account_code = '1100'`,
+      [jeId]
+    );
+    const amt = parseFloat(line?.amount || 0);
 
-  await query(
-    `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
-    [transactionId, newStatus]
-  );
+    const { rows: [st] } = await client.query(
+      `SELECT customer_id, total_amount::numeric FROM sales_transactions WHERE transaction_id = $1`,
+      [transactionId]
+    );
 
-  return { voided: true };
+    // Reuse the existing generic reversal — same reversal every other void uses.
+    // Same client/transaction, so the ledger reversal and the balance/status
+    // fixup below either both land or neither does.
+    await voidJournalEntry(companyId, jeId, userId, reason, client);
+
+    if (st?.customer_id && amt > 0.005) {
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
+        [st.customer_id, amt]
+      );
+    }
+
+    // Recompute outstanding now that this settlement's ledger lines are excluded
+    // (voidJournalEntry marked them status='void', so the 'posted' filter drops them).
+    const { rows: [bal] } = await client.query(`
+      SELECT COALESCE(SUM(lel.debit)  FILTER (WHERE je.source_type = 'SALE'),          0)
+           - COALESCE(SUM(lel.credit) FILTER (WHERE je.source_type = 'AR_SETTLEMENT'), 0) AS outstanding
+      FROM ledger_entry_lines lel
+      JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+      JOIN accounts a ON a.account_id = lel.account_id
+      WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_id = $2 AND a.account_code = '1100'
+    `, [companyId, transactionId]);
+    const outstanding = parseFloat(bal?.outstanding || 0);
+    const totalAmount = parseFloat(st?.total_amount || 0);
+    const newStatus = outstanding <= 0.005 ? 'paid' : (outstanding >= totalAmount - 0.005 ? 'unpaid' : 'partial');
+
+    await client.query(
+      `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
+      [transactionId, newStatus]
+    );
+
+    return { voided: true };
+  });
 }
 
 // ── Void: Credit Payment ────────────────────────────────────────────────────────
@@ -1476,51 +1489,54 @@ async function voidArSettlement(companyId, jeId, userId, reason) {
 // recorded at the time this payment was made (see customers.service.js
 // recordCreditPayment), then drop those rows since they no longer apply.
 async function voidCreditPayment(companyId, jeId, userId, reason) {
-  const { rows: [je] } = await query(
-    `SELECT status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'CREDIT_PAYMENT'`,
-    [jeId, companyId]
-  );
-  if (!je) throw AppError.notFound('Credit payment entry');
-  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
-
-  const { rows: [line] } = await query(
-    `SELECT lel.credit::numeric AS amount, lel.entity_id AS customer_id FROM ledger_entry_lines lel
-     JOIN accounts a ON a.account_id = lel.account_id
-     WHERE lel.journal_entry_id = $1 AND a.account_code = '1100' AND lel.entity_type = 'customer'`,
-    [jeId]
-  );
-  const amt        = parseFloat(line?.amount || 0);
-  const customerId = line?.customer_id || null;
-
-  const { rows: applications } = await query(
-    `SELECT transaction_id, previous_status FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`,
-    [jeId, companyId]
-  );
-
-  // Reuse the existing generic reversal — same reversal every other void uses.
-  await voidJournalEntry(companyId, jeId, userId, reason);
-
-  if (customerId && amt > 0.005) {
-    await query(
-      `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
-      [customerId, amt]
+  return transaction(async (client) => {
+    const { rows: [je] } = await client.query(
+      `SELECT status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'CREDIT_PAYMENT'`,
+      [jeId, companyId]
     );
-  }
+    if (!je) throw AppError.notFound('Credit payment entry');
+    if (je.status === 'void') throw AppError.conflict('Entry is already voided');
 
-  for (const a of applications) {
-    await query(
-      `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
-      [a.transaction_id, a.previous_status]
+    const { rows: [line] } = await client.query(
+      `SELECT lel.credit::numeric AS amount, lel.entity_id AS customer_id FROM ledger_entry_lines lel
+       JOIN accounts a ON a.account_id = lel.account_id
+       WHERE lel.journal_entry_id = $1 AND a.account_code = '1100' AND lel.entity_type = 'customer'`,
+      [jeId]
     );
-  }
-  await query(`DELETE FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+    const amt        = parseFloat(line?.amount || 0);
+    const customerId = line?.customer_id || null;
 
-  // The topup row (POS session cash reconciliation feed) no longer represents
-  // real cash received — drop it so a closed/closing session doesn't still
-  // count it, same fix as voided cash-outs/transfers.
-  await query(`DELETE FROM customer_topups WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+    const { rows: applications } = await client.query(
+      `SELECT transaction_id, previous_status FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`,
+      [jeId, companyId]
+    );
 
-  return { voided: true };
+    // Reuse the existing generic reversal — same client/transaction, so the ledger
+    // reversal and everything below either all land or none does.
+    await voidJournalEntry(companyId, jeId, userId, reason, client);
+
+    if (customerId && amt > 0.005) {
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
+        [customerId, amt]
+      );
+    }
+
+    for (const a of applications) {
+      await client.query(
+        `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
+        [a.transaction_id, a.previous_status]
+      );
+    }
+    await client.query(`DELETE FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+
+    // The topup row (POS session cash reconciliation feed) no longer represents
+    // real cash received — drop it so a closed/closing session doesn't still
+    // count it, same fix as voided cash-outs/transfers.
+    await client.query(`DELETE FROM customer_topups WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+
+    return { voided: true };
+  });
 }
 
 // ── AR Aging ───────────────────────────────────────────────────────────────────
