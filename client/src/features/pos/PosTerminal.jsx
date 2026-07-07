@@ -562,7 +562,7 @@ const OUT_TYPES = [
   { value: 'stock_payment',label: 'Stock Payment',    hint: 'Pay a supplier for goods received' },
 ];
 
-function CashOutModal({ session, methods, onClose }) {
+export function CashOutModal({ session, methods, onClose }) {
   const qc = useQueryClient();
   const hasFinance = useAuthStore((s) => s.user?.planFeatures?.hasFinance);
 
@@ -758,7 +758,7 @@ const TRANSFER_TYPES = [
   },
 ];
 
-function TransferModal({ session, methods, onClose }) {
+export function TransferModal({ session, methods, onClose }) {
   const qc = useQueryClient();
 
   const [transferType,   setTransferType]   = useState('sweep');

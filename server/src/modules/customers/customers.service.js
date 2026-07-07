@@ -445,19 +445,24 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     // Mark transactions as paid: use caller-specified IDs or fall back to FIFO
     let txnQuery, txnParams;
     if (transactionIds && transactionIds.length > 0) {
-      txnQuery  = `SELECT transaction_id, total_amount FROM sales_transactions
+      txnQuery  = `SELECT transaction_id, total_amount, payment_status FROM sales_transactions
                    WHERE customer_id = $1 AND transaction_id = ANY($2::uuid[])
                      AND is_credit_sale = TRUE AND payment_status IN ('partial','unpaid') AND status = 'completed'
                    ORDER BY transaction_date ASC`;
       txnParams = [customerId, transactionIds];
     } else {
-      txnQuery  = `SELECT transaction_id, total_amount FROM sales_transactions
+      txnQuery  = `SELECT transaction_id, total_amount, payment_status FROM sales_transactions
                    WHERE customer_id = $1 AND is_credit_sale = TRUE
                      AND payment_status IN ('partial','unpaid') AND status = 'completed'
                    ORDER BY transaction_date ASC`;
       txnParams = [customerId];
     }
     const { rows: txns } = await client.query(txnQuery, txnParams);
+
+    // Track exactly which invoices this payment marks 'paid' and what they were
+    // before, so voiding this specific payment can restore them precisely instead
+    // of guessing (a payment can FIFO-cover several invoices at once).
+    const appliedTxns = [];
 
     // Only apply up to the real debt that existed before this payment (never negative —
     // if the customer already had prepaid credit, none of this new amount is "released"
@@ -471,6 +476,7 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
           `UPDATE sales_transactions SET payment_status = 'paid', updated_at = now() WHERE transaction_id = $1`,
           [txn.transaction_id]
         );
+        appliedTxns.push({ transactionId: txn.transaction_id, amount: txnAmt, previousStatus: txn.payment_status });
         remaining -= txnAmt;
       } else {
         // Partial coverage of this transaction — leave as 'partial' (balance already reduced)
@@ -484,25 +490,44 @@ async function recordCreditPayment(companyId, customerId, amount, paymentMethodI
     // by an advance credit at creation time but never got its own status corrected).
     const newBalance = currentBalance - amount;
     if (newBalance <= 0.005) {
-      await client.query(`
-        UPDATE sales_transactions
-        SET payment_status = 'paid', updated_at = now()
+      const { rows: backstopTxns } = await client.query(`
+        SELECT transaction_id, total_amount, payment_status FROM sales_transactions
         WHERE customer_id = $1 AND is_credit_sale = TRUE
           AND payment_status IN ('partial', 'unpaid') AND status = 'completed'
       `, [customerId]);
+      if (backstopTxns.length) {
+        await client.query(`
+          UPDATE sales_transactions
+          SET payment_status = 'paid', updated_at = now()
+          WHERE transaction_id = ANY($1::uuid[])
+        `, [backstopTxns.map((t) => t.transaction_id)]);
+        for (const t of backstopTxns) {
+          appliedTxns.push({ transactionId: t.transaction_id, amount: parseFloat(t.total_amount), previousStatus: t.payment_status });
+        }
+      }
     }
 
     // Post journal entry: DR Cash/Bank  CR AR (1100)
-    await postCreditReceiptEntry(client, companyId, {
+    const journalEntryId = await postCreditReceiptEntry(client, companyId, {
       customerId, customerName, amount, paymentMethodId,
     });
+
+    if (journalEntryId && appliedTxns.length) {
+      for (const t of appliedTxns) {
+        await client.query(`
+          INSERT INTO credit_payment_applications
+            (company_id, journal_entry_id, customer_id, transaction_id, amount_applied, previous_status)
+          VALUES ($1,$2,$3,$4,$5,$6)
+        `, [companyId, journalEntryId, customerId, t.transactionId, t.amount, t.previousStatus]);
+      }
+    }
 
     // Audit trail + POS session cash reconciliation (see pos.service.js closeSession)
     if (userId) {
       await client.query(`
-        INSERT INTO customer_topups (company_id, branch_id, session_id, customer_id, amount, payment_method_id, received_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
-      `, [companyId, branchId, sessionId, customerId, amount, paymentMethodId, userId]);
+        INSERT INTO customer_topups (company_id, branch_id, session_id, customer_id, amount, payment_method_id, received_by, journal_entry_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [companyId, branchId, sessionId, customerId, amount, paymentMethodId, userId, journalEntryId || null]);
     }
 
     return {

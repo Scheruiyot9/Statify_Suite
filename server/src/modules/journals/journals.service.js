@@ -194,7 +194,7 @@ async function updateJournal(companyId, journalId, userId, { entryDate, descript
 // ── Post ──────────────────────────────────────────────────────────────────────
 
 async function postJournal(companyId, journalId, userId) {
-  return transaction(async (client) => {
+  await transaction(async (client) => {
     const { rows: [j] } = await client.query(
       `SELECT * FROM journals WHERE journal_id = $1 AND company_id = $2 FOR UPDATE`,
       [journalId, companyId]
@@ -313,8 +313,9 @@ async function voidJournal(companyId, journalId, userId, reason) {
     `, [userId, reason || null, j.ledger_entry_id]);
 
     const { rows: origLines } = await client.query(
-      `SELECT account_id, debit, credit, description, entity_type, entity_id
-       FROM ledger_entry_lines WHERE journal_entry_id = $1`,
+      `SELECT lel.account_id, lel.debit, lel.credit, lel.description, lel.entity_type, lel.entity_id, a.account_code
+       FROM ledger_entry_lines lel JOIN accounts a ON a.account_id = lel.account_id
+       WHERE lel.journal_entry_id = $1`,
       [j.ledger_entry_id]
     );
 
@@ -333,6 +334,24 @@ async function voidJournal(companyId, journalId, userId, reason) {
         entityId:    l.entity_id,
       })),
     });
+
+    // Undo whatever this journal did to a customer's AR balance when it was posted
+    // (see postJournal above) — otherwise voiding leaves credit_balance permanently
+    // drifted by the original delta.
+    const arDeltaByCustomer = {};
+    for (const l of origLines) {
+      if (l.entity_type !== 'customer' || !l.entity_id || l.account_code !== '1100') continue;
+      const originalDelta = parseFloat(l.debit) - parseFloat(l.credit);
+      arDeltaByCustomer[l.entity_id] = (arDeltaByCustomer[l.entity_id] || 0) - originalDelta;
+    }
+    for (const [customerId, delta] of Object.entries(arDeltaByCustomer)) {
+      if (Math.abs(delta) < 0.005) continue;
+      await client.query(
+        `UPDATE customers SET credit_balance = credit_balance + $3, updated_at = now()
+         WHERE company_id = $1 AND customer_id = $2`,
+        [companyId, customerId, delta]
+      );
+    }
 
     await client.query(`
       UPDATE journals

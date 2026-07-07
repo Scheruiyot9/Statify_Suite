@@ -359,7 +359,7 @@ async function getSessionSummary(companyId, sessionId) {
       LEFT JOIN accounts  a ON a.account_id  = co.account_id
       LEFT JOIN suppliers s ON s.supplier_id = co.supplier_id
       LEFT JOIN users     u ON u.user_id     = co.created_by_user_id
-      WHERE co.session_id = $1
+      WHERE co.session_id = $1 AND co.status <> 'void'
       ORDER BY co.created_at
     `, [sessionId]),
   ]);
@@ -434,7 +434,7 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
   const { rows: cashOutRows } = await query(`
     SELECT payment_method_id, COALESCE(SUM(amount), 0)::numeric AS total
     FROM session_cash_outs
-    WHERE session_id = $1
+    WHERE session_id = $1 AND status <> 'void'
     GROUP BY payment_method_id
   `, [sessionId]);
 
@@ -462,7 +462,7 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
       SELECT
         COALESCE(SUM(CASE WHEN to_method_id   = $2 THEN amount ELSE 0 END), 0)::numeric AS to_cash,
         COALESCE(SUM(CASE WHEN from_method_id = $2 THEN amount ELSE 0 END), 0)::numeric AS from_cash
-      FROM session_transfers WHERE session_id = $1
+      FROM session_transfers WHERE session_id = $1 AND status <> 'void'
     `, [sessionId, cashMethodId]);
     transferToCash   = parseFloat(xferRows[0]?.to_cash   || 0);
     transferFromCash = parseFloat(xferRows[0]?.from_cash || 0);
@@ -526,6 +526,44 @@ async function closeSession(companyId, sessionId, userId, { closingCashCounted =
 }
 
 // ── Shifts Management ─────────────────────────────────────────────────────────
+
+// ── Void: Cash Out ────────────────────────────────────────────────────────────
+async function voidCashOut(companyId, cashOutId, userId, reason) {
+  const { rows: [co] } = await query(
+    `SELECT * FROM session_cash_outs WHERE cash_out_id = $1 AND company_id = $2`,
+    [cashOutId, companyId]
+  );
+  if (!co) throw AppError.notFound('Cash out');
+  if (co.status === 'void') throw AppError.conflict('Cash out is already voided');
+
+  // Reuse the existing generic ledger-reversal function — same reversal pattern
+  // manual journals use — before marking the cash-out row itself void.
+  if (co.journal_entry_id) {
+    await jrn.voidJournalEntry(companyId, co.journal_entry_id, userId, reason);
+  }
+
+  const { rows } = await query(`
+    UPDATE session_cash_outs
+    SET status = 'void', voided_by_user_id = $2, voided_at = now(), void_reason = $3
+    WHERE cash_out_id = $1
+    RETURNING *
+  `, [cashOutId, userId, reason || null]);
+
+  return rows[0];
+}
+
+// ── Void: Pay Mode Transfer ────────────────────────────────────────────────────
+// Transfers never post a ledger entry, so voiding is just a status flip.
+async function voidTransfer(companyId, transferId, userId, reason) {
+  const { rows } = await query(`
+    UPDATE session_transfers
+    SET status = 'void', voided_by_user_id = $2, voided_at = now(), void_reason = $3
+    WHERE transfer_id = $1 AND company_id = $4 AND status <> 'void'
+    RETURNING *
+  `, [transferId, userId, reason || null, companyId]);
+  if (!rows.length) throw AppError.notFound('Transfer (or already voided)');
+  return rows[0];
+}
 
 async function listSessions(companyId, { branchId, status, cashierId, startDate, endDate, page = 1, limit = 25 }) {
   const qb = new QueryBuilder([companyId]);
@@ -789,7 +827,7 @@ async function listCashOuts(companyId, sessionId) {
     LEFT JOIN suppliers       s  ON s.supplier_id       = co.supplier_id
     LEFT JOIN payment_methods pm ON pm.payment_method_id = co.payment_method_id
     LEFT JOIN users           u  ON u.user_id           = co.created_by_user_id
-    WHERE co.session_id = $1 AND co.company_id = $2
+    WHERE co.session_id = $1 AND co.company_id = $2 AND co.status <> 'void'
     ORDER BY co.created_at
   `, [sessionId, companyId]);
   return rows;
@@ -797,7 +835,9 @@ async function listCashOuts(companyId, sessionId) {
 
 async function listAllCashOuts(companyId, { startDate, endDate, branchId, page = 1, limit = 30 } = {}) {
   const params = [companyId];
-  const where  = ['co.company_id = $1'];
+  // Voided cash-outs are excluded entirely — they're already reversed in the ledger
+  // and shouldn't linger in the operational list once undone.
+  const where  = ['co.company_id = $1', `co.status <> 'void'`];
 
   if (startDate) { params.push(startDate); where.push(`co.created_at >= $${params.length}::date`); }
   if (endDate)   { params.push(endDate);   where.push(`co.created_at <  ($${params.length}::date + INTERVAL '1 day')`); }
@@ -808,7 +848,7 @@ async function listAllCashOuts(companyId, { startDate, endDate, branchId, page =
 
   const { rows } = await query(`
     SELECT co.cash_out_id, co.out_type, co.amount::numeric, co.notes, co.created_at,
-           co.journal_entry_id,
+           co.journal_entry_id, co.status, co.voided_at, co.void_reason,
            a.account_name, a.account_code,
            s.supplier_name,
            pm.method_name  AS payment_method_name,
@@ -878,7 +918,8 @@ async function deleteHold(companyId, holdId) {
 
 async function listAllTransfers(companyId, { startDate, endDate, branchId, page = 1, limit = 30 } = {}) {
   const params = [companyId];
-  const where  = ['t.company_id = $1'];
+  // Voided transfers are excluded entirely, same policy as listAllCashOuts.
+  const where  = ['t.company_id = $1', `t.status <> 'void'`];
 
   if (startDate) { params.push(startDate); where.push(`t.created_at >= $${params.length}::date`); }
   if (endDate)   { params.push(endDate);   where.push(`t.created_at <  ($${params.length}::date + INTERVAL '1 day')`); }
@@ -889,7 +930,7 @@ async function listAllTransfers(companyId, { startDate, endDate, branchId, page 
 
   const { rows } = await query(`
     SELECT t.transfer_id, t.transfer_type, t.amount::numeric, t.notes, t.created_at,
-           t.session_id,
+           t.session_id, t.status, t.voided_at, t.void_reason,
            fm.method_name AS from_method_name,
            tm.method_name AS to_method_name,
            pt.terminal_name,
@@ -970,7 +1011,7 @@ async function listTransfers(companyId, sessionId) {
     LEFT JOIN payment_methods fm ON fm.payment_method_id = t.from_method_id
     LEFT JOIN payment_methods tm ON tm.payment_method_id = t.to_method_id
     LEFT JOIN users           u  ON u.user_id            = t.created_by_user_id
-    WHERE t.session_id = $1 AND t.company_id = $2
+    WHERE t.session_id = $1 AND t.company_id = $2 AND t.status <> 'void'
     ORDER BY t.created_at
   `, [sessionId, companyId]);
   return rows;
@@ -1070,5 +1111,6 @@ module.exports = {
   correctSession,
   recordCashOut, listCashOuts, listAllCashOuts, listAllTransfers,
   createTransfer, listTransfers,
+  voidCashOut, voidTransfer,
   createHold, listHolds, deleteHold,
 };

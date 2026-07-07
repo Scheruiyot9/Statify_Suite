@@ -30,4 +30,7 @@ const listEntries = async (req, res) =>
 const getEntry = async (req, res) =>
   ok(res, await svc.getJournalEntry(req.tenantId, req.params.id));
 
-module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile, postDailySummary, listEntries, getEntry };
+const voidEntry = async (req, res) =>
+  ok(res, await svc.voidPostedEntry(req.tenantId, req.params.id, req.user.userId, req.body?.reason));
+
+module.exports = { openingBalances, arAging, arSettlement, unreconciledLines, reconcile, postDailySummary, listEntries, getEntry, voidEntry };

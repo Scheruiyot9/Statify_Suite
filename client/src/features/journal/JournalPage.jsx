@@ -3,13 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ScrollText, Plus, XCircle, RefreshCw, Download, Upload,
   AlertCircle, CheckCircle2, Building2, User, Briefcase, BookOpen, Edit2,
-  ArrowDownLeft, Calendar, ArrowLeftRight,
+  ArrowDownLeft, Calendar, ArrowLeftRight, Ban, Banknote,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { todayLocal } from '@/utils/formatters';
 import api from '@/services/api';
 import Modal from '@/components/ui/Modal';
+import { CashOutModal, TransferModal } from '@/features/pos/PosTerminal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -726,9 +727,85 @@ const SOURCE_TYPE_META = {
   AR_SETTLEMENT:         { label: 'AR Settlement',     color: 'bg-teal-100 text-teal-700' },
   MANUAL:                { label: 'Manual Journal',    color: 'bg-indigo-100 text-indigo-700' },
   CREDIT_PAYMENT:        { label: 'Credit Payment',    color: 'bg-emerald-100 text-emerald-700' },
+  cash_out:              { label: 'Cash Out',          color: 'bg-orange-100 text-orange-700' },
 };
 const sourceTypeBadge = (sourceType) =>
   SOURCE_TYPE_META[sourceType] ?? { label: sourceType?.replace(/_/g, ' ') ?? '—', color: 'bg-gray-100 text-gray-600' };
+
+// Only these source types are safe to void from the Sales Entries tab. AR_SETTLEMENT
+// is tied to exactly one transaction, so the server can safely recompute
+// credit_balance/payment_status after reversal. CREDIT_PAYMENT can FIFO-cover several
+// invoices at once, but credit_payment_applications now records exactly which ones
+// each payment touched, so it can be restored precisely too. SALE/summary entries
+// still have their own dedicated void flow (Sales page) that also reverses inventory —
+// not duplicated here. See journal.service.js voidPostedEntry for the server-side
+// enforcement of this same restriction.
+const VOIDABLE_SOURCE_TYPES = ['MANUAL', 'cash_out', 'AR_SETTLEMENT', 'CREDIT_PAYMENT'];
+
+// ── Session picker — cash-outs/transfers require an OPEN POS session under the
+// hood, so posting one from this (non-terminal) page starts by picking which
+// open session to attribute it to. ──────────────────────────────────────────
+function SessionPickerModal({ title, sessions, loading, onPick, onClose }) {
+  return (
+    <Modal open title={title} onClose={onClose} size="sm">
+      {loading ? (
+        <div className="py-8 text-center text-sm text-gray-400">Loading open sessions…</div>
+      ) : sessions.length === 0 ? (
+        <div className="py-8 text-center text-sm text-gray-400">
+          No active POS session found. Open one from a POS terminal first.
+        </div>
+      ) : (
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {sessions.map((s) => (
+            <button key={s.session_id} onClick={() => onPick(s)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-left transition-colors hover:border-primary-300 hover:bg-gray-50">
+              <p className="text-sm font-medium text-gray-800">{s.terminal_name}</p>
+              <p className="text-xs text-gray-400">{s.branch_name} · {s.cashier_name}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Void confirmation — shared across Sales Entries / Cash Outs / Transfers ───
+function VoidPromptModal({ target, onClose, onVoided }) {
+  const [reason, setReason] = useState('');
+  const mut = useMutation({
+    mutationFn: () => {
+      if (target.kind === 'entry')    return api.post(`/journal/entries/${target.id}/void`, { reason });
+      if (target.kind === 'cashout')  return api.post(`/pos/cash-outs/${target.id}/void`, { reason });
+      return api.post(`/pos/transfers/${target.id}/void`, { reason });
+    },
+    onSuccess: () => { toast.success('Voided'); onVoided(); onClose(); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to void'),
+  });
+
+  return (
+    <Modal open title={`Void — ${target.label}`} onClose={onClose} size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          This posts a reversing entry and marks the record void. This cannot be undone.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700">Reason (optional)</label>
+          <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" />
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={() => mut.mutate()} disabled={mut.isPending}
+            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">
+            {mut.isPending ? 'Voiding…' : 'Confirm Void'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export default function JournalPage() {
   const [activeTab,    setActiveTab]    = useState('journals');
@@ -773,6 +850,14 @@ export default function JournalPage() {
   const [showPostPanel, setShowPostPanel] = useState(false);
   const postPanelRef = useRef(null);
 
+  // ── New Cash Out / New Transfer — both need an open POS session picked first ──
+  const [showNewCashOut,  setShowNewCashOut]  = useState(false);
+  const [showNewTransfer, setShowNewTransfer] = useState(false);
+  const [pickedSession,   setPickedSession]   = useState(null);
+
+  // ── Void (Sales Entries / Cash Outs / Transfers) ──
+  const [voidTarget, setVoidTarget] = useState(null); // { kind: 'entry'|'cashout'|'transfer', id, label }
+
   useEffect(() => {
     if (!showPostPanel) return;
     const handler = (e) => { if (postPanelRef.current && !postPanelRef.current.contains(e.target)) setShowPostPanel(false); };
@@ -791,6 +876,26 @@ export default function JournalPage() {
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then((r) => r.data.data),
   });
+
+  const needsSessionPicker = (showNewCashOut || showNewTransfer) && !pickedSession;
+
+  const { data: openSessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: ['pos-open-sessions'],
+    queryFn: () => api.get('/pos/sessions/open', { params: { status: 'open', limit: 100 } })
+      .then((r) => r.data.data?.sessions ?? []),
+    enabled: needsSessionPicker,
+  });
+
+  const { data: journalPayMethods = [] } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => api.get('/pos/payment-methods').then((r) => r.data.data ?? r.data),
+    enabled: showNewCashOut || showNewTransfer,
+  });
+
+  const closeNewCashOut  = () => { setShowNewCashOut(false);  setPickedSession(null); qc.invalidateQueries({ queryKey: ['pos-cash-outs-all'] }); };
+  const closeNewTransfer = () => { setShowNewTransfer(false); setPickedSession(null); qc.invalidateQueries({ queryKey: ['pos-transfers-all'] }); };
+
+  const voidedQueryKey = { entry: ['journal-entries'], cashout: ['pos-cash-outs-all'], transfer: ['pos-transfers-all'] };
 
   const postMut = useMutation({
     mutationFn: ({ branchId, date, mode }) =>
@@ -922,6 +1027,18 @@ export default function JournalPage() {
               <Plus className="h-4 w-4" />New Journal
             </button>
           </div>
+        )}
+        {activeTab === 'cash-outs' && (
+          <button onClick={() => setShowNewCashOut(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
+            <Banknote className="h-4 w-4" />New Cash Out
+          </button>
+        )}
+        {activeTab === 'transfers' && (
+          <button onClick={() => setShowNewTransfer(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700">
+            <ArrowLeftRight className="h-4 w-4" />New Transfer
+          </button>
         )}
         {activeTab === 'posted-entries' && (
           <div className="relative" ref={postPanelRef}>
@@ -1058,6 +1175,7 @@ export default function JournalPage() {
             <option value="AR_SETTLEMENT">AR Settlement</option>
             <option value="MANUAL">Manual Journal</option>
             <option value="CREDIT_PAYMENT">Credit Payment</option>
+            <option value="cash_out">Cash Out</option>
           </select>
           <button onClick={() => qc.invalidateQueries({ queryKey: ['journal-entries'] })}
             className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
@@ -1106,10 +1224,19 @@ export default function JournalPage() {
                     <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalDebit)}</td>
                     <td className="px-3 py-1.5 text-xs text-right font-mono">{fmt(e.totalCredit)}</td>
                     <td className="px-3 py-1.5 text-center" onClick={(ev) => ev.stopPropagation()}>
-                      <button onClick={() => setAeSelected(e.journalEntryId)}
-                        className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                        View
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button onClick={() => setAeSelected(e.journalEntryId)}
+                          className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                          View
+                        </button>
+                        {VOIDABLE_SOURCE_TYPES.includes(e.sourceType) && (
+                          <button onClick={() => setVoidTarget({ kind: 'entry', id: e.journalEntryId, label: e.entryNumber })}
+                            title="Void"
+                            className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                            <Ban className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1136,10 +1263,18 @@ export default function JournalPage() {
                       <span>Dr {fmt(e.totalDebit)}</span>
                       <span>Cr {fmt(e.totalCredit)}</span>
                     </div>
-                    <button onClick={(ev) => { ev.stopPropagation(); setAeSelected(e.journalEntryId); }}
-                      className="flex-shrink-0 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
-                      View
-                    </button>
+                    <div className="flex items-center gap-1.5" onClick={(ev) => ev.stopPropagation()}>
+                      {VOIDABLE_SOURCE_TYPES.includes(e.sourceType) && (
+                        <button onClick={() => setVoidTarget({ kind: 'entry', id: e.journalEntryId, label: e.entryNumber })}
+                          className="flex-shrink-0 rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                          <Ban className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => setAeSelected(e.journalEntryId)}
+                        className="flex-shrink-0 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
+                        View
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1255,6 +1390,7 @@ export default function JournalPage() {
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">Posted By</th>
+                  <th className="text-center px-2 py-1.5 font-medium text-gray-600 w-16">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1279,6 +1415,12 @@ export default function JournalPage() {
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.terminal_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.branch_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{co.created_by_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={() => setVoidTarget({ kind: 'cashout', id: co.cash_out_id, label: OUT_TYPE_LABELS[co.out_type] ?? co.out_type })}
+                        title="Void" className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                        <Ban className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1311,6 +1453,10 @@ export default function JournalPage() {
                     {co.created_by_name && <span>By {co.created_by_name}</span>}
                   </div>
                   {co.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{co.notes}</p>}
+                  <button onClick={() => setVoidTarget({ kind: 'cashout', id: co.cash_out_id, label: OUT_TYPE_LABELS[co.out_type] ?? co.out_type })}
+                    className="mt-2 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                    <Ban className="h-3.5 w-3.5" />Void
+                  </button>
                 </div>
               ))}
             </div>
@@ -1340,6 +1486,7 @@ export default function JournalPage() {
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Terminal</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-28">Branch</th>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-32">By</th>
+                  <th className="text-center px-2 py-1.5 font-medium text-gray-600 w-16">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1364,6 +1511,12 @@ export default function JournalPage() {
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.terminal_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.branch_name ?? '—'}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-600">{t.created_by_name ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={() => setVoidTarget({ kind: 'transfer', id: t.transfer_id, label: t.transfer_type })}
+                        title="Void" className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                        <Ban className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1394,6 +1547,10 @@ export default function JournalPage() {
                     {t.created_by_name && <span>By {t.created_by_name}</span>}
                   </div>
                   {t.notes && <p className="mt-0.5 text-xs text-gray-400 truncate">{t.notes}</p>}
+                  <button onClick={() => setVoidTarget({ kind: 'transfer', id: t.transfer_id, label: t.transfer_type })}
+                    className="mt-2 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                    <Ban className="h-3.5 w-3.5" />Void
+                  </button>
                 </div>
               ))}
             </div>
@@ -1535,6 +1692,34 @@ export default function JournalPage() {
             );
           })() : null}
         </Modal>
+      )}
+
+      {/* New Cash Out — session picker, then the same modal the POS terminal uses */}
+      {showNewCashOut && (
+        pickedSession ? (
+          <CashOutModal session={pickedSession} methods={journalPayMethods} onClose={closeNewCashOut} />
+        ) : (
+          <SessionPickerModal title="Select POS Session — New Cash Out"
+            sessions={openSessions} loading={sessionsLoading}
+            onPick={setPickedSession} onClose={() => setShowNewCashOut(false)} />
+        )
+      )}
+
+      {/* New Transfer — same pattern */}
+      {showNewTransfer && (
+        pickedSession ? (
+          <TransferModal session={pickedSession} methods={journalPayMethods} onClose={closeNewTransfer} />
+        ) : (
+          <SessionPickerModal title="Select POS Session — New Transfer"
+            sessions={openSessions} loading={sessionsLoading}
+            onPick={setPickedSession} onClose={() => setShowNewTransfer(false)} />
+        )
+      )}
+
+      {/* Void confirmation */}
+      {voidTarget && (
+        <VoidPromptModal target={voidTarget} onClose={() => setVoidTarget(null)}
+          onVoided={() => qc.invalidateQueries({ queryKey: voidedQueryKey[voidTarget.kind] })} />
       )}
     </div>
   );

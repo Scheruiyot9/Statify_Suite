@@ -17,5 +17,6 @@ r.post('/reconcile',        requireFinance, requireRole('company_admin','account
 r.post('/daily-summaries',  requireFinance, requireRole('company_admin'),                               ctrl.postDailySummary);
 r.get('/entries',           requireFinance, requireRole('company_admin','accountant','branch_manager'), ctrl.listEntries);
 r.get('/entries/:id',       requireFinance, requireRole('company_admin','accountant','branch_manager'), ctrl.getEntry);
+r.post('/entries/:id/void', requireFinance, requireRole('company_admin','accountant'),                  ctrl.voidEntry);
 
 module.exports = r;

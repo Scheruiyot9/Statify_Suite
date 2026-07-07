@@ -1231,6 +1231,51 @@ async function voidJournalEntry(companyId, jeId, userId, reason) {
   });
 }
 
+// ── Void a Posted Entry — Sales Entries tab dispatcher ─────────────────────────
+// Only MANUAL and cash_out are safe to void generically: both are pure ledger
+// postings with no other authoritative record to keep in sync. SALE/summary
+// entries need their own dedicated void flow (inventory + sales status), and
+// AR_SETTLEMENT/CREDIT_PAYMENT would need FIFO-style payment_status recomputation
+// that doesn't exist yet — voiding those here would silently desync data.
+async function voidPostedEntry(companyId, jeId, userId, reason) {
+  const { rows: [je] } = await query(
+    `SELECT source_type, status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2`,
+    [jeId, companyId]
+  );
+  if (!je) throw AppError.notFound('Journal entry');
+  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+
+  if (je.source_type === 'MANUAL') {
+    const { rows: [j] } = await query(
+      `SELECT journal_id FROM journals WHERE ledger_entry_id = $1 AND company_id = $2`,
+      [jeId, companyId]
+    );
+    if (!j) throw AppError.badRequest('Underlying journal record not found');
+    const journalsSvc = require('../journals/journals.service');
+    return journalsSvc.voidJournal(companyId, j.journal_id, userId, reason);
+  }
+
+  if (je.source_type === 'cash_out') {
+    const { rows: [co] } = await query(
+      `SELECT cash_out_id FROM session_cash_outs WHERE journal_entry_id = $1 AND company_id = $2`,
+      [jeId, companyId]
+    );
+    if (!co) throw AppError.badRequest('Underlying cash out record not found');
+    const posSvc = require('../pos/pos.service');
+    return posSvc.voidCashOut(companyId, co.cash_out_id, userId, reason);
+  }
+
+  if (je.source_type === 'AR_SETTLEMENT') {
+    return voidArSettlement(companyId, jeId, userId, reason);
+  }
+
+  if (je.source_type === 'CREDIT_PAYMENT') {
+    return voidCreditPayment(companyId, jeId, userId, reason);
+  }
+
+  throw AppError.badRequest('This entry type must be voided from its original page.');
+}
+
 // ── Bulk Opening Balance Entry ─────────────────────────────────────────────────
 async function postBulkOpeningBalance(companyId, userId, entries) {
   if (!entries?.length) throw AppError.badRequest('At least one entry required');
@@ -1362,6 +1407,120 @@ async function postArSettlementEntry(companyId, userId, { transactionId, amount,
 
     return journalEntryId;
   });
+}
+
+// ── Void: AR Settlement ────────────────────────────────────────────────────────
+// Unlike CREDIT_PAYMENT (which can FIFO-apply across many transactions with no
+// record of which ones it touched), an AR settlement is tied to exactly one
+// transactionId — so after reversing the ledger, we can safely recompute the
+// true outstanding balance for that transaction and derive payment_status from
+// it, using the identical query postArSettlementEntry already trusts.
+async function voidArSettlement(companyId, jeId, userId, reason) {
+  const { rows: [je] } = await query(
+    `SELECT source_id, status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'AR_SETTLEMENT'`,
+    [jeId, companyId]
+  );
+  if (!je) throw AppError.notFound('AR settlement entry');
+  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+  const transactionId = je.source_id;
+
+  const { rows: [line] } = await query(
+    `SELECT lel.credit::numeric AS amount FROM ledger_entry_lines lel
+     JOIN accounts a ON a.account_id = lel.account_id
+     WHERE lel.journal_entry_id = $1 AND a.account_code = '1100'`,
+    [jeId]
+  );
+  const amt = parseFloat(line?.amount || 0);
+
+  const { rows: [st] } = await query(
+    `SELECT customer_id, total_amount::numeric FROM sales_transactions WHERE transaction_id = $1`,
+    [transactionId]
+  );
+
+  // Reuse the existing generic reversal — same reversal every other void uses.
+  await voidJournalEntry(companyId, jeId, userId, reason);
+
+  if (st?.customer_id && amt > 0.005) {
+    await query(
+      `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
+      [st.customer_id, amt]
+    );
+  }
+
+  // Recompute outstanding now that this settlement's ledger lines are excluded
+  // (voidJournalEntry marked them status='void', so the 'posted' filter drops them).
+  const { rows: [bal] } = await query(`
+    SELECT COALESCE(SUM(lel.debit)  FILTER (WHERE je.source_type = 'SALE'),          0)
+         - COALESCE(SUM(lel.credit) FILTER (WHERE je.source_type = 'AR_SETTLEMENT'), 0) AS outstanding
+    FROM ledger_entry_lines lel
+    JOIN journal_entries je ON je.journal_entry_id = lel.journal_entry_id
+    JOIN accounts a ON a.account_id = lel.account_id
+    WHERE je.company_id = $1 AND je.status = 'posted' AND je.source_id = $2 AND a.account_code = '1100'
+  `, [companyId, transactionId]);
+  const outstanding = parseFloat(bal?.outstanding || 0);
+  const totalAmount = parseFloat(st?.total_amount || 0);
+  const newStatus = outstanding <= 0.005 ? 'paid' : (outstanding >= totalAmount - 0.005 ? 'unpaid' : 'partial');
+
+  await query(
+    `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
+    [transactionId, newStatus]
+  );
+
+  return { voided: true };
+}
+
+// ── Void: Credit Payment ────────────────────────────────────────────────────────
+// A credit payment can FIFO-cover several invoices at once, so — unlike
+// AR_SETTLEMENT — we can't safely recompute each invoice's status from the
+// ledger alone. Instead we restore exactly what credit_payment_applications
+// recorded at the time this payment was made (see customers.service.js
+// recordCreditPayment), then drop those rows since they no longer apply.
+async function voidCreditPayment(companyId, jeId, userId, reason) {
+  const { rows: [je] } = await query(
+    `SELECT status FROM journal_entries WHERE journal_entry_id = $1 AND company_id = $2 AND source_type = 'CREDIT_PAYMENT'`,
+    [jeId, companyId]
+  );
+  if (!je) throw AppError.notFound('Credit payment entry');
+  if (je.status === 'void') throw AppError.conflict('Entry is already voided');
+
+  const { rows: [line] } = await query(
+    `SELECT lel.credit::numeric AS amount, lel.entity_id AS customer_id FROM ledger_entry_lines lel
+     JOIN accounts a ON a.account_id = lel.account_id
+     WHERE lel.journal_entry_id = $1 AND a.account_code = '1100' AND lel.entity_type = 'customer'`,
+    [jeId]
+  );
+  const amt        = parseFloat(line?.amount || 0);
+  const customerId = line?.customer_id || null;
+
+  const { rows: applications } = await query(
+    `SELECT transaction_id, previous_status FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`,
+    [jeId, companyId]
+  );
+
+  // Reuse the existing generic reversal — same reversal every other void uses.
+  await voidJournalEntry(companyId, jeId, userId, reason);
+
+  if (customerId && amt > 0.005) {
+    await query(
+      `UPDATE customers SET credit_balance = credit_balance + $2, updated_at = now() WHERE customer_id = $1`,
+      [customerId, amt]
+    );
+  }
+
+  for (const a of applications) {
+    await query(
+      `UPDATE sales_transactions SET payment_status = $2, updated_at = now() WHERE transaction_id = $1`,
+      [a.transaction_id, a.previous_status]
+    );
+  }
+  await query(`DELETE FROM credit_payment_applications WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+
+  // The topup row (POS session cash reconciliation feed) no longer represents
+  // real cash received — drop it so a closed/closing session doesn't still
+  // count it, same fix as voided cash-outs/transfers.
+  await query(`DELETE FROM customer_topups WHERE journal_entry_id = $1 AND company_id = $2`, [jeId, companyId]);
+
+  return { voided: true };
 }
 
 // ── AR Aging ───────────────────────────────────────────────────────────────────
@@ -1511,6 +1670,8 @@ async function listJournalEntries(companyId, { startDate, endDate, sourceType, e
   if (sourceType)        { vals.push(sourceType);        conds.push(`je.source_type = $${vals.length}`);  }
   if (excludeSourceType) { vals.push(excludeSourceType); conds.push(`je.source_type <> $${vals.length}`); }
   if (status)            { vals.push(status);            conds.push(`je.status = $${vals.length}`);        }
+  else                   { conds.push(`je.status <> 'void'`); } // a voided entry and its reversal are noise once undone
+  if (sourceType !== 'VOID') conds.push(`je.source_type <> 'VOID'`); // hide the reversal entries themselves
 
   vals.push(lm, (pg - 1) * lm);
 
@@ -1626,7 +1787,7 @@ async function postCreditReceiptEntry(client, companyId, { customerId, customerN
     }
     if (!drAccId) return;
 
-    await _post(client, companyId, {
+    return await _post(client, companyId, {
       entryDate:   todayLocal(),
       description: `Credit receipt — ${customerName}`,
       sourceType:  'CREDIT_PAYMENT',
@@ -1653,7 +1814,7 @@ module.exports = {
   postDirectExpenseEntry, postVoidDirectExpenseEntry,
   postReturnEntry, postOpeningBalanceEntry,
   postBulkOpeningBalance, postArSettlementEntry,
-  postManualEntry, bulkImportEntries, voidJournalEntry,
+  postManualEntry, bulkImportEntries, voidJournalEntry, voidPostedEntry,
   getArAging, getUnreconciledLines, reconcileLines,
   listJournalEntries, getJournalEntry,
 };

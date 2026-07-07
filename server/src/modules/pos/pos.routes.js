@@ -40,9 +40,14 @@ router.get('/sessions/:id/transfers',    requireRole('cashier'),        controll
 // ── Company-wide listings ─────────────────────────────────────────────────────
 router.get('/cash-outs',                 requireRole('branch_manager'), controller.allCashOuts);
 router.get('/transfers',                 requireRole('branch_manager'), controller.allTransfers);
+router.post('/cash-outs/:id/void',       requireRole('company_admin','accountant','branch_manager'), controller.voidCashOut);
+router.post('/transfers/:id/void',       requireRole('company_admin','accountant','branch_manager'), controller.voidTransfer);
 
 // ── Sessions — branch manager level ──────────────────────────────────────────
 router.get('/sessions',                  requireRole('branch_manager'), controller.listSessions);
+// Same listing, reachable by the Journal/Finance page's session picker — accountant
+// ranks below branch_manager in the role hierarchy so needs its own explicit route.
+router.get('/sessions/open',             requireRole('company_admin','accountant','branch_manager'), controller.listSessions);
 router.get('/sessions/:id/detail',       requireRole('branch_manager'), controller.sessionDetail);
 router.patch('/sessions/:id/force-close',requireRole('branch_manager'), controller.forceCloseSession);
 router.patch('/sessions/:id/correct',    requireRole('company_admin'),  controller.correctSession);

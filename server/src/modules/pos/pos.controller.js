@@ -162,6 +162,11 @@ const allCashOuts = async (req, res) => {
   res.json({ success: true, data: result });
 };
 
+const voidCashOut = async (req, res) => {
+  const result = await svc.voidCashOut(req.tenantId, req.params.id, req.user.userId, req.body?.reason);
+  res.json({ success: true, data: result });
+};
+
 // ── Pay Mode Transfers ────────────────────────────────────────────────────────
 
 const allTransfers = async (req, res) => {
@@ -181,6 +186,11 @@ const createTransfer = async (req, res) => {
 
 const listTransfers = async (req, res) => {
   const result = await svc.listTransfers(req.tenantId, req.params.id);
+  res.json({ success: true, data: result });
+};
+
+const voidTransfer = async (req, res) => {
+  const result = await svc.voidTransfer(req.tenantId, req.params.id, req.user.userId, req.body?.reason);
   res.json({ success: true, data: result });
 };
 
@@ -209,7 +219,7 @@ module.exports = {
   terminals, allTerminals, createTerminal, updateTerminal, deleteTerminal,
   activeSession, openSession, sessionSummary, closeSession,
   listSessions, sessionDetail, forceCloseSession, correctSession,
-  cashOut, cashOuts, allCashOuts, expenseAccounts,
-  createTransfer, listTransfers, allTransfers,
+  cashOut, cashOuts, allCashOuts, expenseAccounts, voidCashOut,
+  createTransfer, listTransfers, allTransfers, voidTransfer,
   createHold, listHolds, deleteHold,
 };
