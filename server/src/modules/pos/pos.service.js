@@ -1032,7 +1032,7 @@ async function listTransfers(companyId, sessionId) {
 
 // ── Shift Correction (company_admin only) ─────────────────────────────────────
 
-async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason, workDate }) {
+async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason, workDate, openingPayModeAmounts = [] }) {
   if (!correctionReason?.trim()) throw AppError.badRequest('Correction reason is required');
 
   const { rows: [sess] } = await query(
@@ -1045,11 +1045,12 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
   );
   if (!sess) throw AppError.notFound('Session');
 
-  const hasOpening = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
-  const hasClosing = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
+  const hasOpening  = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
+  const hasClosing  = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
   const hasWorkDate = !!workDate;
+  const hasPayModes = openingPayModeAmounts.length > 0;
 
-  if (!hasOpening && !hasClosing && !hasWorkDate) throw AppError.badRequest('Provide at least one value to correct');
+  if (!hasOpening && !hasClosing && !hasWorkDate && !hasPayModes) throw AppError.badRequest('Provide at least one value to correct');
   if (hasClosing && sess.status === 'open')
     throw AppError.badRequest('Closing balance can only be corrected on a closed shift');
 
@@ -1106,6 +1107,17 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
   `, qb.params);
 
   const r = rows[0];
+
+  // Upsert per-method opening amounts (non-Cash methods)
+  for (const pm of openingPayModeAmounts) {
+    if (!pm.paymentMethodId) continue;
+    await query(`
+      INSERT INTO session_pay_mode_amounts (session_id, payment_method_id, count_type, amount)
+      VALUES ($1, $2, 'opening', $3)
+      ON CONFLICT (session_id, payment_method_id, count_type) DO UPDATE SET amount = EXCLUDED.amount
+    `, [sessionId, pm.paymentMethodId, parseFloat(pm.amount) || 0]);
+  }
+
   return {
     ...r,
     opening_cash_amount:  parseFloat(r.opening_cash_amount  ?? 0),
