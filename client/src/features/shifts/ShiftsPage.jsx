@@ -55,6 +55,18 @@ export function ShiftDetail({ sessionId }) {
   const showOpenCol   = payModeOpen.length > 0 || (data.opening_cash_amount ?? 0) > 0;
   const showReconCols = data.status !== 'open';
 
+  // Total variance across every payment mode, not just cash — a non-cash method
+  // (e.g. M-Pesa Till) can be short/over just like the drawer, and that shouldn't
+  // be invisible at the top-level KPI. Only counts methods that were actually
+  // closed out (closingAmt !== null); uncounted methods don't contribute.
+  const nonCashVariance = (data.payment_breakdown ?? [])
+    .filter((p) => p.method_name !== 'Cash')
+    .reduce((sum, p) => {
+      const closingAmt = payModeClose.find((a) => a.method_name === p.method_name)?.amount ?? null;
+      return closingAmt !== null ? sum + (closingAmt - p.total) : sum;
+    }, 0);
+  const totalVariance = (data.cash_variance ?? 0) + nonCashVariance;
+
   return (
     <div className="space-y-5">
       {/* Header info */}
@@ -72,13 +84,13 @@ export function ShiftDetail({ sessionId }) {
         <StatCard label="Transactions" value={data.txn_count}                   color="primary" />
         <StatCard label="Total Sales"  value={formatCurrency(data.total_sales)} color="green" />
         {data.status !== 'open' && (() => {
-          const v = data.cash_variance ?? 0;
+          const v = totalVariance;
           return (
             <StatCard
-              label="Cash Variance"
+              label="Total Variance"
               value={formatCurrency(Math.abs(v))}
               color={Math.abs(v) < 0.5 ? 'green' : v > 0 ? 'blue' : 'red'}
-              sub={v > 0 ? 'Cash Over' : v < 0 ? 'Cash Short' : 'Cash Balanced'}
+              sub={v > 0 ? 'Over' : v < 0 ? 'Short' : 'Balanced'}
             />
           );
         })()}
