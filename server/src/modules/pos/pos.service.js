@@ -612,7 +612,21 @@ async function listSessions(companyId, { branchId, status, cashierId, startDate,
              (SELECT COUNT(*)::int FROM sales_transactions st
               WHERE st.pos_session_id = ps.session_id AND st.status = 'completed') AS txn_count,
              (SELECT COALESCE(SUM(total_amount), 0)::numeric FROM sales_transactions st
-              WHERE st.pos_session_id = ps.session_id AND st.status = 'completed') AS total_sales
+              WHERE st.pos_session_id = ps.session_id AND st.status = 'completed') AS total_sales,
+             -- Non-cash payment modes have their own closing-count variance, same as the
+             -- cash drawer — only counted once a closing amount was actually recorded.
+             (SELECT COALESCE(SUM(spa.amount - COALESCE(pm_sales.total, 0)), 0)::numeric
+              FROM session_pay_mode_amounts spa
+              JOIN payment_methods pmm ON pmm.payment_method_id = spa.payment_method_id AND pmm.method_name <> 'Cash'
+              LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(tp.amount_applied), 0) AS total
+                FROM transaction_payments tp
+                JOIN sales_transactions st2 ON st2.transaction_id = tp.transaction_id
+                WHERE tp.payment_method_id = spa.payment_method_id
+                  AND st2.pos_session_id = ps.session_id AND st2.status = 'completed'
+              ) pm_sales ON true
+              WHERE spa.session_id = ps.session_id AND spa.count_type = 'closing'
+             ) AS non_cash_variance
       FROM pos_sessions ps
       JOIN pos_terminals pt ON pt.terminal_id = ps.terminal_id
       JOIN branches b ON b.branch_id = ps.branch_id
@@ -635,6 +649,7 @@ async function listSessions(companyId, { branchId, status, cashierId, startDate,
       expected_cash_amount: parseFloat(r.expected_cash_amount ?? 0),
       cash_variance:        parseFloat(r.cash_variance        ?? 0),
       total_sales:          parseFloat(r.total_sales          ?? 0),
+      total_variance:       parseFloat(r.cash_variance ?? 0) + parseFloat(r.non_cash_variance ?? 0),
     })),
     total: countRes.rows[0].total,
     page:  parseInt(page),

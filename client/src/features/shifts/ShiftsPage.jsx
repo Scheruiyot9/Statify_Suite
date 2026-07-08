@@ -698,7 +698,7 @@ export default function ShiftsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sessions.map((s) => {
-                    const variance = s.cash_variance ?? 0;
+                    const variance = s.total_variance ?? s.cash_variance ?? 0;
                     return (
                       <tr
                         key={s.session_id}
@@ -750,7 +750,7 @@ export default function ShiftsPage() {
             {/* Mobile cards */}
             <div className="sm:hidden space-y-2 p-3">
               {sessions.map((s) => {
-                const variance = s.cash_variance ?? 0;
+                const variance = s.total_variance ?? s.cash_variance ?? 0;
                 return (
                   <div key={s.session_id}
                     onClick={() => navigate(`/app/shifts/${s.session_id}`)}
