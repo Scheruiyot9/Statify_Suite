@@ -306,7 +306,8 @@ export default function SuppliersPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {suppliers.map((s) => (
-                <tr key={s.supplier_id} className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
+                <tr key={s.supplier_id} onClick={() => navigate(`/app/suppliers/${s.supplier_id}/ledger`)}
+                  className={`cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900">{s.supplier_name}</p>
                     {s.tax_pin && <p className="text-xs text-gray-400">PIN: {s.tax_pin}</p>}
@@ -323,13 +324,13 @@ export default function SuppliersPage() {
                       {formatCurrency(s.current_balance)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setEditTarget(s)}
                       className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
                       Edit
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => navigate(`/app/suppliers/${s.supplier_id}/ledger`)}
                       className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
                       Entries
@@ -344,8 +345,8 @@ export default function SuppliersPage() {
           {/* Mobile cards */}
           <div className="sm:hidden space-y-2 p-3">
             {suppliers.map((s) => (
-              <div key={s.supplier_id}
-                className={`rounded-xl border border-gray-100 bg-white p-3 transition-colors ${!s.is_active ? 'opacity-50' : ''}`}>
+              <div key={s.supplier_id} onClick={() => navigate(`/app/suppliers/${s.supplier_id}/ledger`)}
+                className={`rounded-xl border border-gray-100 bg-white p-3 transition-colors cursor-pointer active:bg-gray-50 ${!s.is_active ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 truncate">{s.supplier_name}</p>
@@ -361,7 +362,7 @@ export default function SuppliersPage() {
                   {s.email && <span className="text-gray-400">{s.email}</span>}
                   <span>{s.payment_terms} days</span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setEditTarget(s)}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
                     Edit

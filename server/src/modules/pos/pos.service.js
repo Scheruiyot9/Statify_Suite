@@ -695,7 +695,7 @@ async function getSessionDetail(companyId, sessionId) {
   let payModeRows = [];
   try {
     const payModeRes = await query(`
-      SELECT spa.count_type, spa.amount::numeric,
+      SELECT spa.payment_method_id, spa.count_type, spa.amount::numeric,
              pm.method_name
       FROM session_pay_mode_amounts spa
       JOIN payment_methods pm ON pm.payment_method_id = spa.payment_method_id
@@ -740,9 +740,10 @@ async function getSessionDetail(companyId, sessionId) {
       total:             parseFloat(r.total),
     })),
     pay_mode_amounts: payModeRows.map((r) => ({
-      method_name: r.method_name,
-      count_type:  r.count_type,
-      amount:      parseFloat(r.amount),
+      payment_method_id: r.payment_method_id,
+      method_name:       r.method_name,
+      count_type:        r.count_type,
+      amount:            parseFloat(r.amount),
     })),
   };
 }
@@ -1032,7 +1033,7 @@ async function listTransfers(companyId, sessionId) {
 
 // ── Shift Correction (company_admin only) ─────────────────────────────────────
 
-async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason, workDate, openingPayModeAmounts = [] }) {
+async function correctSession(companyId, sessionId, userId, { openingCashAmount, closingCashCounted, correctionReason, workDate, openingPayModeAmounts = [], closingPayModeAmounts = [] }) {
   if (!correctionReason?.trim()) throw AppError.badRequest('Correction reason is required');
 
   const { rows: [sess] } = await query(
@@ -1045,13 +1046,15 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
   );
   if (!sess) throw AppError.notFound('Session');
 
-  const hasOpening  = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
-  const hasClosing  = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
-  const hasWorkDate = !!workDate;
-  const hasPayModes = openingPayModeAmounts.length > 0;
+  const hasOpening         = openingCashAmount !== undefined && openingCashAmount !== null && openingCashAmount !== '';
+  const hasClosing         = closingCashCounted !== undefined && closingCashCounted !== null && closingCashCounted !== '';
+  const hasWorkDate        = !!workDate;
+  const hasOpeningPayModes = openingPayModeAmounts.length > 0;
+  const hasClosingPayModes = closingPayModeAmounts.length > 0;
 
-  if (!hasOpening && !hasClosing && !hasWorkDate && !hasPayModes) throw AppError.badRequest('Provide at least one value to correct');
-  if (hasClosing && sess.status === 'open')
+  if (!hasOpening && !hasClosing && !hasWorkDate && !hasOpeningPayModes && !hasClosingPayModes)
+    throw AppError.badRequest('Provide at least one value to correct');
+  if ((hasClosing || hasClosingPayModes) && sess.status === 'open')
     throw AppError.badRequest('Closing balance can only be corrected on a closed shift');
 
   const newOpening = hasOpening ? parseFloat(openingCashAmount) : null;
@@ -1114,6 +1117,16 @@ async function correctSession(companyId, sessionId, userId, { openingCashAmount,
     await query(`
       INSERT INTO session_pay_mode_amounts (session_id, payment_method_id, count_type, amount)
       VALUES ($1, $2, 'opening', $3)
+      ON CONFLICT (session_id, payment_method_id, count_type) DO UPDATE SET amount = EXCLUDED.amount
+    `, [sessionId, pm.paymentMethodId, parseFloat(pm.amount) || 0]);
+  }
+
+  // Upsert per-method closing amounts (non-Cash methods)
+  for (const pm of closingPayModeAmounts) {
+    if (!pm.paymentMethodId) continue;
+    await query(`
+      INSERT INTO session_pay_mode_amounts (session_id, payment_method_id, count_type, amount)
+      VALUES ($1, $2, 'closing', $3)
       ON CONFLICT (session_id, payment_method_id, count_type) DO UPDATE SET amount = EXCLUDED.amount
     `, [sessionId, pm.paymentMethodId, parseFloat(pm.amount) || 0]);
   }

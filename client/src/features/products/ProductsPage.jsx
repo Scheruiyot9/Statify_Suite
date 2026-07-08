@@ -715,7 +715,9 @@ export default function ProductsPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {products.map((p) => (
-                <tr key={p.product_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <tr key={p.product_id}
+                  onClick={() => canManageProducts ? setViewProduct(p) : setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
+                  className="cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       {p.image_url ? (
@@ -743,7 +745,7 @@ export default function ProductsPage() {
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
                       <button onClick={() => setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
                         className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
@@ -766,7 +768,9 @@ export default function ProductsPage() {
           {/* Mobile cards */}
           <div className="sm:hidden space-y-2 p-3">
             {products.map((p) => (
-              <div key={p.product_id} className="rounded-xl border border-gray-100 bg-white p-3">
+              <div key={p.product_id}
+                onClick={() => canManageProducts ? setViewProduct(p) : setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
+                className="rounded-xl border border-gray-100 bg-white p-3 cursor-pointer active:bg-gray-50">
                 <div className="flex items-start gap-2">
                   {p.image_url ? (
                     <img src={p.image_url} alt={p.product_name}
@@ -792,7 +796,7 @@ export default function ProductsPage() {
                         {p.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    <div className="mt-2 flex items-center gap-1.5">
+                    <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setLedgerProduct({ product_id: p.product_id, product_name: p.product_name })}
                         className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
                         <BookOpen className="h-3 w-3" />Ledger

@@ -232,9 +232,9 @@ function BarChart({ data, height = 130 }) {
 // ── Tab: Sales Summary ────────────────────────────────────────────────────────
 
 function SalesTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
-  const [startDate,  setStart]    = useState(toISO(new Date(Date.now() - 29 * 86400000)));
+  const [startDate,  setStart]    = useState(today);
   const [endDate,    setEnd]      = useState(today);
-  const [preset,     setPreset]   = useState('Last 30d');
+  const [preset,     setPreset]   = useState('Today');
   const [sessionId,  setSessionId] = useState('');
 
   const userRole = useAuthStore((s) => s.user?.role);
@@ -446,9 +446,9 @@ function PLRow({ label, value, bold, indent, positive, negative, separator }) {
 }
 
 function PLTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
-  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
+  const [startDate, setStart] = useState(today);
   const [endDate,   setEnd]   = useState(today);
-  const [preset,    setPreset] = useState('Last 30d');
+  const [preset,    setPreset] = useState('Today');
 
   const applyPreset = (p) => {
     const end = new Date(); const start = new Date();
@@ -918,9 +918,9 @@ function BalanceSheetTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, co
 // ── Tab: Cash Flow ────────────────────────────────────────────────────────────
 
 function CashFlowTab({ isSuperAdmin, filterCompanyId, setFilterCompanyId, companies = [] }) {
-  const [startDate, setStart] = useState(toISO(new Date(Date.now() - 29 * 86400000)));
+  const [startDate, setStart] = useState(today);
   const [endDate,   setEnd]   = useState(today);
-  const [preset,    setPreset] = useState('Last 30d');
+  const [preset,    setPreset] = useState('Today');
 
   const applyPreset = (p) => {
     const end = new Date(); const start = new Date();

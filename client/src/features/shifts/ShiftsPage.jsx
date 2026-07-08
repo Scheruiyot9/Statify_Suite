@@ -372,20 +372,45 @@ function StatCard({ label, value, color, sub }) {
 function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
   const isOpen    = session.status === 'open';
   const breakdown = session.payment_breakdown ?? [];
+  const payModeOpen  = (session.pay_mode_amounts ?? []).filter((a) => a.count_type === 'opening');
+  const payModeClose = (session.pay_mode_amounts ?? []).filter((a) => a.count_type === 'closing');
   const qc        = useQueryClient();
 
-  // Opening amounts keyed by payment_method_id.
-  // Cash reads from session.opening_cash_amount; other methods from pay_mode_amounts.
+  // Editable non-cash methods: union of methods with completed sales this shift
+  // and methods with a recorded opening/closing float — a method with float but
+  // no sales yet (e.g. a freshly opened shift) must still be correctable.
+  const nonCashMethods = (() => {
+    const map = new Map();
+    breakdown.forEach((pm) => {
+      if (pm.method_name !== 'Cash') map.set(pm.payment_method_id, pm.method_name);
+    });
+    [...payModeOpen, ...payModeClose].forEach((pm) => {
+      if (pm.method_name !== 'Cash' && pm.payment_method_id && !map.has(pm.payment_method_id)) {
+        map.set(pm.payment_method_id, pm.method_name);
+      }
+    });
+    return Array.from(map, ([payment_method_id, method_name]) => ({ payment_method_id, method_name }));
+  })();
+
+  // Cash is always editable — it's tracked on the session row itself, not derived from sales.
+  const [cashOpening, setCashOpening] = useState(String(session.opening_cash_amount ?? ''));
+
+  // Non-cash opening amounts keyed by payment_method_id.
   const [openings, setOpenings] = useState(() => {
     const result = {};
-    breakdown.forEach((pm) => {
-      if (pm.method_name === 'Cash') {
-        result[pm.payment_method_id] = String(session.opening_cash_amount ?? '');
-      } else {
-        const existing = (session.pay_mode_amounts ?? [])
-          .find((a) => a.method_name === pm.method_name && a.count_type === 'opening');
-        result[pm.payment_method_id] = String(existing?.amount ?? '');
-      }
+    nonCashMethods.forEach((pm) => {
+      const existing = payModeOpen.find((a) => a.payment_method_id === pm.payment_method_id);
+      result[pm.payment_method_id] = String(existing?.amount ?? '');
+    });
+    return result;
+  });
+
+  // Non-cash closing amounts keyed by payment_method_id (only relevant on closed shifts).
+  const [closings, setClosings] = useState(() => {
+    const result = {};
+    nonCashMethods.forEach((pm) => {
+      const existing = payModeClose.find((a) => a.payment_method_id === pm.payment_method_id);
+      result[pm.payment_method_id] = String(existing?.amount ?? '');
     });
     return result;
   });
@@ -411,18 +436,25 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
     const body = { correctionReason: reason };
 
     // Cash opening (stored on pos_sessions.opening_cash_amount)
-    const cashMethod = breakdown.find((p) => p.method_name === 'Cash');
-    if (cashMethod && openings[cashMethod.payment_method_id] !== '') {
-      body.openingCashAmount = parseFloat(openings[cashMethod.payment_method_id]) || 0;
+    if (cashOpening !== '') {
+      body.openingCashAmount = parseFloat(cashOpening) || 0;
     }
 
     // Non-cash openings (stored in session_pay_mode_amounts)
-    const nonCash = breakdown
-      .filter((p) => p.method_name !== 'Cash' && openings[p.payment_method_id] !== '')
+    const nonCash = nonCashMethods
+      .filter((p) => openings[p.payment_method_id] !== '')
       .map((p) => ({ paymentMethodId: p.payment_method_id, amount: parseFloat(openings[p.payment_method_id]) || 0 }));
     if (nonCash.length) body.openingPayModeAmounts = nonCash;
 
     if (!isOpen && closing !== '') body.closingCashCounted = parseFloat(closing) || 0;
+
+    // Non-cash closings (stored in session_pay_mode_amounts) — only on closed shifts
+    if (!isOpen) {
+      const nonCashClosing = nonCashMethods
+        .filter((p) => closings[p.payment_method_id] !== '')
+        .map((p) => ({ paymentMethodId: p.payment_method_id, amount: parseFloat(closings[p.payment_method_id]) || 0 }));
+      if (nonCashClosing.length) body.closingPayModeAmounts = nonCashClosing;
+    }
 
     const originalDate = session.session_start ? session.session_start.slice(0, 10) : '';
     if (workDate && workDate !== originalDate) body.workDate = workDate;
@@ -448,35 +480,60 @@ function CorrectSessionModal({ sessionId, session, onClose, onSaved }) {
         <p className="mt-0.5 text-xs text-gray-400">Change only if the shift was opened on the wrong calendar date.</p>
       </div>
 
-      {breakdown.length > 0 && (
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2">Opening Float by Method</label>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600 w-24 flex-shrink-0 truncate">Cash</span>
+            <input
+              type="number" step="0.01" min="0"
+              value={cashOpening}
+              onChange={(e) => setCashOpening(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+            />
+          </div>
+          {nonCashMethods.map((pm) => (
+            <div key={pm.payment_method_id} className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 w-24 flex-shrink-0 truncate">{pm.method_name}</span>
+              <input
+                type="number" step="0.01" min="0"
+                value={openings[pm.payment_method_id] ?? ''}
+                onChange={(e) =>
+                  setOpenings((prev) => ({ ...prev, [pm.payment_method_id]: e.target.value }))
+                }
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {!isOpen && (
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-2">Opening Float by Method</label>
+          <label className="block text-xs font-medium text-gray-700 mb-2">Closing Count by Method</label>
           <div className="space-y-2">
-            {breakdown.map((pm) => (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 w-24 flex-shrink-0 truncate">Cash</span>
+              <input
+                type="number" step="0.01" min="0"
+                value={closing} onChange={(e) => setClosing(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              />
+            </div>
+            {nonCashMethods.map((pm) => (
               <div key={pm.payment_method_id} className="flex items-center gap-3">
                 <span className="text-sm text-gray-600 w-24 flex-shrink-0 truncate">{pm.method_name}</span>
                 <input
                   type="number" step="0.01" min="0"
-                  value={openings[pm.payment_method_id] ?? ''}
+                  value={closings[pm.payment_method_id] ?? ''}
                   onChange={(e) =>
-                    setOpenings((prev) => ({ ...prev, [pm.payment_method_id]: e.target.value }))
+                    setClosings((prev) => ({ ...prev, [pm.payment_method_id]: e.target.value }))
                   }
                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
                 />
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {!isOpen && (
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Closing Count (Cash)</label>
-          <input
-            type="number" step="0.01" min="0"
-            value={closing} onChange={(e) => setClosing(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-          />
         </div>
       )}
 

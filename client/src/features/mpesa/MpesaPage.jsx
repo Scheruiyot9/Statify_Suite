@@ -321,7 +321,8 @@ export default function MpesaPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {configs.map((cfg) => (
-                  <tr key={cfg.config_id} className="hover:bg-gray-50 active:bg-gray-100">
+                  <tr key={cfg.config_id} onClick={() => { setEditConfig(cfg); setShowConfig(true); }}
+                    className="cursor-pointer hover:bg-gray-50 active:bg-gray-100">
                     <td className="px-4 py-2.5 font-medium text-gray-800">
                       {cfg.branch_name ?? <span className="text-gray-400 italic">Company-wide</span>}
                     </td>
@@ -343,7 +344,7 @@ export default function MpesaPage() {
                         {cfg.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-3">
                         <button
                           onClick={() => registerC2B(cfg.branch_id)}
@@ -369,7 +370,8 @@ export default function MpesaPage() {
             {/* Mobile cards */}
             <div className="sm:hidden divide-y divide-gray-50">
               {configs.map((cfg) => (
-                <div key={cfg.config_id} className="p-4">
+                <div key={cfg.config_id} onClick={() => { setEditConfig(cfg); setShowConfig(true); }}
+                  className="p-4 cursor-pointer active:bg-gray-50">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium text-gray-800 text-sm">
@@ -393,7 +395,7 @@ export default function MpesaPage() {
                       {cfg.environment}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-4">
+                  <div className="mt-2 flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => registerC2B(cfg.branch_id)}
                       disabled={isRegistering}
@@ -499,7 +501,8 @@ export default function MpesaPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {transactions.map((t) => (
-                <tr key={t.mpesa_txn_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <tr key={t.mpesa_txn_id} onClick={() => setSelected(t)}
+                  className="cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-4 py-3">
                     <ModeBadge mode={t.payment_mode} />
                   </td>
@@ -524,7 +527,7 @@ export default function MpesaPage() {
                   <td className="px-4 py-3 text-center">
                     <StatusBadge status={t.status} />
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setSelected(t)}
                       className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                       View

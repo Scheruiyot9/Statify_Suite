@@ -643,7 +643,8 @@ function UsersListTab({ canManageUsers }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {users.map((u) => (
-                  <tr key={u.user_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                  <tr key={u.user_id} onClick={() => canManageUsers && setFormUser(u)}
+                    className={`hover:bg-gray-50 active:bg-gray-100 transition-colors ${canManageUsers ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {u.first_name} {u.last_name}
                     </td>
@@ -699,7 +700,8 @@ function UsersListTab({ canManageUsers }) {
           {/* Mobile cards */}
           <div className="sm:hidden space-y-2 p-3">
             {users.map((u) => (
-              <div key={u.user_id} className="rounded-xl border border-gray-100 bg-white p-3">
+              <div key={u.user_id} onClick={() => canManageUsers && setFormUser(u)}
+                className={`rounded-xl border border-gray-100 bg-white p-3 ${canManageUsers ? 'cursor-pointer active:bg-gray-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 truncate">{u.first_name} {u.last_name}</p>

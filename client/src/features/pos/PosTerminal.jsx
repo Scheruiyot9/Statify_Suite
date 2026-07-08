@@ -54,7 +54,8 @@ function SessionSalesModal({ session, onClose }) {
     .reduce((s, t) => s + parseFloat(t.total_amount || 0), 0);
 
   const q = search.trim().toLowerCase();
-  const filtered = [...txns].reverse().filter((t) => {
+  // /sales/transactions already returns newest-first — no reverse needed.
+  const filtered = txns.filter((t) => {
     if (!q) return true;
     const txnNum  = (t.transaction_number || t.receipt_number || '').toLowerCase();
     const cust    = (t.customer_name || '').toLowerCase();
@@ -463,9 +464,9 @@ function ShiftSummaryModal({ session, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-lg max-h-[90vh] rounded-2xl bg-white shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 flex-shrink-0">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Shift Summary</h2>
             <p className="text-sm text-gray-500">{session.terminal_name}</p>
@@ -475,7 +476,7 @@ function ShiftSummaryModal({ session, onClose }) {
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="overflow-y-auto flex-1 p-6 space-y-5">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
           ) : isError ? (
@@ -547,7 +548,7 @@ function ShiftSummaryModal({ session, onClose }) {
           )}
         </div>
 
-        <div className="border-t border-gray-100 px-6 py-4">
+        <div className="border-t border-gray-100 px-6 py-4 flex-shrink-0">
           <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
         </div>
       </div>
@@ -618,8 +619,8 @@ export function CashOutModal({ session, methods, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+      <div className="w-full max-w-md max-h-[90vh] rounded-2xl bg-white shadow-xl flex flex-col">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-base font-bold text-gray-900">Cash Out</h2>
             <p className="text-xs text-gray-500">{session.terminal_name}</p>
@@ -627,7 +628,7 @@ export function CashOutModal({ session, methods, onClose }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
         </div>
 
-        <div className="space-y-4 p-6">
+        <div className="overflow-y-auto flex-1 space-y-4 p-6">
           {/* Type selector */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-700">Type *</label>
@@ -722,7 +723,7 @@ export function CashOutModal({ session, methods, onClose }) {
           </div>
         </div>
 
-        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4 flex-shrink-0">
           <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
           <Button fullWidth disabled={!canSubmit} loading={isPending} onClick={handleSubmit}>
             <ArrowDownLeft className="h-4 w-4 mr-1" />Record Cash Out
@@ -951,14 +952,14 @@ function CloseSessionModal({ session, onClose, onClosed }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white shadow-xl flex flex-col">
         {/* Header */}
-        <div className="border-b border-gray-100 px-6 py-4">
+        <div className="border-b border-gray-100 px-6 py-4 flex-shrink-0">
           <h2 className="text-lg font-bold text-gray-900">Close Session</h2>
           <p className="text-sm text-gray-500">{session.terminal_name}</p>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto space-y-5 p-6">
+        <div className="overflow-y-auto flex-1 space-y-5 p-6">
           {/* Summary stats */}
           {summary && (
             <div className="grid grid-cols-2 gap-3">
@@ -1206,7 +1207,7 @@ function CloseSessionModal({ session, onClose, onClosed }) {
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4 flex-shrink-0">
           <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
           <Button
             variant="danger" fullWidth loading={isPending}
@@ -1232,6 +1233,7 @@ function CloseSessionModal({ session, onClose, onClosed }) {
 
 // ── Main POS Terminal ─────────────────────────────────────────────────────────
 export default function PosTerminal() {
+  const qc            = useQueryClient();
   const branchId      = useAuthStore((s) => s.user?.branchIds?.[0]);
   const userRole      = useAuthStore((s) => s.user?.role);
   const isManager     = ['super_admin', 'company_admin', 'branch_manager'].includes(userRole);
@@ -1275,6 +1277,19 @@ export default function PosTerminal() {
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
+
+  // Header "N sales" badge — the cart store's session.txn_count/session_sales are only an
+  // optimistic local tally bumped after each checkout in this tab. Anything that changes
+  // completed-transaction totals out of band (a void/refund from Sales History, another
+  // device on the same session) never corrects them without this. Poll server truth instead.
+  const { data: headerSummary } = useQuery({
+    queryKey: ['session-summary', session?.session_id],
+    queryFn:  () => api.get(`/pos/sessions/${session.session_id}/summary`).then((r) => r.data.data),
+    enabled:  !!session?.session_id,
+    refetchInterval: 30_000,
+  });
+  const headerTxnCount = headerSummary?.txn_count   ?? session?.txn_count    ?? 0;
+  const headerSales    = headerSummary?.total_sales ?? session?.session_sales ?? 0;
   const holdsCount = holdsData.length;
   const offlineQueue = usePosDataStore((s) => s.offlineQueue);
   const markSynced   = usePosDataStore((s) => s.markSynced);
@@ -1396,15 +1411,17 @@ export default function PosTerminal() {
 
   const handlePaymentSuccess = useCallback((txn) => {
     setCheckoutOpen(false);
+    // Optimistic bump for instant feedback — corrected by the headerSummary poll/invalidation below.
     const current = useCartStore.getState().session;
     setSession({
       ...current,
       txn_count:    (current?.txn_count    || 0) + 1,
       session_sales:(current?.session_sales || 0) + (txn?.total_amount || 0),
     });
+    if (current?.session_id) qc.invalidateQueries({ queryKey: ['session-summary', current.session_id] });
     if (txn?.transaction_id) setReceiptTxnId(txn.transaction_id);
     setScanResetKey((k) => k + 1);
-  }, [setSession]);
+  }, [setSession, qc]);
 
   // Show spinner while any session fetch is in flight (covers initial load and background refetches)
   const isCheckingSession = !session && (sessionChecking || sessionFetching);
@@ -1520,10 +1537,10 @@ export default function PosTerminal() {
             title="View session transactions"
           >
             <Receipt className="h-3 w-3" />
-            <span>{session.txn_count ?? 0} sales</span>
+            <span>{headerTxnCount} sales</span>
             <span className="h-3 w-px bg-white/20" />
             <TrendingUp className="h-3 w-3 text-secondary-400" />
-            <span className="font-semibold text-secondary-300">{formatCurrency(session.session_sales ?? 0)}</span>
+            <span className="font-semibold text-secondary-300">{formatCurrency(headerSales)}</span>
           </button>
         </div>
 

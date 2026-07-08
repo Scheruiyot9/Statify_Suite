@@ -788,7 +788,7 @@ function PlansPanel() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {plans.map((p) => (
-              <tr key={p.plan_id} className="hover:bg-gray-50 transition-colors">
+              <tr key={p.plan_id} onClick={() => setSelected(p)} className="cursor-pointer hover:bg-gray-50 transition-colors">
                 <td className="px-3 py-3 font-semibold text-gray-900">{p.plan_name}</td>
                 <td className="px-3 py-3 text-gray-700">{formatCurrency(p.price)}<span className="text-xs text-gray-400">/mo</span></td>
                 <td className="px-3 py-3 text-gray-500">{p.annual_price ? formatCurrency(p.annual_price) : <span className="text-gray-300">—</span>}</td>
@@ -801,7 +801,7 @@ function PlansPanel() {
                 <td className="px-3 py-3">
                   <StatusBadge status={p.is_active ? 'active' : 'cancelled'} />
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                   <RowActions
                     onEdit={() => setSelected(p)}
                     onDelete={() => { if (window.confirm(`Deactivate "${p.plan_name}"?`)) deactivateMut.mutate(p.plan_id); }}
@@ -889,7 +889,7 @@ function CompaniesPanel({ plans }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {companies.map((c) => (
-                  <tr key={c.company_id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={c.company_id} onClick={() => setSelected(c)} className="cursor-pointer hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         {c.logo_url
@@ -917,7 +917,7 @@ function CompaniesPanel({ plans }) {
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={c.subscription_status} /></td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(c.created_at)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <RowActions
                         onEdit={() => setSelected(c)}
                         onDelete={() => handleDelete(c)}
@@ -1181,14 +1181,14 @@ function UsersPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((u) => (
-                  <tr key={u.user_id} className="hover:bg-gray-50">
+                  <tr key={u.user_id} onClick={() => setEditTarget(u)} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{u.first_name} {u.last_name}</td>
                     <td className="px-4 py-3 text-gray-600">{u.email}</td>
                     <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-600">{u.role_name?.replace(/_/g, ' ') ?? '—'}</span></td>
                     <td className="px-4 py-3 text-gray-600">{u.company_name}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{u.branch_name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(u.created_at)}</td>
-                    <td className="px-4 py-3"><RowActions onEdit={() => setEditTarget(u)} onDelete={() => handleDelete(u)} deleting={deleteMut.isPending} /></td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><RowActions onEdit={() => setEditTarget(u)} onDelete={() => handleDelete(u)} deleting={deleteMut.isPending} /></td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><Users className="mx-auto mb-2 h-8 w-8 opacity-25" />No users found</td></tr>}
@@ -1307,14 +1307,15 @@ function BranchesPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((b) => (
-                  <tr key={b.branch_id} className="hover:bg-gray-50">
+                  <tr key={b.branch_id} onClick={() => companyId && setEditTarget(b)}
+                    className={`hover:bg-gray-50 ${companyId ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{b.branch_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{b.branch_code}</td>
                     <td className="px-4 py-3 text-gray-600">{b.company_name}</td>
                     <td className="px-4 py-3">{b.is_headquarters ? <CheckCircle className="h-4 w-4 text-green-500" /> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3">{b.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(b.created_at)}</td>
-                    <td className="px-4 py-3">{companyId && <RowActions onEdit={() => setEditTarget(b)} onDelete={b.is_headquarters ? undefined : () => handleDelete(b)} deleting={deleteMut.isPending} />}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>{companyId && <RowActions onEdit={() => setEditTarget(b)} onDelete={b.is_headquarters ? undefined : () => handleDelete(b)} deleting={deleteMut.isPending} />}</td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><GitBranch className="mx-auto mb-2 h-8 w-8 opacity-25" />No branches found</td></tr>}
@@ -1423,14 +1424,15 @@ function TerminalsPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((t) => (
-                  <tr key={t.terminal_id} className="hover:bg-gray-50">
+                  <tr key={t.terminal_id} onClick={() => companyId && setEditTarget(t)}
+                    className={`hover:bg-gray-50 ${companyId ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{t.terminal_name}</td>
                     <td className="px-4 py-3 text-gray-600">{t.branch_name}</td>
                     <td className="px-4 py-3 text-gray-600">{t.company_name}</td>
                     <td className="px-4 py-3">{parseInt(t.open_sessions) > 0 ? <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium">{t.open_sessions} open</span> : <span className="text-gray-400 text-xs">—</span>}</td>
                     <td className="px-4 py-3">{t.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(t.created_at)}</td>
-                    <td className="px-4 py-3">{companyId && <RowActions onEdit={() => setEditTarget(t)} onDelete={() => handleDelete(t)} deleting={deleteMut.isPending} />}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>{companyId && <RowActions onEdit={() => setEditTarget(t)} onDelete={() => handleDelete(t)} deleting={deleteMut.isPending} />}</td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><Monitor className="mx-auto mb-2 h-8 w-8 opacity-25" />No terminals found</td></tr>}
@@ -1622,14 +1624,15 @@ function CustomersPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((c) => (
-                  <tr key={c.customer_id} className="hover:bg-gray-50">
+                  <tr key={c.customer_id} onClick={() => companyId && setEditTarget(c)}
+                    className={`hover:bg-gray-50 ${companyId ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{c.customer_name}</td>
                     <td className="px-4 py-3 text-gray-600">{c.phone ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{c.email ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-500">{c.group_name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{c.company_name}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(c.created_at)}</td>
-                    <td className="px-4 py-3">{companyId && <RowActions onEdit={() => setEditTarget(c)} onDelete={() => handleDelete(c)} deleting={deleteMut.isPending} />}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>{companyId && <RowActions onEdit={() => setEditTarget(c)} onDelete={() => handleDelete(c)} deleting={deleteMut.isPending} />}</td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><UserCheck className="mx-auto mb-2 h-8 w-8 opacity-25" />No customers found</td></tr>}
@@ -1758,14 +1761,15 @@ function ProductsPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((p) => (
-                  <tr key={p.product_id} className="hover:bg-gray-50">
+                  <tr key={p.product_id} onClick={() => companyId && setEditTarget(p)}
+                    className={`hover:bg-gray-50 ${companyId ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{p.product_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.sku ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{p.category_name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{formatCurrency(p.base_price)}</td>
                     <td className="px-4 py-3">{p.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
-                    <td className="px-4 py-3">{companyId && <RowActions onEdit={() => setEditTarget(p)} onDelete={() => handleDelete(p)} deleting={deleteMut.isPending} />}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>{companyId && <RowActions onEdit={() => setEditTarget(p)} onDelete={() => handleDelete(p)} deleting={deleteMut.isPending} />}</td>
                   </tr>
                 ))}
                 {rows.length === 0 && <tr><td colSpan={7} className="py-14 text-center text-gray-400"><Package className="mx-auto mb-2 h-8 w-8 opacity-25" />No products found</td></tr>}
@@ -2350,7 +2354,7 @@ function MpesaConfigPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((c) => (
-                  <tr key={c.config_id} className="hover:bg-gray-50">
+                  <tr key={c.config_id} onClick={() => setEditTarget(c)} className="cursor-pointer hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{c.company_name}</td>
                     <td className="px-4 py-3 text-gray-600">{c.branch_name ?? <span className="text-gray-400 text-xs italic">Company-wide</span>}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-700">{c.shortcode}</td>
@@ -2361,7 +2365,7 @@ function MpesaConfigPanel({ companies }) {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{c.consumer_key_hint}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => toggleMut.mutate(c.config_id)}
                         disabled={toggleMut.isPending}
@@ -2370,7 +2374,7 @@ function MpesaConfigPanel({ companies }) {
                         {c.is_active ? 'Active' : 'Inactive'}
                       </button>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <RowActions onEdit={() => setEditTarget(c)} />
                     </td>
                   </tr>
@@ -2445,12 +2449,13 @@ function PaymentsPanel({ companies }) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((p) => (
-                  <tr key={p.payment_method_id} className="hover:bg-gray-50">
+                  <tr key={p.payment_method_id} onClick={() => companyId && setEditTarget(p)}
+                    className={`hover:bg-gray-50 ${companyId ? 'cursor-pointer' : ''}`}>
                     <td className="px-4 py-3 font-medium text-gray-900">{p.method_name}</td>
                     <td className="px-4 py-3 text-gray-600">{p.company_name}</td>
                     <td className="px-4 py-3">{p.requires_reference ? <CheckCircle className="h-4 w-4 text-green-500" /> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3">{p.is_active ? <span className="text-green-600 text-xs font-medium">Active</span> : <span className="text-gray-400 text-xs">Inactive</span>}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {companyId && (
                         <RowActions
                           onEdit={() => setEditTarget(p)}

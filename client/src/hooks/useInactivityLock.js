@@ -35,14 +35,17 @@ export default function useInactivityLock() {
     };
 
     reset(); // start counting from now
+    // capture: true — 'scroll' doesn't bubble, and the actual scrolling element
+    // is always a nested div (e.g. AppLayout's <main>), never window itself.
+    // Listening on the capture phase is the only way to observe it here.
     ACTIVITY_EVENTS.forEach((evt) =>
-      window.addEventListener(evt, reset, { passive: true })
+      window.addEventListener(evt, reset, { passive: true, capture: true })
     );
 
     return () => {
       clearTimeout(timerRef.current);
       ACTIVITY_EVENTS.forEach((evt) =>
-        window.removeEventListener(evt, reset)
+        window.removeEventListener(evt, reset, { capture: true })
       );
     };
   }, [accessToken, lockTimeoutMinutes, isLocked, lock]);

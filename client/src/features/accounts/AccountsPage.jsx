@@ -143,9 +143,10 @@ function AccountModal({ account, accounts, onClose, onDelete }) {
 
 const fmtKES = (n) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n ?? 0);
 
-const TB_PRINT_STYLES = `<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;padding:32px;color:#111;font-size:13px;line-height:1.5}
+// window.open() is blocked on Android WebView (CS30 POS). Print via a hidden
+// overlay + window.print() with @media print CSS instead — same approach as
+// ReportsPage.jsx and printReceipt.js.
+const TB_PRINT_STYLES = `
   h1{font-size:20px;font-weight:700;letter-spacing:1px}
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #222;margin-bottom:20px}
   .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
@@ -155,8 +156,7 @@ const TB_PRINT_STYLES = `<style>
   td{padding:6px 10px;border-bottom:1px solid #eee;font-size:12px}
   .r{text-align:right}.mono{font-family:monospace}
   tfoot td{font-weight:bold;border-top:2px solid #333;background:#f9f9f9;font-size:13px}
-  @media print{body{padding:16px}}
-</style>`;
+`;
 
 const TYPE_PRINT_COLORS = { asset:'#1d4ed8', liability:'#dc2626', equity:'#7c3aed', revenue:'#15803d', expense:'#ea580c' };
 
@@ -171,9 +171,15 @@ function printTrialBalance(data, asOf) {
     <td class="r mono">${row.credit > 0 ? fmtKES(row.credit) : '—'}</td>
   </tr>`).join('');
 
-  const w = window.open('', '_blank', 'width=900,height=700');
-  if (!w) { alert('Allow pop-ups to print.'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><title>Trial Balance — ${asOf}</title>${TB_PRINT_STYLES}</head><body>
+  const OID = '__tb_ov';
+  const SID = '__tb_st';
+  document.getElementById(OID)?.remove();
+  document.getElementById(SID)?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = OID;
+  overlay.style.display = 'none';
+  overlay.innerHTML = `
     <div class="hdr">
       <div><h1>TRIAL BALANCE</h1><p style="color:#555;margin-top:4px">As of: <strong>${asOf}</strong></p></div>
       <div style="text-align:right">
@@ -195,9 +201,31 @@ function printTrialBalance(data, asOf) {
         <td class="r mono">${fmtKES(totalCredits)}</td>
       </tr></tfoot>
     </table>
-    <script>window.onload=()=>window.print()</script>
-  </body></html>`);
-  w.document.close();
+  `;
+  document.body.appendChild(overlay);
+
+  const style = document.createElement('style');
+  style.id = SID;
+  style.media = 'print';
+  style.textContent = `
+    @page { size: A4 portrait; margin: 15mm; }
+    body > *:not(#${OID}) { display: none !important; }
+    #${OID} { display: block !important; width: 100%; }
+    ${TB_PRINT_STYLES}
+  `;
+  document.head.appendChild(style);
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.getElementById(OID)?.remove();
+    document.getElementById(SID)?.remove();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 60_000);
+
+  setTimeout(() => window.print(), 100);
 }
 
 // ── Trial Balance Tab ─────────────────────────────────────────────────────────

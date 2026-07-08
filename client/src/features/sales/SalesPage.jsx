@@ -296,7 +296,8 @@ export default function SalesPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {transactions.map((t) => (
-                <tr key={t.transaction_id} className="hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <tr key={t.transaction_id} onClick={() => setSelected(t.transaction_id)}
+                  className="cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors">
                   <td className="px-3 py-2.5 font-mono text-primary-600 font-semibold whitespace-nowrap">{t.transaction_number}</td>
                   <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{formatDateTime(t.transaction_date)}</td>
                   <td className="px-3 py-2.5 text-gray-700">{t.customer_name}</td>
@@ -337,7 +338,7 @@ export default function SalesPage() {
                       {t.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-center">
+                  <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setSelected(t.transaction_id)}
                       className="rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition-colors">
                       View
@@ -352,7 +353,8 @@ export default function SalesPage() {
           {/* Mobile cards */}
           <div className="sm:hidden space-y-2 p-3">
             {transactions.map((t) => (
-              <div key={t.transaction_id} className="rounded-xl border border-gray-100 bg-white p-3">
+              <div key={t.transaction_id} onClick={() => setSelected(t.transaction_id)}
+                className="rounded-xl border border-gray-100 bg-white p-3 cursor-pointer active:bg-gray-50">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-mono text-primary-600 font-semibold text-sm">{t.transaction_number}</p>

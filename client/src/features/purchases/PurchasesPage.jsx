@@ -723,9 +723,10 @@ function RptCard({ title, children }) {
 
 const fmtKES = (n) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n ?? 0);
 
-const PRINT_STYLES = `<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;padding:32px;color:#111;font-size:13px;line-height:1.5}
+// window.open() is blocked on Android WebView (CS30 POS). Print via a hidden
+// overlay + window.print() with @media print CSS instead — same approach as
+// ReportsPage.jsx and printReceipt.js.
+const PRINT_STYLES = `
   h1{font-size:20px;font-weight:700;letter-spacing:1px}
   .sub{font-size:14px;color:#555;margin-top:4px}
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #222;margin-bottom:20px}
@@ -740,14 +741,42 @@ const PRINT_STYLES = `<style>
   .notes{margin-top:16px;padding:10px 14px;background:#fffbe6;border-left:3px solid #f0c040;color:#555;font-style:italic}
   .sigs{display:flex;justify-content:space-between;margin-top:64px}
   .sig{width:160px;border-top:1px solid #555;padding-top:6px;font-size:11px;color:#777;text-align:center}
-  @media print{body{padding:16px}}
-</style>`;
+`;
 
-function openPrintWindow(html) {
-  const w = window.open('', '_blank', 'width=900,height=700');
-  if (!w) { alert('Allow pop-ups to print.'); return; }
-  w.document.write(html);
-  w.document.close();
+function printDocument(bodyHtml) {
+  const OID = '__po_ov';
+  const SID = '__po_st';
+  document.getElementById(OID)?.remove();
+  document.getElementById(SID)?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = OID;
+  overlay.style.display = 'none';
+  overlay.innerHTML = bodyHtml;
+  document.body.appendChild(overlay);
+
+  const style = document.createElement('style');
+  style.id = SID;
+  style.media = 'print';
+  style.textContent = `
+    @page { size: A4 portrait; margin: 15mm; }
+    body > *:not(#${OID}) { display: none !important; }
+    #${OID} { display: block !important; width: 100%; }
+    ${PRINT_STYLES}
+  `;
+  document.head.appendChild(style);
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.getElementById(OID)?.remove();
+    document.getElementById(SID)?.remove();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 60_000);
+
+  setTimeout(() => window.print(), 100);
 }
 
 function printLPO(po) {
@@ -758,7 +787,7 @@ function printLPO(po) {
     <td class="r">${fmtKES(item.line_total)}</td>
   </tr>`).join('');
 
-  openPrintWindow(`<!DOCTYPE html><html><head><title>LPO — ${po.po_number}</title>${PRINT_STYLES}</head><body>
+  printDocument(`
     <div class="hdr">
       <div><h1>LOCAL PURCHASE ORDER</h1><div class="sub">LPO No: <strong>${po.po_number}</strong></div></div>
       <div class="meta">
@@ -782,8 +811,7 @@ function printLPO(po) {
       <div class="sig">Authorized By</div>
       <div class="sig">Received By</div>
     </div>
-    <script>window.onload=()=>window.print()</script>
-  </body></html>`);
+  `);
 }
 
 function printGRN(grn) {
@@ -795,7 +823,7 @@ function printGRN(grn) {
     <td class="r">${item.batch_number ?? '—'}</td>
   </tr>`).join('');
 
-  openPrintWindow(`<!DOCTYPE html><html><head><title>GRN — ${grn.grn_number}</title>${PRINT_STYLES}</head><body>
+  printDocument(`
     <div class="hdr">
       <div><h1>GOODS RECEIVED NOTE</h1><div class="sub">GRN No: <strong>${grn.grn_number}</strong></div></div>
       <div class="meta">
@@ -819,8 +847,7 @@ function printGRN(grn) {
       <div class="sig">Verified By</div>
       <div class="sig">Posted By</div>
     </div>
-    <script>window.onload=()=>window.print()</script>
-  </body></html>`);
+  `);
 }
 
 // ── Purchases Summary Report ──────────────────────────────────────────────────

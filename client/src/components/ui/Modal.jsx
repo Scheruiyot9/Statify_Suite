@@ -1,35 +1,10 @@
 import { Dialog, Transition } from '@headlessui/react';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment } from 'react';
 import { X } from 'lucide-react';
 
 const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', full: 'max-w-full mx-4' };
 
 export default function Modal({ open, onClose, title, children, size = 'md', footer }) {
-  const [dragY, setDragY] = useState(0);
-  const touchStartY = useRef(0);
-  const dragging = useRef(false);
-
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-    dragging.current = true;
-  };
-
-  const handleTouchMove = (e) => {
-    if (!dragging.current) return;
-    const delta = e.touches[0].clientY - touchStartY.current;
-    if (delta > 0) setDragY(delta);
-  };
-
-  const handleTouchEnd = () => {
-    dragging.current = false;
-    if (dragY > 100) {
-      setDragY(0);
-      onClose();
-    } else {
-      setDragY(0);
-    }
-  };
-
   return (
     <Transition show={open} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
@@ -42,29 +17,20 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
         </Transition.Child>
 
-        {/* Phones (<640px): bottom sheet; sm and up: centered dialog */}
-        <div className="fixed inset-0 flex items-end justify-center sm:items-center sm:p-4">
+        {/* Centered dialog on every screen size */}
+        <div className="fixed inset-0 flex items-center justify-center p-4">
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-200"
-            enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            enterTo="opacity-100 translate-y-0 sm:scale-100"
+            enterFrom="opacity-0 scale-95"
+            enterTo="opacity-100 scale-100"
             leave="ease-in duration-150"
-            leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-            leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            leaveFrom="opacity-100 scale-100"
+            leaveTo="opacity-0 scale-95"
           >
             <Dialog.Panel
-              className={`w-full ${sizes[size]} max-h-[92vh] rounded-t-2xl sm:rounded-xl bg-white shadow-xl flex flex-col`}
-              style={{ transform: dragY > 0 ? `translateY(${dragY}px)` : undefined, transition: dragY === 0 ? 'transform 0.2s' : 'none' }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
+              className={`w-full ${sizes[size]} max-h-[92vh] rounded-xl bg-white shadow-xl flex flex-col`}
             >
-              {/* Drag handle — phones only (bottom-sheet mode) */}
-              <div className="flex justify-center pt-3 pb-1 sm:hidden flex-shrink-0">
-                <div className="h-1 w-10 rounded-full bg-gray-300" />
-              </div>
-
               {/* Header */}
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 lg:px-6 lg:py-4 flex-shrink-0">
                 <Dialog.Title className="text-base font-semibold text-gray-900">{title}</Dialog.Title>
